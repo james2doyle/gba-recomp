@@ -22,7 +22,19 @@ pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
             let encoding = image
                 .read_arm_word(pc)
                 .map_err(|error| format!("discovery failed at 0x{pc:08X}: {error}"))?;
-            let instruction = crate::decoder::decode_arm(pc, encoding)?;
+            let mut instruction = crate::decoder::decode_arm(pc, encoding)?;
+            if let ArmOperation::LoadPcRelativeWord { rd, guest_address } = instruction.operation {
+                let value = image.read_arm_word(guest_address).map_err(|error| {
+                    format!(
+                        "rom_literal_out_of_rom at 0x{pc:08X}: address 0x{guest_address:08X}: {error}"
+                    )
+                })?;
+                instruction.operation = ArmOperation::LoadRomLiteral {
+                    rd,
+                    guest_address,
+                    value,
+                };
+            }
             let next_pc = pc
                 .checked_add(4)
                 .ok_or_else(|| format!("sequential PC overflow after 0x{pc:08X}"))?;
@@ -96,6 +108,16 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn literal_rom() -> RomImage {
+        let mut bytes = counter_rom().bytes().to_vec();
+        // `LDR r0, [pc, #4]` at 0x080000C0 reaches 0x080000CC.
+        bytes[0xC0..0xC4].copy_from_slice(&0xE59F_0004_u32.to_le_bytes());
+        bytes[0xC4..0xC8].copy_from_slice(&0xEAFF_FFFE_u32.to_le_bytes());
+        bytes[0xCC..0xD0].copy_from_slice(&0x1234_5678_u32.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     #[test]
     fn discovers_entry_branch_loop_and_fallthrough() {
         let program = discover_arm_program(&counter_rom()).unwrap();
@@ -120,5 +142,37 @@ mod tests {
                 .unwrap_err()
                 .contains("branch_target_out_of_rom")
         );
+    }
+
+    #[test]
+    fn resolves_pc_relative_word_from_rom_into_a_constant() {
+        let program = discover_arm_program(&literal_rom()).unwrap();
+        let literal = program
+            .instructions
+            .iter()
+            .find(|instruction| instruction.guest_pc == ROM_BASE + 0xC0)
+            .unwrap();
+        assert_eq!(
+            literal.operation,
+            ArmOperation::LoadRomLiteral {
+                rd: 0,
+                guest_address: ROM_BASE + 0xCC,
+                value: 0x1234_5678,
+            }
+        );
+        assert_eq!(program.instructions.len(), 3);
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn out_of_rom_literal_is_rejected_during_discovery() {
+        let mut bytes = counter_rom().bytes().to_vec();
+        // PC+8 plus 0x138 is beyond this 256-byte image.
+        bytes[0xC0..0xC4].copy_from_slice(&0xE59F_0138_u32.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        let image = RomImage::from_bytes(bytes).unwrap();
+        let error = discover_arm_program(&image).unwrap_err();
+        assert!(error.contains("rom_literal_out_of_rom at 0x080000C0"));
+        assert!(error.contains("address 0x08000200"));
     }
 }

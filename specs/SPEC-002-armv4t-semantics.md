@@ -17,6 +17,8 @@ Decodificar ARM de 32 bits e Thumb de 16 bits do ARM7TDMI e preservar resultado,
 - CPU-07: transições SWI/IRQ/Undefined e retorno MUST preservar bancos, endereço de retorno, masks e CPSR/SPSR conforme contrato. Famílias sem semântica validada MUST falhar com `unsupported_instruction` antes de gerar código silenciosamente incorreto.
 - CPU-08: estado ARM bancado e `MSR CPSR` seguem o contrato incremental da [SPEC-013](SPEC-013-banked-cpu-and-psr.md); não alterar layout do ABI v1 para acomodá-los.
 - CPU-09: carga literal ARM por PC pode ser fixada em constante AOT somente nos limites imutáveis da [SPEC-014](SPEC-014-rom-literal-loads.md); outras cargas passam pelo bus ou são recusadas.
+- CPU-10: `ADD Rd, PC, #imm` ARM sem flags é suportado somente nos limites da [SPEC-015](SPEC-015-arm-pc-relative-add.md), com valor PC visível de `guest_pc+8`; nenhuma outra forma de uso de PC é inferida desse caso.
+- CPU-11: escrita ARM `STR` de palavra com offset imediato só é suportada nos limites da [SPEC-016](SPEC-016-ram-word-stores.md). Ela passa pela ABI GBA de memória; aceitação desse formato não implica suporte aos demais loads/stores nem ao bus completo.
 
 ## Interface
 

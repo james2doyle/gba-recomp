@@ -1,6 +1,6 @@
 # ADR-007 — Fixar cargas literais PC-relativas da ROM
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-13
 - Supersede: —
 

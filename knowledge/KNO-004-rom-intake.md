@@ -36,6 +36,16 @@ Criado [perfil draft](../profiles/leafgreen-bpge-rev1.toml), com hash exato e se
 
 Em 2026-10-13, o comando `gba-recomp inspect-rom` repetiu localmente SHA-256, tamanho e campos de header acima. `gba-recomp compile` começou a descoberta a partir do entrypoint e parou em `0x08000208`, palavra `0xE129F000`, com `unsupported instruction family is not implemented`. A saída não contém pacote; não houve decompilação REA nem execução da ROM. Isso mede somente o limite do decoder do commit `0dfbfb593b3882c6412f9048db786f064d881483`; não classifica semanticamente a instrução nem resolve a cobertura de LeafGreen.
 
+## Tentativa incremental após SPEC-013/014
+
+Com o CLI recompilado em 2026-10-13, ABI bancado e literal PC-ROM habilitados, a compilação avançou até `0x08000220`, encoding `0xE28F0020`, e parou com `data-processing opcode or flags mode is not implemented`. Nenhum pacote foi criado e LeafGreen não foi executado. A leitura do encoding como `ADD r0, pc, #0x20` e do valor aritmético `0x08000248` é inferência ARM; não demonstra que o resultado seja código executável nem que tenha sido consumido pelo jogo. O comando usa a ROM identificada pelo SHA-256 acima. O REA continua indisponível para esse formato; esta tentativa não acrescenta Evidence REA.
+
+Após a fixture de `ADD` PC-relativo passar em O0/O2, uma nova compilação local avançou até `0x08000224`, encoding `0xE5810000`, e parou com `unsupported_instruction`. A leitura como `STR r0,[r1]` é inferência dos campos ARM. O pacote não foi criado e o jogo não foi executado. Esse limite requer escrita guest pelo bus; endereço e destino efetivos em runtime ainda não foram observados. Não extrapolar a instrução para cobertura geral de memória.
+
+## Tentativa após SPEC-016 — RAM física word store
+
+Em 2026-10-13, depois de `scripts/verify-gba020.sh` passar as fixtures ABI v3, uma nova compilação local falhou antes de publicar pacote em `0x0800022C`, palavra `0xE1A0E00F`, com `instruction family is not implemented`. A interpretação `MOV LR,PC` é inferência pelos campos ARM. O PC+8 para operando ARM está registrado como comportamento da referência no SRC-17, mas não demonstra o uso do resultado por LeafGreen. A ROM não foi executada nem decompilada; o relatório mede apenas o limite da descoberta AOT local para o SHA-256 fixado acima.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

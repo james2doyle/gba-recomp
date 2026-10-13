@@ -8,7 +8,7 @@ GBA-005 fixa Rust/LLVM/bindings e os perfis dos dois hosts em ADR-004 e `toolcha
 
 ## 2. Hardware e dispatch — GBA-025/030/040/045/050
 
-GBA-025 implementou ABI v2, estado bancado e `MSR CPSR` da SPEC-013, além de literal PC-ROM restrito da SPEC-014, preservando ABI v1. Completar semântica CPU incrementalmente com matriz explícita. Integrar bus, checkpoints, IRQ e DMA antes de optimizações agressivas. Fixture escreve tiles/bitmap, responde a botões, produz tom com timer/FIFO e persiste backup. Introduzir código ROM→RAM e overlay para testar invalidation. mGBA fixado por commit fornece oráculo externo; discrepâncias viram KNO. Gate: mesmo cenário AOT gera estado e saídas esperadas.
+GBA-025 implementou ABI v2, estado bancado e `MSR CPSR` da SPEC-013, além de literal PC-ROM restrito da SPEC-014. KNO-005 agora mantém o mapa separado de decode, execução e lowering AOT. SPEC-016 inicia GBA-030 com `STR` de palavra estritamente limitado a EWRAM/IWRAM físicas em ABI v3. Próximas famílias devem ser escolhidas pelo mapa de cobertura e fixtures alcançáveis, não por adicionar cada encoding sem o runtime correspondente. Integrar bus, checkpoints, IRQ e DMA antes de optimizações agressivas. Fixture escreve tiles/bitmap, responde a botões, produz tom com timer/FIFO e persiste backup. Introduzir código ROM→RAM e overlay para testar invalidation. mGBA fixado por commit fornece oráculo externo; discrepâncias viram KNO. Gate: mesmo cenário AOT gera estado e saídas esperadas.
 
 ## 3. Perfis e produto — GBA-060/070/080
 

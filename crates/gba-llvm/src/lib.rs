@@ -214,19 +214,42 @@ unsafe fn emit_arm_program_llvm(
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
     let i64_type = unsafe { LLVMInt64TypeInContext(context) };
     let regs_type = unsafe { LLVMArrayType2(i32_type, 16) };
-    let mut runtime_fields = [regs_type, i32_type, i32_type, i64_type];
-    let runtime_type =
-        unsafe { LLVMStructTypeInContext(context, runtime_fields.as_mut_ptr(), 4, 0) };
-    let mut exit_fields = [i32_type, i32_type];
-    let exit_type = unsafe { LLVMStructTypeInContext(context, exit_fields.as_mut_ptr(), 2, 0) };
+    let bank5_type = unsafe { LLVMArrayType2(i32_type, 5) };
+    let bank6x2_type = unsafe { LLVMArrayType2(LLVMArrayType2(i32_type, 2), 6) };
+    let mut runtime_fields = [
+        regs_type,
+        i32_type,
+        i32_type,
+        i64_type,
+        bank5_type,
+        bank5_type,
+        bank6x2_type,
+        bank5_type,
+    ];
+    let runtime_cpu_type =
+        unsafe { LLVMStructTypeInContext(context, runtime_fields.as_mut_ptr(), 8, 0) };
+    let mut runtime_v3_fields = [
+        runtime_cpu_type,
+        unsafe { LLVMPointerType(i32_type, 0) },
+        i32_type,
+    ];
+    let runtime_v3_type =
+        unsafe { LLVMStructTypeInContext(context, runtime_v3_fields.as_mut_ptr(), 3, 0) };
+    let mut exit_v2_fields = [i32_type, i32_type];
+    let exit_v2_type =
+        unsafe { LLVMStructTypeInContext(context, exit_v2_fields.as_mut_ptr(), 2, 0) };
+    let mut exit_fields = [i32_type, i32_type, i32_type, i32_type];
+    let exit_type = unsafe { LLVMStructTypeInContext(context, exit_fields.as_mut_ptr(), 4, 0) };
     let result = unsafe {
-        validate_abi_layout(target_data, runtime_type, exit_type)
+        validate_abi_layout_v2(target_data, runtime_cpu_type, exit_v2_type)
+            .and_then(|()| validate_abi_layout_v3(target_data, runtime_v3_type, exit_type))
             .and_then(|()| {
                 build_arm_program_function(
                     context,
                     module,
                     builder,
-                    runtime_type,
+                    runtime_cpu_type,
+                    runtime_v3_type,
                     exit_type,
                     program,
                 )
@@ -257,35 +280,79 @@ unsafe fn build_arm_program_function(
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
-    runtime_type: LLVMTypeRef,
+    runtime_cpu_type: LLVMTypeRef,
+    runtime_v3_type: LLVMTypeRef,
     exit_type: LLVMTypeRef,
     program: &ArmProgram,
 ) -> Result<(), String> {
-    let i1_type = unsafe { LLVMInt1TypeInContext(context) };
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
     let i64_type = unsafe { LLVMInt64TypeInContext(context) };
     let mut parameters = unsafe {
         [
-            LLVMPointerType(runtime_type, 0),
+            LLVMPointerType(runtime_v3_type, 0),
             LLVMPointerType(exit_type, 0),
         ]
     };
     let function_type = unsafe { LLVMFunctionType(i32_type, parameters.as_mut_ptr(), 2, 0) };
-    let function_name = CString::new("gba_block_v1").expect("static name contains no NUL");
+    let function_name = CString::new("gba_block_v3").expect("static name contains no NUL");
     let function = unsafe { LLVMAddFunction(module, function_name.as_ptr(), function_type) };
     if function.is_null() {
         return Err("LLVMAddFunction returned null".to_owned());
     }
     let runtime = unsafe { LLVMGetParam(function, 0) };
     let exit = unsafe { LLVMGetParam(function, 1) };
+    let mut helper_parameters =
+        unsafe { [LLVMPointerType(runtime_cpu_type, 0), i32_type, i32_type] };
+    let helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            helper_parameters.as_mut_ptr(),
+            helper_parameters.len() as u32,
+            0,
+        )
+    };
+    let helper_name = CString::new("gba_msr_cpsr_v2").expect("static name contains no NUL");
+    let msr_helper = unsafe { LLVMAddFunction(module, helper_name.as_ptr(), helper_type) };
+    if msr_helper.is_null() {
+        return Err("LLVMAddFunction for gba_msr_cpsr_v2 returned null".to_owned());
+    }
+    let mut store_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(exit_type, 0),
+            i32_type,
+            i32_type,
+        ]
+    };
+    let store_helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            store_parameters.as_mut_ptr(),
+            store_parameters.len() as u32,
+            0,
+        )
+    };
+    let store_helper_name = CString::new("gba_store32_v3").expect("static name contains no NUL");
+    let store_helper =
+        unsafe { LLVMAddFunction(module, store_helper_name.as_ptr(), store_helper_type) };
+    if store_helper.is_null() {
+        return Err("LLVMAddFunction for gba_store32_v3 returned null".to_owned());
+    }
     let entry = unsafe { append_block(context, function, "entry") };
     let fault = unsafe { append_block(context, function, "fault") };
     let dispatch = unsafe { append_block(context, function, "dispatch") };
     let missing = unsafe { append_block(context, function, "missing_code") };
     unsafe { LLVMPositionBuilderAtEnd(builder, entry) };
 
-    let cycles_ptr =
-        unsafe { LLVMBuildStructGEP2(builder, runtime_type, runtime, 3, c"cycles_ptr".as_ptr()) };
+    let cycles_ptr = unsafe {
+        LLVMBuildStructGEP2(
+            builder,
+            runtime_cpu_type,
+            runtime,
+            3,
+            c"cycles_ptr".as_ptr(),
+        )
+    };
     let cycles = unsafe { LLVMBuildLoad2(builder, i64_type, cycles_ptr, c"cycles".as_ptr()) };
     let max_cycles = unsafe { LLVMConstInt(i64_type, u64::MAX, 0) };
     let cycle_overflow = unsafe {
@@ -300,7 +367,7 @@ unsafe fn build_arm_program_function(
     let abi_version_ptr = unsafe {
         LLVMBuildStructGEP2(
             builder,
-            runtime_type,
+            runtime_cpu_type,
             runtime,
             2,
             c"abi_version_ptr".as_ptr(),
@@ -308,13 +375,47 @@ unsafe fn build_arm_program_function(
     };
     let abi_version =
         unsafe { LLVMBuildLoad2(builder, i32_type, abi_version_ptr, c"abi_version".as_ptr()) };
-    let abi_mismatch = unsafe {
+    let cpu_abi_mismatch = unsafe {
         LLVMBuildICmp(
             builder,
             LLVMIntPredicate::LLVMIntNE,
             abi_version,
-            LLVMConstInt(i32_type, 1, 0),
+            LLVMConstInt(i32_type, 2, 0),
             c"abi_mismatch".as_ptr(),
+        )
+    };
+    let outer_abi_version_ptr = unsafe {
+        LLVMBuildStructGEP2(
+            builder,
+            runtime_v3_type,
+            runtime,
+            2,
+            c"outer_abi_version_ptr".as_ptr(),
+        )
+    };
+    let outer_abi_version = unsafe {
+        LLVMBuildLoad2(
+            builder,
+            i32_type,
+            outer_abi_version_ptr,
+            c"outer_abi_version".as_ptr(),
+        )
+    };
+    let outer_abi_mismatch = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntNE,
+            outer_abi_version,
+            LLVMConstInt(i32_type, 3, 0),
+            c"outer_abi_mismatch".as_ptr(),
+        )
+    };
+    let abi_mismatch = unsafe {
+        LLVMBuildOr(
+            builder,
+            cpu_abi_mismatch,
+            outer_abi_mismatch,
+            c"any_abi_mismatch".as_ptr(),
         )
     };
     let must_fault = unsafe {
@@ -328,7 +429,7 @@ unsafe fn build_arm_program_function(
     unsafe { LLVMBuildCondBr(builder, must_fault, fault, dispatch) };
 
     unsafe { LLVMPositionBuilderAtEnd(builder, fault) };
-    let pc_pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, 15) };
+    let pc_pointer = unsafe { register_pointer(builder, context, runtime_cpu_type, runtime, 15) };
     let pc = unsafe { LLVMBuildLoad2(builder, i32_type, pc_pointer, c"pc_on_fault".as_ptr()) };
     unsafe {
         store_exit(builder, exit_type, exit, i32_type, 4, pc);
@@ -336,8 +437,39 @@ unsafe fn build_arm_program_function(
     }
 
     unsafe { LLVMPositionBuilderAtEnd(builder, dispatch) };
-    let pc_pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, 15) };
+    let pc_pointer = unsafe { register_pointer(builder, context, runtime_cpu_type, runtime, 15) };
     let pc = unsafe { LLVMBuildLoad2(builder, i32_type, pc_pointer, c"pc_dispatch".as_ptr()) };
+    let cpsr_pointer = unsafe {
+        LLVMBuildStructGEP2(
+            builder,
+            runtime_cpu_type,
+            runtime,
+            1,
+            c"dispatch_cpsr_ptr".as_ptr(),
+        )
+    };
+    let cpsr =
+        unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"dispatch_cpsr".as_ptr()) };
+    let thumb_bit = unsafe {
+        LLVMBuildAnd(
+            builder,
+            cpsr,
+            LLVMConstInt(i32_type, 0x20, 0),
+            c"thumb_bit".as_ptr(),
+        )
+    };
+    let thumb_active = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntNE,
+            thumb_bit,
+            LLVMConstInt(i32_type, 0, 0),
+            c"thumb_active".as_ptr(),
+        )
+    };
+    let arm_dispatch = unsafe { append_block(context, function, "arm_dispatch") };
+    unsafe { LLVMBuildCondBr(builder, thumb_active, missing, arm_dispatch) };
+    unsafe { LLVMPositionBuilderAtEnd(builder, arm_dispatch) };
     let switch =
         unsafe { LLVMBuildSwitch(builder, pc, missing, program.instructions.len() as u32) };
     let mut blocks = Vec::with_capacity(program.instructions.len());
@@ -366,16 +498,20 @@ unsafe fn build_arm_program_function(
             lower_arm_instruction(
                 context,
                 builder,
-                runtime_type,
+                runtime_cpu_type,
                 exit_type,
                 runtime,
                 exit,
                 cycles,
+                function,
+                helper_type,
+                msr_helper,
+                store_helper_type,
+                store_helper,
                 instruction,
             )
         }?;
     }
-    let _ = i1_type;
     Ok(())
 }
 
@@ -396,6 +532,11 @@ unsafe fn lower_arm_instruction(
     runtime: LLVMValueRef,
     exit: LLVMValueRef,
     cycles: LLVMValueRef,
+    function: LLVMValueRef,
+    msr_helper_type: LLVMTypeRef,
+    msr_helper: LLVMValueRef,
+    store_helper_type: LLVMTypeRef,
+    store_helper: LLVMValueRef,
     instruction: &ArmInstruction,
 ) -> Result<(), String> {
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
@@ -421,6 +562,107 @@ unsafe fn lower_arm_instruction(
             unsafe { LLVMBuildStore(builder, new, pointer) };
             default_next_pc
         }
+        ArmOperation::LoadRomLiteral { rd, value, .. } => {
+            let pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let old =
+                unsafe { LLVMBuildLoad2(builder, i32_type, pointer, c"old_literal_rd".as_ptr()) };
+            let new = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    LLVMConstInt(i32_type, u64::from(value), 0),
+                    old,
+                    c"literal_load_result".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, new, pointer) };
+            default_next_pc
+        }
+        ArmOperation::StoreWord { rd, rn, offset, up } => {
+            let base_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rn) };
+            let value_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let base =
+                unsafe { LLVMBuildLoad2(builder, i32_type, base_pointer, c"store_base".as_ptr()) };
+            let value = unsafe {
+                LLVMBuildLoad2(builder, i32_type, value_pointer, c"store_value".as_ptr())
+            };
+            let offset_value = unsafe { LLVMConstInt(i32_type, u64::from(offset), 0) };
+            let address = unsafe {
+                if up {
+                    LLVMBuildAdd(builder, base, offset_value, c"store_address".as_ptr())
+                } else {
+                    LLVMBuildSub(builder, base, offset_value, c"store_address".as_ptr())
+                }
+            };
+            let perform_store = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("store_effect_{:08X}", instruction.guest_pc),
+                )
+            };
+            let skip_store = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("store_skip_{:08X}", instruction.guest_pc),
+                )
+            };
+            let commit = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("store_commit_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failed = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("store_fault_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, condition, perform_store, skip_store) };
+
+            unsafe { LLVMPositionBuilderAtEnd(builder, perform_store) };
+            let mut arguments = [runtime, exit, address, value];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    store_helper_type,
+                    store_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"store_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"store_succeeded".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, commit, failed) };
+
+            unsafe { LLVMPositionBuilderAtEnd(builder, failed) };
+            unsafe { LLVMBuildRet(builder, status) };
+
+            unsafe { LLVMPositionBuilderAtEnd(builder, skip_store) };
+            unsafe { LLVMBuildBr(builder, commit) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, commit) };
+            default_next_pc
+        }
+        ArmOperation::LoadPcRelativeWord { .. } => {
+            return Err(format!(
+                "unresolved PC-relative ROM literal at 0x{:08X}",
+                instruction.guest_pc
+            ));
+        }
         ArmOperation::AddImmediate { rd, rn, value } => {
             let source_pointer =
                 unsafe { register_pointer(builder, context, runtime_type, runtime, rn) };
@@ -445,6 +687,23 @@ unsafe fn lower_arm_instruction(
             unsafe { LLVMBuildStore(builder, new, destination_pointer) };
             default_next_pc
         }
+        ArmOperation::AddPcRelativeImmediate { rd, value } => {
+            let pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let old =
+                unsafe { LLVMBuildLoad2(builder, i32_type, pointer, c"old_pc_add_rd".as_ptr()) };
+            let result = instruction.guest_pc.wrapping_add(8).wrapping_add(value);
+            let new = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    LLVMConstInt(i32_type, u64::from(result), 0),
+                    old,
+                    c"pc_add_commit".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, new, pointer) };
+            default_next_pc
+        }
         ArmOperation::CompareImmediate { rn, value } => {
             let source_pointer =
                 unsafe { register_pointer(builder, context, runtime_type, runtime, rn) };
@@ -456,6 +715,93 @@ unsafe fn lower_arm_instruction(
                 LLVMBuildSelect(builder, condition, new_cpsr, cpsr, c"cmp_commit".as_ptr())
             };
             unsafe { LLVMBuildStore(builder, committed, cpsr_pointer) };
+            default_next_pc
+        }
+        ArmOperation::MsrCpsrRegister { rm, field_mask } => {
+            let source_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rm) };
+            let source = unsafe {
+                LLVMBuildLoad2(builder, i32_type, source_pointer, c"msr_source".as_ptr())
+            };
+            let selected_mask = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    LLVMConstInt(i32_type, u64::from(field_mask), 0),
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"msr_selected_mask".as_ptr(),
+                )
+            };
+            let mut arguments = [runtime, source, selected_mask];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    msr_helper_type,
+                    msr_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"msr_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"msr_succeeded".as_ptr(),
+                )
+            };
+            let success_block = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("msr_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure_block = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("msr_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success_block, failure_block) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure_block) };
+            let current_pc_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, 15) };
+            let current_pc = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    current_pc_pointer,
+                    c"msr_failure_pc".as_ptr(),
+                )
+            };
+            let reason_pointer = unsafe {
+                LLVMBuildStructGEP2(
+                    builder,
+                    exit_type,
+                    exit,
+                    0,
+                    c"msr_failure_reason_ptr".as_ptr(),
+                )
+            };
+            let exit_pc_pointer = unsafe {
+                LLVMBuildStructGEP2(
+                    builder,
+                    exit_type,
+                    exit,
+                    1,
+                    c"msr_failure_exit_pc_ptr".as_ptr(),
+                )
+            };
+            unsafe {
+                LLVMBuildStore(builder, status, reason_pointer);
+                LLVMBuildStore(builder, current_pc, exit_pc_pointer);
+                LLVMBuildRet(builder, status);
+            }
+            unsafe { LLVMPositionBuilderAtEnd(builder, success_block) };
             default_next_pc
         }
         ArmOperation::Branch { target, link } => {
@@ -993,6 +1339,77 @@ unsafe fn validate_abi_layout(
     {
         return Err(format!(
             "LLVM target ABI layout does not match gba_abi_v1: runtime size/alignment/offsets={runtime_size}/{runtime_alignment}/{runtime_offsets:?}, exit={exit_size}/{exit_alignment}/{exit_offsets:?}"
+        ));
+    }
+    Ok(())
+}
+
+unsafe fn validate_abi_layout_v2(
+    target_data: LLVMTargetDataRef,
+    runtime_type: LLVMTypeRef,
+    exit_type: LLVMTypeRef,
+) -> Result<(), String> {
+    let runtime_size = unsafe { LLVMABISizeOfType(target_data, runtime_type) };
+    let runtime_alignment = unsafe { LLVMABIAlignmentOfType(target_data, runtime_type) };
+    let runtime_offsets = [
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 0) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 1) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 2) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 3) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 4) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 5) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 6) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 7) },
+    ];
+    let exit_size = unsafe { LLVMABISizeOfType(target_data, exit_type) };
+    let exit_alignment = unsafe { LLVMABIAlignmentOfType(target_data, exit_type) };
+    let exit_offsets = [
+        unsafe { LLVMOffsetOfElement(target_data, exit_type, 0) },
+        unsafe { LLVMOffsetOfElement(target_data, exit_type, 1) },
+    ];
+    if runtime_size != 192
+        || runtime_alignment != 8
+        || runtime_offsets != [0, 64, 68, 72, 80, 100, 120, 168]
+        || exit_size != 8
+        || exit_alignment != 4
+        || exit_offsets != [0, 4]
+    {
+        return Err(format!(
+            "LLVM target ABI layout does not match gba_abi_v2: runtime size/alignment/offsets={runtime_size}/{runtime_alignment}/{runtime_offsets:?}, exit={exit_size}/{exit_alignment}/{exit_offsets:?}"
+        ));
+    }
+    Ok(())
+}
+
+unsafe fn validate_abi_layout_v3(
+    target_data: LLVMTargetDataRef,
+    runtime_type: LLVMTypeRef,
+    exit_type: LLVMTypeRef,
+) -> Result<(), String> {
+    let runtime_size = unsafe { LLVMABISizeOfType(target_data, runtime_type) };
+    let runtime_alignment = unsafe { LLVMABIAlignmentOfType(target_data, runtime_type) };
+    let runtime_offsets = [
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 0) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 1) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 2) },
+    ];
+    let exit_size = unsafe { LLVMABISizeOfType(target_data, exit_type) };
+    let exit_alignment = unsafe { LLVMABIAlignmentOfType(target_data, exit_type) };
+    let exit_offsets = [
+        unsafe { LLVMOffsetOfElement(target_data, exit_type, 0) },
+        unsafe { LLVMOffsetOfElement(target_data, exit_type, 1) },
+        unsafe { LLVMOffsetOfElement(target_data, exit_type, 2) },
+        unsafe { LLVMOffsetOfElement(target_data, exit_type, 3) },
+    ];
+    if runtime_size != 208
+        || runtime_alignment != 8
+        || runtime_offsets != [0, 192, 200]
+        || exit_size != 16
+        || exit_alignment != 4
+        || exit_offsets != [0, 4, 8, 12]
+    {
+        return Err(format!(
+            "LLVM target ABI layout does not match gba_abi_v3: runtime size/alignment/offsets={runtime_size}/{runtime_alignment}/{runtime_offsets:?}, exit={exit_size}/{exit_alignment}/{exit_offsets:?}"
         ));
     }
     Ok(())

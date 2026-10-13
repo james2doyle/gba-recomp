@@ -29,10 +29,48 @@ pub struct GbaIrBlock {
 /// Guest instructions retain their original address and encoding for reports.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArmOperation {
-    MovImmediate { rd: u8, value: u32 },
-    AddImmediate { rd: u8, rn: u8, value: u32 },
-    CompareImmediate { rn: u8, value: u32 },
-    Branch { target: u32, link: bool },
+    MovImmediate {
+        rd: u8,
+        value: u32,
+    },
+    AddImmediate {
+        rd: u8,
+        rn: u8,
+        value: u32,
+    },
+    CompareImmediate {
+        rn: u8,
+        value: u32,
+    },
+    AddPcRelativeImmediate {
+        rd: u8,
+        value: u32,
+    },
+    MsrCpsrRegister {
+        rm: u8,
+        field_mask: u8,
+    },
+    /// Decoder result awaiting resolution against the immutable source ROM.
+    LoadPcRelativeWord {
+        rd: u8,
+        guest_address: u32,
+    },
+    /// A word read from the source ROM and fixed into the AOT program.
+    LoadRomLiteral {
+        rd: u8,
+        guest_address: u32,
+        value: u32,
+    },
+    StoreWord {
+        rd: u8,
+        rn: u8,
+        offset: u16,
+        up: bool,
+    },
+    Branch {
+        target: u32,
+        link: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -63,6 +101,9 @@ pub enum StepFault {
     AbiMismatch,
     CycleOverflow,
     ProgramCounterMismatch { expected: u32, actual: u32 },
+    BankedRuntimeRequired,
+    RomLiteralUnresolved,
+    MemoryRuntimeRequired,
 }
 
 impl fmt::Display for StepFault {
@@ -74,6 +115,15 @@ impl fmt::Display for StepFault {
                 f,
                 "instruction at 0x{expected:08X} was dispatched with PC 0x{actual:08X}"
             ),
+            Self::BankedRuntimeRequired => {
+                f.write_str("MSR CPSR requires the banked runtime ABI v2")
+            }
+            Self::RomLiteralUnresolved => {
+                f.write_str("PC-relative ROM literal was not resolved during discovery")
+            }
+            Self::MemoryRuntimeRequired => {
+                f.write_str("guest memory access requires the GBA runtime ABI v3")
+            }
         }
     }
 }
@@ -90,6 +140,8 @@ pub enum VerifyError {
     InvalidRegister(u8),
     InvalidCondition(u8),
     MisalignedBranchTarget(u32),
+    MisalignedRomLiteral(u32),
+    UnresolvedRomLiteral(u32),
     DuplicateInstructionPc(u32),
     UnsupportedInstructionEncoding(u32),
     MissingSuccessor { pc: u32, target: u32 },
@@ -121,6 +173,16 @@ impl fmt::Display for VerifyError {
             Self::MisalignedBranchTarget(target) => {
                 write!(f, "ARM branch target 0x{target:08X} is not word aligned")
             }
+            Self::MisalignedRomLiteral(address) => {
+                write!(
+                    f,
+                    "ARM ROM literal address 0x{address:08X} is not word aligned"
+                )
+            }
+            Self::UnresolvedRomLiteral(pc) => write!(
+                f,
+                "PC-relative ROM literal at 0x{pc:08X} was not resolved during discovery"
+            ),
             Self::DuplicateInstructionPc(pc) => {
                 write!(f, "multiple guest instructions have PC 0x{pc:08X}")
             }
@@ -161,6 +223,32 @@ impl ArmProgram {
                     verify_general_register(rn)?;
                 }
                 ArmOperation::CompareImmediate { rn, .. } => verify_general_register(rn)?,
+                ArmOperation::AddPcRelativeImmediate { rd, .. } => {
+                    verify_general_register(rd)?;
+                }
+                ArmOperation::MsrCpsrRegister { rm, field_mask } => {
+                    verify_general_register(rm)?;
+                    if field_mask & !0x9 != 0 {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(
+                            instruction.encoding,
+                        ));
+                    }
+                }
+                ArmOperation::LoadPcRelativeWord { .. } => {
+                    return Err(VerifyError::UnresolvedRomLiteral(instruction.guest_pc));
+                }
+                ArmOperation::LoadRomLiteral {
+                    rd, guest_address, ..
+                } => {
+                    verify_general_register(rd)?;
+                    if guest_address & 3 != 0 {
+                        return Err(VerifyError::MisalignedRomLiteral(guest_address));
+                    }
+                }
+                ArmOperation::StoreWord { rd, rn, .. } => {
+                    verify_general_register(rd)?;
+                    verify_general_register(rn)?;
+                }
                 ArmOperation::Branch { target, .. } => {
                     if target & 3 != 0 {
                         return Err(VerifyError::MisalignedBranchTarget(target));
@@ -265,6 +353,22 @@ pub fn execute_instruction(
                     | (u32::from(result == 0) << 30)
                     | (u32::from(carry) << 29)
                     | (u32::from(overflow) << 28);
+            }
+            ArmOperation::AddPcRelativeImmediate { rd, value } => {
+                let visible_pc = instruction.guest_pc.wrapping_add(8);
+                state.r[rd as usize] = visible_pc.wrapping_add(value);
+            }
+            ArmOperation::MsrCpsrRegister { .. } => {
+                return Err(StepFault::BankedRuntimeRequired);
+            }
+            ArmOperation::LoadPcRelativeWord { .. } => {
+                return Err(StepFault::RomLiteralUnresolved);
+            }
+            ArmOperation::LoadRomLiteral { rd, value, .. } => {
+                state.r[rd as usize] = value;
+            }
+            ArmOperation::StoreWord { .. } => {
+                return Err(StepFault::MemoryRuntimeRequired);
             }
             ArmOperation::Branch { target, link } => {
                 if link {
@@ -374,6 +478,130 @@ mod tests {
         assert_eq!(cpu.r[14], 0);
         assert_eq!(cpu.r[15], instruction.guest_pc + 4);
         assert_eq!(cpu.cpsr, before_flags);
+    }
+
+    #[test]
+    fn resolved_rom_literal_load_commits_only_when_condition_passes() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0x059F_0004,
+            condition: 0,
+            operation: ArmOperation::LoadRomLiteral {
+                rd: 0,
+                guest_address: 0x0800_000C,
+                value: 0x1234_5678,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0xA5;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[0], 0xA5);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 4);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn pc_relative_add_uses_pipeline_pc_without_changing_flags() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0xE28F_0020,
+            condition: 14,
+            operation: ArmOperation::AddPcRelativeImmediate { rd: 0, value: 0x20 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        let flags = cpu.cpsr;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[0], 0x0800_0028);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 4);
+        assert_eq!(cpu.cpsr, flags);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn failed_pc_relative_add_predicate_preserves_destination_and_flags() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0x028F_0020,
+            condition: 0,
+            operation: ArmOperation::AddPcRelativeImmediate { rd: 0, value: 0x20 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0xA5;
+        let flags = cpu.cpsr;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[0], 0xA5);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 4);
+        assert_eq!(cpu.cpsr, flags);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn false_predicate_skips_guest_store_without_memory_runtime() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0x0581_0000,
+            condition: 0,
+            operation: ArmOperation::StoreWord {
+                rd: 0,
+                rn: 1,
+                offset: 0,
+                up: true,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0x1234_5678;
+        cpu.r[1] = 0x0400_0000;
+        let flags = cpu.cpsr;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[0], 0x1234_5678);
+        assert_eq!(cpu.r[1], 0x0400_0000);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 4);
+        assert_eq!(cpu.cpsr, flags);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn executed_guest_store_requires_runtime_and_fails_atomically() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0xE581_0000,
+            condition: 14,
+            operation: ArmOperation::StoreWord {
+                rd: 0,
+                rn: 1,
+                offset: 0,
+                up: true,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0x1234_5678;
+        cpu.r[1] = 0x0200_0000;
+        let before = cpu;
+        assert_eq!(
+            execute_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn program_verifier_rejects_unresolved_pc_relative_literals() {
+        let program = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![ArmInstruction {
+                guest_pc: 0x0800_0000,
+                encoding: 0xE59F_0004,
+                condition: 14,
+                operation: ArmOperation::LoadPcRelativeWord {
+                    rd: 0,
+                    guest_address: 0x0800_000C,
+                },
+            }],
+        };
+        assert_eq!(
+            program.verify(),
+            Err(VerifyError::UnresolvedRomLiteral(0x0800_0000))
+        );
     }
 
     #[test]

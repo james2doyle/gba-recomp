@@ -16,3 +16,5 @@ Contratos em Draft ou Review documental. MUST indica obrigação verificável, S
 - [SPEC-012 — Primeiro homebrew recompilado](SPEC-012-first-homebrew.md)
 - [SPEC-013 — Bancos ARM e transferência de PSR](SPEC-013-banked-cpu-and-psr.md)
 - [SPEC-014 — Loads literais PC-relativas em ROM](SPEC-014-rom-literal-loads.md)
+- [SPEC-015 — ADD imediato relativo ao PC em ARM](SPEC-015-arm-pc-relative-add.md)
+- [SPEC-016 — STR ARM de palavra para RAM física](SPEC-016-ram-word-stores.md)
