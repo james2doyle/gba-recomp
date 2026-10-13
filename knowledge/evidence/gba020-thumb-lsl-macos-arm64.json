@@ -1,0 +1,104 @@
+{
+  "record_type": "local-build-and-static-discovery",
+  "date": "2026-10-13",
+  "source_commit": "6ff21e76707494fa8f656ba217a56f2593e42735",
+  "performance_commit": "5aaeb968f92c71f08222f4ee6f8b7037b65e3e1e",
+  "spec_commits": [
+    "c7bee7aa3e67bf7e5257183b3e2c33326ee5c3d0",
+    "89f7524d88af31c19d6b01d2a2fe926cd6a0ca34",
+    "da0b53db491d6698d893919ecbde7570d47a9b96"
+  ],
+  "environment": {
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "memory_bytes": 17179869184,
+    "rust": "1.99.0 (b940084d7 2026-09-28)",
+    "llvm_backend": "23.1.3",
+    "llvm_sys": "231.0.1",
+    "target": "aarch64-apple-darwin"
+  },
+  "parallelism": {
+    "cargo_jobs": 10,
+    "lld_threads": 10,
+    "observed_lld_cpu_percent_peak_sample": 831.1,
+    "measurement_scope": "Point-in-time process samples during LLD links; not a sustained throughput benchmark and not a before/after speed comparison"
+  },
+  "rust_tests": {
+    "command": "cargo test --locked --workspace",
+    "result": "passed",
+    "gba_ir_tests": 27,
+    "gba_recomp_tests": 30,
+    "wall_time_seconds": 79
+  },
+  "headless_gate": {
+    "script": "scripts/verify-gba020.sh",
+    "host": "Darwin/arm64",
+    "result": "passed",
+    "wall_time_seconds": 137.68,
+    "positive_lsl_modes": [
+      "thumb-lsl-zero-carry-clear",
+      "thumb-lsl-zero-carry-set",
+      "thumb-lsl-one-carry",
+      "thumb-lsl-nineteen",
+      "thumb-lsl-thirtyone",
+      "thumb-lsl-nonalias",
+      "thumb-lsl-bx"
+    ],
+    "optimization_levels": ["O0", "O2"],
+    "negative_lsl_encodings_rejected_without_partial_package": {
+      "thumb-lsr-unsupported": "0x0849",
+      "thumb-asr-unsupported": "0x1049",
+      "thumb-lsl-register-unsupported": "0x4089"
+    }
+  },
+  "representative_fixture": {
+    "name": "thumb-lsl-nineteen",
+    "rom_size": 256,
+    "rom_sha256": "39084a6a8ed0d23a8142af25ca7473f8234785f5d04e07b986cac252d53e6429",
+    "execution_mode": "strict-aot",
+    "instructions_aot": 10,
+    "step_budget": 8,
+    "state_stdout": "{\"status\":\"budget_exhausted\",\"steps\":8,\"r0\":2147483648,\"r1\":2147483648,\"pc\":\"0x08000086\",\"cpsr\":\"0x9000003F\",\"guest_cycle\":8,\"ewram_word0\":0,\"iwram_word0\":0}",
+    "builds": [
+      {
+        "optimization": "O0",
+        "game_sha256": "43b8bac9e54ba00d9d5f5cf4a08e8765b508a53c4a7b5219a9c9d1e211cb9d8c",
+        "manifest_sha256": "0c39e31644943572303c7ad83680abc71389b50f19aff490dba393aa9f0997b8"
+      },
+      {
+        "optimization": "O2",
+        "game_sha256": "8123dd9c6061a020af41a6b45c246e4d09296b25c7e427b769a3fd114b520341",
+        "manifest_sha256": "3051756016abc86e80b1f37c3a7d584b7b8ec29065a903c5d512424dcf42b7d5"
+      }
+    ]
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-lsl-o2-20261013 --opt O2 --steps 100",
+    "result": "rejected before package creation",
+    "reported_pc": "0x080003B4",
+    "raw_halfword": "0x4A2C",
+    "diagnostic": "unsupported_thumb_instruction",
+    "classification": "Thumb Format 6 LDR literal to r2; inferred from encoding and corroborated by SRC-26",
+    "immediate": "0x2C",
+    "scaled_offset": "0xB0",
+    "calculated_guest_address": "0x08000468",
+    "calculation": "Align(0x080003B4 + 4, 4) + 0x2C * 4",
+    "literal_contents_consulted_or_interpreted": false,
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea_decompilation": false
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  },
+  "limitations": [
+    "LSL fixtures are synthetic and do not establish commercial-game execution or hardware differential.",
+    "LeafGreen evidence is static AOT discovery only; no package, game execution, or REA decompilation was produced.",
+    "The calculated literal address is inferred from the encoding; this record does not interpret the word stored there.",
+    "Ten workers raised observed parallel CPU use, but no sustained throughput comparison was made.",
+    "Linux x86-64 qualification remains pending."
+  ]
+}
