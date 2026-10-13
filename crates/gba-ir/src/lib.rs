@@ -109,6 +109,9 @@ pub enum ThumbOperation {
         expected_lr: u32,
         return_address: u32,
     },
+    Swi {
+        immediate: u8,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -162,6 +165,7 @@ pub enum StepFault {
     MemoryRuntimeRequired,
     UnresolvedThumbBlSuffix,
     ThumbBlStateMismatch { expected: u32, actual: u32 },
+    SwiRuntimeRequired,
 }
 
 impl fmt::Display for StepFault {
@@ -195,6 +199,9 @@ impl fmt::Display for StepFault {
                 f,
                 "Thumb BL suffix expected LR 0x{expected:08X}, got 0x{actual:08X}"
             ),
+            Self::SwiRuntimeRequired => {
+                f.write_str("Thumb SWI requires the versioned GBA HLE runtime")
+            }
         }
     }
 }
@@ -427,6 +434,16 @@ impl ArmProgram {
                         return Err(VerifyError::InvalidThumbBlPair(instruction.guest_pc));
                     }
                 }
+                ThumbOperation::Swi { immediate }
+                    if instruction.encoding & 0xFF00 != 0xDF00
+                        || instruction.encoding as u8 != immediate
+                        || immediate != 1 =>
+                {
+                    return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                        instruction.encoding,
+                    )));
+                }
+                ThumbOperation::Swi { .. } => {}
             }
         }
         for target in &self.branch_targets {
@@ -574,6 +591,15 @@ impl ArmProgram {
                         return Err(VerifyError::MissingSuccessor {
                             pc: instruction.guest_pc,
                             target,
+                        });
+                    }
+                }
+                ThumbOperation::Swi { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
                         });
                     }
                 }
@@ -800,6 +826,7 @@ pub fn execute_thumb_instruction(
             state.r[14] = return_address;
             state.r[REG_PC as usize] = target;
         }
+        ThumbOperation::Swi { .. } => return Err(StepFault::SwiRuntimeRequired),
     }
     state.guest_cycle += 1;
     Ok(())
@@ -1054,6 +1081,24 @@ mod tests {
         assert_eq!(
             execute_thumb_instruction(&mut cpu, instruction),
             Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn thumb_swi_requires_the_explicit_hle_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0xDF01,
+            operation: ThumbOperation::Swi { immediate: 1 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[0] = 0xFF;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::SwiRuntimeRequired)
         );
         assert_eq!(cpu, before);
     }

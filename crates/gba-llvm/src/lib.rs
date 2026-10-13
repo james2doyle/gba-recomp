@@ -237,6 +237,13 @@ unsafe fn emit_arm_program_llvm(
     ];
     let runtime_v3_type =
         unsafe { LLVMStructTypeInContext(context, runtime_v3_fields.as_mut_ptr(), 3, 0) };
+    let mut runtime_v4_fields = [
+        runtime_v3_type,
+        unsafe { LLVMPointerType(LLVMInt8TypeInContext(context), 0) },
+        i32_type,
+    ];
+    let runtime_v4_type =
+        unsafe { LLVMStructTypeInContext(context, runtime_v4_fields.as_mut_ptr(), 3, 0) };
     let mut exit_v2_fields = [i32_type, i32_type];
     let exit_v2_type =
         unsafe { LLVMStructTypeInContext(context, exit_v2_fields.as_mut_ptr(), 2, 0) };
@@ -245,6 +252,7 @@ unsafe fn emit_arm_program_llvm(
     let result = unsafe {
         validate_abi_layout_v2(target_data, runtime_cpu_type, exit_v2_type)
             .and_then(|()| validate_abi_layout_v3(target_data, runtime_v3_type, exit_type))
+            .and_then(|()| validate_abi_layout_v4(target_data, runtime_v4_type))
             .and_then(|()| {
                 build_arm_program_function(
                     context,
@@ -252,6 +260,7 @@ unsafe fn emit_arm_program_llvm(
                     builder,
                     runtime_cpu_type,
                     runtime_v3_type,
+                    runtime_v4_type,
                     exit_type,
                     program,
                 )
@@ -284,6 +293,7 @@ unsafe fn build_arm_program_function(
     builder: LLVMBuilderRef,
     runtime_cpu_type: LLVMTypeRef,
     runtime_v3_type: LLVMTypeRef,
+    runtime_v4_type: LLVMTypeRef,
     exit_type: LLVMTypeRef,
     program: &ArmProgram,
 ) -> Result<(), String> {
@@ -291,18 +301,58 @@ unsafe fn build_arm_program_function(
     let i64_type = unsafe { LLVMInt64TypeInContext(context) };
     let mut parameters = unsafe {
         [
-            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(runtime_v4_type, 0),
             LLVMPointerType(exit_type, 0),
         ]
     };
     let function_type = unsafe { LLVMFunctionType(i32_type, parameters.as_mut_ptr(), 2, 0) };
-    let function_name = CString::new("gba_block_v3").expect("static name contains no NUL");
+    let function_name = CString::new("gba_block_v4").expect("static name contains no NUL");
     let function = unsafe { LLVMAddFunction(module, function_name.as_ptr(), function_type) };
     if function.is_null() {
         return Err("LLVMAddFunction returned null".to_owned());
     }
-    let runtime = unsafe { LLVMGetParam(function, 0) };
+    let runtime_v4 = unsafe { LLVMGetParam(function, 0) };
     let exit = unsafe { LLVMGetParam(function, 1) };
+    let mut validate_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v4_type, 0),
+            LLVMPointerType(exit_type, 0),
+        ]
+    };
+    let validate_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            validate_parameters.as_mut_ptr(),
+            validate_parameters.len() as u32,
+            0,
+        )
+    };
+    let validate_name =
+        CString::new("gba_validate_runtime_v4").expect("static name contains no NUL");
+    let validate_helper = unsafe { LLVMAddFunction(module, validate_name.as_ptr(), validate_type) };
+    if validate_helper.is_null() {
+        return Err("LLVMAddFunction for gba_validate_runtime_v4 returned null".to_owned());
+    }
+    let mut hle_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v4_type, 0),
+            LLVMPointerType(exit_type, 0),
+            i32_type,
+        ]
+    };
+    let hle_helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            hle_parameters.as_mut_ptr(),
+            hle_parameters.len() as u32,
+            0,
+        )
+    };
+    let hle_name = CString::new("gba_register_ram_reset_v1").expect("static name contains no NUL");
+    let hle_helper = unsafe { LLVMAddFunction(module, hle_name.as_ptr(), hle_helper_type) };
+    if hle_helper.is_null() {
+        return Err("LLVMAddFunction for gba_register_ram_reset_v1 returned null".to_owned());
+    }
     let mut helper_parameters =
         unsafe { [LLVMPointerType(runtime_cpu_type, 0), i32_type, i32_type] };
     let helper_type = unsafe {
@@ -362,10 +412,48 @@ unsafe fn build_arm_program_function(
         return Err("LLVMAddFunction for gba_push_thumb_v3 returned null".to_owned());
     }
     let entry = unsafe { append_block(context, function, "entry") };
+    let validation_failed = unsafe { append_block(context, function, "validation_failed") };
+    let validated = unsafe { append_block(context, function, "validated") };
     let fault = unsafe { append_block(context, function, "fault") };
     let dispatch = unsafe { append_block(context, function, "dispatch") };
     let missing = unsafe { append_block(context, function, "missing_code") };
     unsafe { LLVMPositionBuilderAtEnd(builder, entry) };
+
+    let mut validation_arguments = [runtime_v4, exit];
+    let validation_status = unsafe {
+        LLVMBuildCall2(
+            builder,
+            validate_type,
+            validate_helper,
+            validation_arguments.as_mut_ptr(),
+            validation_arguments.len() as u32,
+            c"runtime_validation_status".as_ptr(),
+        )
+    };
+    let validation_succeeded = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntEQ,
+            validation_status,
+            LLVMConstInt(i32_type, 0, 0),
+            c"runtime_validation_succeeded".as_ptr(),
+        )
+    };
+    unsafe { LLVMBuildCondBr(builder, validation_succeeded, validated, validation_failed) };
+
+    unsafe { LLVMPositionBuilderAtEnd(builder, validation_failed) };
+    unsafe { LLVMBuildRet(builder, validation_status) };
+
+    unsafe { LLVMPositionBuilderAtEnd(builder, validated) };
+    let runtime = unsafe {
+        LLVMBuildStructGEP2(
+            builder,
+            runtime_v4_type,
+            runtime_v4,
+            0,
+            c"runtime_v3_base".as_ptr(),
+        )
+    };
 
     let cycles_ptr = unsafe {
         LLVMBuildStructGEP2(
@@ -574,6 +662,9 @@ unsafe fn build_arm_program_function(
                 instruction,
                 push_helper_type,
                 push_helper,
+                runtime_v4,
+                hle_helper_type,
+                hle_helper,
             )
         }?;
     }
@@ -1052,9 +1143,75 @@ unsafe fn lower_thumb_instruction(
     instruction: &ThumbInstruction,
     push_helper_type: LLVMTypeRef,
     push_helper: LLVMValueRef,
+    runtime_v4: LLVMValueRef,
+    hle_helper_type: LLVMTypeRef,
+    hle_helper: LLVMValueRef,
 ) -> Result<(), String> {
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
     match instruction.operation {
+        ThumbOperation::Swi { immediate } => {
+            let mut arguments = unsafe {
+                [
+                    runtime_v4,
+                    exit,
+                    LLVMConstInt(i32_type, u64::from(immediate), 0),
+                ]
+            };
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    hle_helper_type,
+                    hle_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"thumb_swi_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_swi_succeeded".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_swi_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_swi_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
+            unsafe { LLVMBuildRet(builder, status) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    // ABI v4 embeds ABI v3 at offset zero; CPU state starts there.
+                    runtime_v4,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::BranchExchange { rm } => {
             let target = if rm == 15 {
                 unsafe {
@@ -1961,6 +2118,25 @@ unsafe fn validate_abi_layout_v3(
     {
         return Err(format!(
             "LLVM target ABI layout does not match gba_abi_v3: runtime size/alignment/offsets={runtime_size}/{runtime_alignment}/{runtime_offsets:?}, exit={exit_size}/{exit_alignment}/{exit_offsets:?}"
+        ));
+    }
+    Ok(())
+}
+
+unsafe fn validate_abi_layout_v4(
+    target_data: LLVMTargetDataRef,
+    runtime_type: LLVMTypeRef,
+) -> Result<(), String> {
+    let runtime_size = unsafe { LLVMABISizeOfType(target_data, runtime_type) };
+    let runtime_alignment = unsafe { LLVMABIAlignmentOfType(target_data, runtime_type) };
+    let runtime_offsets = [
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 0) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 1) },
+        unsafe { LLVMOffsetOfElement(target_data, runtime_type, 2) },
+    ];
+    if runtime_size != 224 || runtime_alignment != 8 || runtime_offsets != [0, 208, 216] {
+        return Err(format!(
+            "LLVM target ABI layout does not match gba_abi_v4: runtime size/alignment/offsets={runtime_size}/{runtime_alignment}/{runtime_offsets:?}"
         ));
     }
     Ok(())

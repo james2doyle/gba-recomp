@@ -7,6 +7,8 @@ pub const ABI_HEADER_V2: &str = include_str!("../include/gba_abi_v2.h");
 pub const ABI_RUNTIME_V2_SOURCE: &str = include_str!("../src/runtime_v2.c");
 pub const ABI_HEADER_V3: &str = include_str!("../include/gba_abi_v3.h");
 pub const ABI_RUNTIME_V3_SOURCE: &str = include_str!("../src/runtime_v3.c");
+pub const ABI_HEADER_V4: &str = include_str!("../include/gba_abi_v4.h");
+pub const ABI_RUNTIME_HLE_V1_SOURCE: &str = include_str!("../src/runtime_hle_v1.c");
 
 pub const GBA_ABI_VERSION: u32 = 1;
 
@@ -36,9 +38,16 @@ pub struct GbaExitV1 {
 
 pub const GBA_ABI_VERSION_V2: u32 = 2;
 pub const GBA_ABI_VERSION_V3: u32 = 3;
+pub const GBA_ABI_VERSION_V4: u32 = 4;
+pub const GBA_MACHINE_STATE_VERSION_V1: u32 = 1;
 
 pub const EWRAM_SIZE: usize = 256 * 1024;
 pub const IWRAM_SIZE: usize = 32 * 1024;
+pub const PALETTE_RAM_SIZE: usize = 0x400;
+pub const VRAM_SIZE: usize = 0x18000;
+pub const OAM_SIZE: usize = 0x400;
+pub const IO_LATCH_SIZE: usize = 0x400;
+pub const WAVE_RAM_SIZE: usize = 32;
 
 #[repr(C)]
 pub struct GbaMemoryV1 {
@@ -50,6 +59,24 @@ pub struct GbaMemoryV1 {
 pub struct GbaRuntimeV3 {
     pub cpu: GbaRuntimeV2,
     pub memory: *mut GbaMemoryV1,
+    pub abi_version: u32,
+}
+
+#[repr(C)]
+pub struct GbaMachineStateV1 {
+    pub memory: GbaMemoryV1,
+    pub abi_version: u32,
+    pub palette_ram: [u8; PALETTE_RAM_SIZE],
+    pub vram: [u8; VRAM_SIZE],
+    pub oam: [u8; OAM_SIZE],
+    pub io: [u8; IO_LATCH_SIZE],
+    pub wave_ram: [u8; WAVE_RAM_SIZE],
+}
+
+#[repr(C)]
+pub struct GbaRuntimeV4 {
+    pub base: GbaRuntimeV3,
+    pub machine: *mut GbaMachineStateV1,
     pub abi_version: u32,
 }
 
@@ -122,6 +149,20 @@ const _: () = assert!(align_of::<GbaRuntimeV3>() == 8);
 const _: () = assert!(offset_of!(GbaRuntimeV3, cpu) == 0);
 const _: () = assert!(offset_of!(GbaRuntimeV3, memory) == 192);
 const _: () = assert!(offset_of!(GbaRuntimeV3, abi_version) == 200);
+const _: () = assert!(size_of::<GbaMachineStateV1>() == 0x60C24);
+const _: () = assert!(align_of::<GbaMachineStateV1>() == 4);
+const _: () = assert!(offset_of!(GbaMachineStateV1, memory) == 0);
+const _: () = assert!(offset_of!(GbaMachineStateV1, abi_version) == 0x48000);
+const _: () = assert!(offset_of!(GbaMachineStateV1, palette_ram) == 0x48004);
+const _: () = assert!(offset_of!(GbaMachineStateV1, vram) == 0x48404);
+const _: () = assert!(offset_of!(GbaMachineStateV1, oam) == 0x60404);
+const _: () = assert!(offset_of!(GbaMachineStateV1, io) == 0x60804);
+const _: () = assert!(offset_of!(GbaMachineStateV1, wave_ram) == 0x60C04);
+const _: () = assert!(size_of::<GbaRuntimeV4>() == 224);
+const _: () = assert!(align_of::<GbaRuntimeV4>() == 8);
+const _: () = assert!(offset_of!(GbaRuntimeV4, base) == 0);
+const _: () = assert!(offset_of!(GbaRuntimeV4, machine) == 208);
+const _: () = assert!(offset_of!(GbaRuntimeV4, abi_version) == 216);
 const _: () = assert!(size_of::<GbaExitV3>() == 16);
 const _: () = assert!(align_of::<GbaExitV3>() == 4);
 const _: () = assert!(offset_of!(GbaExitV3, reason) == 0);

@@ -158,6 +158,20 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             "Thumb address 0x{guest_pc:08X} is not halfword aligned"
         ));
     }
+    if encoding & 0xFF00 == 0xDF00 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::Swi {
+                immediate: encoding as u8,
+            },
+        });
+    }
+    if encoding & 0xFF00 == 0xDE00 {
+        return Err(format!(
+            "undefined_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X}"
+        ));
+    }
     if encoding & 0xF800 == 0xF000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -367,6 +381,23 @@ mod tests {
             ThumbOperation::MovImmediate { rd: 0, value: 7 }
         );
         assert!(decode_thumb(0x0800_0085, 0x4708).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_swi_immediate_and_keeps_the_undefined_range_undefined() {
+        for immediate in [0x00_u8, 0x01, 0xFF] {
+            assert_eq!(
+                decode_thumb(0x0800_0084, 0xDF00 | u16::from(immediate))
+                    .unwrap()
+                    .operation,
+                ThumbOperation::Swi { immediate }
+            );
+        }
+        assert!(
+            decode_thumb(0x0800_0084, 0xDE01)
+                .unwrap_err()
+                .contains("undefined_thumb_instruction at 0x08000084")
+        );
     }
 
     #[test]

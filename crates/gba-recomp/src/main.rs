@@ -7,7 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use gba_ir::{ArmProgram, GBA_IR_VERSION};
 use gba_llvm::{Optimization, emit_arm_program, emit_block, native_target};
 use gba_runtime_abi::{
-    ABI_HEADER_V2, ABI_HEADER_V3, ABI_RUNTIME_V2_SOURCE, ABI_RUNTIME_V3_SOURCE, GBA_ABI_VERSION_V3,
+    ABI_HEADER_V2, ABI_HEADER_V3, ABI_HEADER_V4, ABI_RUNTIME_HLE_V1_SOURCE, ABI_RUNTIME_V2_SOURCE,
+    ABI_RUNTIME_V3_SOURCE, GBA_ABI_VERSION_V4, GBA_MACHINE_STATE_VERSION_V1,
 };
 
 mod decoder;
@@ -161,26 +162,33 @@ fn build_native_package(
         let runner_source = temporary.join("runner.c");
         let header_v2 = temporary.join("gba_abi_v2.h");
         let header_v3 = temporary.join("gba_abi_v3.h");
+        let header_v4 = temporary.join("gba_abi_v4.h");
         let runtime_v2_source = temporary.join("runtime_v2.c");
         let runtime_v3_source = temporary.join("runtime_v3.c");
+        let runtime_hle_source = temporary.join("runtime_hle_v1.c");
         let executable = temporary.join("game");
         let emit_info = emit_arm_program(program, &object, optimization)?;
         fs::write(&header_v2, ABI_HEADER_V2)
             .map_err(|error| format!("cannot write embedded ABI v2 header: {error}"))?;
         fs::write(&header_v3, ABI_HEADER_V3)
             .map_err(|error| format!("cannot write embedded ABI v3 header: {error}"))?;
+        fs::write(&header_v4, ABI_HEADER_V4)
+            .map_err(|error| format!("cannot write embedded ABI v4 header: {error}"))?;
         fs::write(&runtime_v2_source, ABI_RUNTIME_V2_SOURCE)
             .map_err(|error| format!("cannot write embedded ABI v2 runtime: {error}"))?;
         fs::write(&runtime_v3_source, ABI_RUNTIME_V3_SOURCE)
             .map_err(|error| format!("cannot write embedded ABI v3 runtime: {error}"))?;
+        fs::write(&runtime_hle_source, ABI_RUNTIME_HLE_V1_SOURCE)
+            .map_err(|error| format!("cannot write embedded HLE v1 runtime: {error}"))?;
         fs::write(&runner_source, render_runner(step_limit))
             .map_err(|error| format!("cannot write generated host runner: {error}"))?;
         link_runner(
             &runner_source,
             &runtime_v2_source,
             &runtime_v3_source,
+            &runtime_hle_source,
             &object,
-            &header_v3,
+            &header_v4,
             &executable,
         )?;
         let manifest = render_manifest(image, program, optimization, step_limit, &emit_info);
@@ -192,10 +200,14 @@ fn build_native_package(
             .map_err(|error| format!("cannot remove build-only ABI v2 header: {error}"))?;
         fs::remove_file(&header_v3)
             .map_err(|error| format!("cannot remove build-only ABI v3 header: {error}"))?;
+        fs::remove_file(&header_v4)
+            .map_err(|error| format!("cannot remove build-only ABI v4 header: {error}"))?;
         fs::remove_file(&runtime_v2_source)
             .map_err(|error| format!("cannot remove build-only ABI v2 runtime: {error}"))?;
         fs::remove_file(&runtime_v3_source)
             .map_err(|error| format!("cannot remove build-only ABI v3 runtime: {error}"))?;
+        fs::remove_file(&runtime_hle_source)
+            .map_err(|error| format!("cannot remove build-only HLE v1 runtime: {error}"))?;
         fs::remove_file(&object)
             .map_err(|error| format!("cannot remove build-only object: {error}"))?;
         fs::rename(&temporary, output)
@@ -212,6 +224,7 @@ fn link_runner(
     runner_source: &Path,
     runtime_v2_source: &Path,
     runtime_v3_source: &Path,
+    runtime_hle_source: &Path,
     object: &Path,
     header: &Path,
     executable: &Path,
@@ -241,13 +254,14 @@ fn link_runner(
             "-Wextra",
             "-Werror",
             "-fuse-ld=lld",
-            "-Wl,--threads=2",
+            "-Wl,--threads=8",
         ])
         .arg("-I")
         .arg(header.parent().expect("header has package directory"))
         .arg(runner_source)
         .arg(runtime_v2_source)
         .arg(runtime_v3_source)
+        .arg(runtime_hle_source)
         .arg(object)
         .arg("-o")
         .arg(executable);
@@ -299,7 +313,47 @@ fn macos_sdk_path() -> Result<PathBuf, String> {
 
 fn render_runner(step_limit: u64) -> String {
     format!(
-        "#include <inttypes.h>\n#include <stdio.h>\n#include <string.h>\n#include \"gba_abi_v3.h\"\n\nstatic uint32_t read_le32(const uint8_t *bytes) {{\n    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |\n           ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);\n}}\n\nint main(void) {{\n    GbaRuntimeV3 runtime;\n    GbaMemoryV1 memory;\n    GbaExitV3 exit;\n    memset(&runtime, 0, sizeof(runtime));\n    memset(&memory, 0, sizeof(memory));\n    memset(&exit, 0, sizeof(exit));\n    runtime.cpu.abi_version = GBA_ABI_VERSION_V2;\n    runtime.cpu.cpsr = UINT32_C(0x1F);\n    runtime.cpu.r[15] = UINT32_C(0x08000000);\n    runtime.memory = &memory;\n    runtime.abi_version = GBA_ABI_VERSION_V3;\n    uint64_t executed = 0;\n    for (; executed < UINT64_C({step_limit}); ++executed) {{\n        uint32_t reason = gba_block_v3(&runtime, &exit);\n        if (reason != exit.reason) {{\n            fprintf(stderr, \"ABI return/exit mismatch: %u/%u\\n\", reason, exit.reason);\n            return 3;\n        }}\n        if (reason != GBA_EXIT_CONTINUE_V2) {{\n            fprintf(stderr, \"guest stopped: reason=%u pc=0x%08X address=0x%08X fault_code=%u\\n\", reason, runtime.cpu.r[15], exit.fault_address, exit.fault_code);\n            return 4;\n        }}\n    }}\n    printf(\"{{\\\"status\\\":\\\"budget_exhausted\\\",\\\"steps\\\":%\" PRIu64 \",\\\"r0\\\":%u,\\\"r1\\\":%u,\\\"pc\\\":\\\"0x%08X\\\",\\\"cpsr\\\":\\\"0x%08X\\\",\\\"guest_cycle\\\":%\" PRIu64 \",\\\"ewram_word0\\\":%u,\\\"iwram_word0\\\":%u}}\\n\", executed, runtime.cpu.r[0], runtime.cpu.r[1], runtime.cpu.r[15], runtime.cpu.cpsr, runtime.cpu.guest_cycle, read_le32(memory.ewram), read_le32(memory.iwram));\n    return 0;\n}}\n"
+        r#"#include <inttypes.h>
+#include <stdio.h>
+#include <string.h>
+#include "gba_abi_v4.h"
+
+static uint32_t read_le32(const uint8_t *bytes) {{
+    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |
+           ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+}}
+
+int main(void) {{
+    GbaRuntimeV4 runtime;
+    GbaMachineStateV1 machine;
+    GbaExitV3 exit;
+    memset(&runtime, 0, sizeof(runtime));
+    memset(&machine, 0, sizeof(machine));
+    memset(&exit, 0, sizeof(exit));
+    runtime.base.cpu.abi_version = GBA_ABI_VERSION_V2;
+    runtime.base.cpu.cpsr = UINT32_C(0x1F);
+    runtime.base.cpu.r[15] = UINT32_C(0x08000000);
+    runtime.base.memory = &machine.memory;
+    runtime.base.abi_version = GBA_ABI_VERSION_V3;
+    runtime.machine = &machine;
+    runtime.abi_version = GBA_ABI_VERSION_V4;
+    machine.abi_version = GBA_MACHINE_STATE_VERSION_V1;
+    uint64_t executed = 0;
+    for (; executed < UINT64_C({step_limit}); ++executed) {{
+        uint32_t reason = gba_block_v4(&runtime, &exit);
+        if (reason != exit.reason) {{
+            fprintf(stderr, "ABI return/exit mismatch: %u/%u\n", reason, exit.reason);
+            return 3;
+        }}
+        if (reason != GBA_EXIT_CONTINUE_V2) {{
+            fprintf(stderr, "guest stopped: reason=%u pc=0x%08X address=0x%08X fault_code=%u\n", reason, runtime.base.cpu.r[15], exit.fault_address, exit.fault_code);
+            return 4;
+        }}
+    }}
+    printf("{{\"status\":\"budget_exhausted\",\"steps\":%" PRIu64 ",\"r0\":%u,\"r1\":%u,\"pc\":\"0x%08X\",\"cpsr\":\"0x%08X\",\"guest_cycle\":%" PRIu64 ",\"ewram_word0\":%u,\"iwram_word0\":%u}}\n", executed, runtime.base.cpu.r[0], runtime.base.cpu.r[1], runtime.base.cpu.r[15], runtime.base.cpu.cpsr, runtime.base.cpu.guest_cycle, read_le32(machine.memory.ewram), read_le32(machine.memory.iwram));
+    return 0;
+}}
+"#
     )
 }
 
@@ -311,14 +365,16 @@ fn render_manifest(
     emit_info: &gba_llvm::EmitInfo,
 ) -> String {
     format!(
-        "{{\n  \"format_version\": 1,\n  \"rom_sha256\": \"{}\",\n  \"rom_size\": {},\n  \"game_code\": \"{}\",\n  \"rom_header_version\": {},\n  \"entrypoint\": \"0x{:08X}\",\n  \"ir_version\": {},\n  \"abi_version\": {},\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"execution_mode\": \"strict-aot\",\n  \"timing_model\": \"one abstract unit per instruction\",\n  \"instructions_aot\": {},\n  \"run_instruction_budget\": {}\n}}\n",
+        "{{\n  \"format_version\": 1,\n  \"rom_sha256\": \"{}\",\n  \"rom_size\": {},\n  \"game_code\": \"{}\",\n  \"rom_header_version\": {},\n  \"entrypoint\": \"0x{:08X}\",\n  \"ir_version\": {},\n  \"abi_version\": {},\n  \"machine_state_version\": {},\n  \"bios_hle_version\": {},\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"execution_mode\": \"strict-aot\",\n  \"timing_model\": \"one abstract unit per instruction\",\n  \"instructions_aot\": {},\n  \"run_instruction_budget\": {}\n}}\n",
         image.sha256,
         image.size(),
         json_escape(&image.header.game_code),
         image.header.version,
         rom::ROM_BASE,
         GBA_IR_VERSION,
-        GBA_ABI_VERSION_V3,
+        GBA_ABI_VERSION_V4,
+        GBA_MACHINE_STATE_VERSION_V1,
+        1,
         emit_info.llvm_version,
         emit_info.triple,
         optimization.as_str(),

@@ -34,6 +34,29 @@ def generate(mode: str = "valid") -> bytes:
             0xE129F000,  # MSR CPSR_fc, r0 (x/s fields clear)
             branch(0xC8, 0xC8),  # B finished
         )
+    elif mode in ("thumb-swi-reset", "thumb-swi-unsupported"):
+        swi = 0xDF02 if mode == "thumb-swi-unsupported" else 0xDF01
+        image[0x84:0x8E] = struct.pack(
+            "<5H",
+            0xB401,  # PUSH {r0}: place a nonzero word at IWRAM[0].
+            0x2002,  # MOVS r0,#2: request the IWRAM reset area.
+            swi,
+            0x21A5,  # MOVS r1,#0xA5 after the SWI.
+            0x4718,  # BX r3 to the ARM self-loop.
+        )
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE3A00042,  # MOV r0,#0x42
+            0xE59FD014,  # LDR sp,[pc,#0x14] -> IWRAM stack at 0xE0
+            0xE59F2008,  # LDR r2,[pc,#8] -> Thumb entry | 1 at 0xD8
+            0xE59F3008,  # LDR r3,[pc,#8] -> ARM return at 0xDC
+            0xE12FFF12,  # BX r2
+            0xEAFFFFFE,  # B self (unreachable after BX).
+        )
+        image[0xD8:0xE4] = struct.pack(
+            "<3I", 0x08000085, 0x080000E4, 0x03000004
+        )
+        image[0xE4:0xE8] = struct.pack("<I", 0xEAFFFFFE)
     elif mode == "thumb-push":
         image[0x84:0x88] = struct.pack("<2H", 0xB5F0, 0x4710)  # PUSH {r4-r7,lr}; BX r2.
         image[0xC0:0xF0] = struct.pack(
@@ -246,6 +269,8 @@ def main() -> None:
             "thumb-bl-broken-pair",
             "thumb-bl-suffix-without-prefix",
             "thumb-bl-out-of-range",
+            "thumb-swi-reset",
+            "thumb-swi-unsupported",
             "thumb-push",
             "bx-interwork",
             "bx-out-of-range",

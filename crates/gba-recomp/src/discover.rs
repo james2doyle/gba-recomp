@@ -448,6 +448,21 @@ fn process_thumb_instruction(
             target_state.registers[14] = AbstractValue::constant(return_address);
             enqueue_state(IsaMode::Thumb, target, target_state, pending, incoming);
         }
+        ThumbOperation::Swi { immediate } => {
+            if immediate != 1 {
+                return Err(format!(
+                    "swi_unsupported at 0x{:08X}: Thumb SWI #{immediate}",
+                    instruction.guest_pc
+                ));
+            }
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                state.clone(),
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::Push { register_list } => {
             let bytes = register_list.count_ones().wrapping_mul(4);
             let mut next_state = state.clone();
@@ -668,6 +683,34 @@ mod tests {
             target_pc: ROM_BASE + 0xCC,
         }));
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn discovers_thumb_register_ram_reset_as_aot_and_tracks_fallthrough() {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        bytes[0x84..0x86].copy_from_slice(&0xDF01_u16.to_le_bytes());
+        bytes[0x86..0x88].copy_from_slice(&0x4708_u16.to_le_bytes()); // BX r1.
+        bytes[0xBD] = header_checksum(&bytes);
+        let image = RomImage::from_bytes(bytes).unwrap();
+        let program = discover_arm_program(&image).unwrap();
+        assert_eq!(
+            program.thumb_instructions[0].operation,
+            ThumbOperation::Swi { immediate: 1 }
+        );
+        assert_eq!(program.thumb_instructions[0].guest_pc, ROM_BASE + 0x84);
+        assert_eq!(program.thumb_instructions[1].guest_pc, ROM_BASE + 0x86);
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn rejects_other_thumb_swi_immediates_during_discovery() {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        bytes[0x84..0x86].copy_from_slice(&0xDF02_u16.to_le_bytes());
+        bytes[0x86..0x88].copy_from_slice(&0x4708_u16.to_le_bytes()); // BX r1.
+        bytes[0xBD] = header_checksum(&bytes);
+        let image = RomImage::from_bytes(bytes).unwrap();
+        let error = discover_arm_program(&image).unwrap_err();
+        assert!(error.contains("swi_unsupported at 0x08000084: Thumb SWI #2"));
     }
 
     #[test]

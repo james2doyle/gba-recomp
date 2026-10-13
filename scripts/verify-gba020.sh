@@ -48,7 +48,9 @@ manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
 rom = pathlib.Path(sys.argv[2]).read_bytes()
 assert manifest["rom_sha256"] == hashlib.sha256(rom).hexdigest()
 assert manifest["execution_mode"] == "strict-aot"
-assert manifest["abi_version"] == 3
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
 assert manifest["instructions_aot"] == 6
 assert manifest["optimization"] == sys.argv[3]
 assert manifest["run_instruction_budget"] == 100
@@ -108,6 +110,23 @@ else
 fi
 "$runtime_v3_test"
 
+runtime_hle_test="$root/target/gba020/runtime-hle-v1-test"
+if [ "$os" = Darwin ]; then
+    "$LLVM_SYS_231_PREFIX/bin/clang" -std=c11 -Wall -Wextra -Werror \
+        -isysroot "$sdkroot" -mmacosx-version-min=14.0.0 \
+        -I crates/gba-runtime-abi/include \
+        crates/gba-runtime-abi/tests/runtime_hle_v1_test.c \
+        crates/gba-runtime-abi/src/runtime_hle_v1.c \
+        -o "$runtime_hle_test"
+else
+    "$LLVM_SYS_231_PREFIX/bin/clang" -std=c11 -Wall -Wextra -Werror \
+        -I crates/gba-runtime-abi/include \
+        crates/gba-runtime-abi/tests/runtime_hle_v1_test.c \
+        crates/gba-runtime-abi/src/runtime_hle_v1.c \
+        -o "$runtime_hle_test"
+fi
+"$runtime_hle_test"
+
 msr_rom="$root/target/gba020/msr-mode.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$msr_rom" --mode msr-mode
 for optimization in O0 O2; do
@@ -127,7 +146,9 @@ import pathlib
 import sys
 
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert manifest["abi_version"] == 3
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
 assert manifest["instructions_aot"] == 4
 PY
 done
@@ -151,7 +172,9 @@ import pathlib
 import sys
 
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert manifest["abi_version"] == 3
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
 assert manifest["instructions_aot"] == 3
 PY
 done
@@ -310,7 +333,9 @@ import pathlib
 import sys
 
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert manifest["abi_version"] == 3
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
 assert manifest["instructions_aot"] == 5
 PY
     done
@@ -548,6 +573,55 @@ if ! grep -q 'branch_target_out_of_rom at 0x080000C8' "$bx_range_output"; then
 fi
 if [ -e "$bx_range_package" ]; then
     echo "failed BX compile left a partial package" >&2
+    exit 1
+fi
+
+swi_rom="$root/target/gba020/thumb-swi-reset.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$swi_rom" --mode thumb-swi-reset
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-swi-reset-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$swi_rom" --out "$package" --opt "$optimization" --steps 9
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":9,"r0":2,"r1":0,"pc":"0x0800008A","cpsr":"0x0000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb SWI RegisterRamReset fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["instructions_aot"] == 12
+PY
+done
+
+swi_unsupported_rom="$root/target/gba020/thumb-swi-unsupported.gba"
+swi_unsupported_package="$root/target/gba020/thumb-swi-unsupported-package"
+swi_unsupported_output="$root/target/gba020/thumb-swi-unsupported.txt"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$swi_unsupported_rom" --mode thumb-swi-unsupported
+rm -rf "$swi_unsupported_package"
+if cargo run --locked --quiet -p gba-recomp -- compile \
+    --rom "$swi_unsupported_rom" --out "$swi_unsupported_package" --opt O2 --steps 9 \
+    >"$swi_unsupported_output" 2>&1; then
+    echo "unsupported Thumb SWI unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -q 'swi_unsupported at 0x08000088: Thumb SWI #2' "$swi_unsupported_output"; then
+    cat "$swi_unsupported_output" >&2
+    echo "unsupported Thumb SWI did not report its source PC" >&2
+    exit 1
+fi
+if [ -e "$swi_unsupported_package" ]; then
+    echo "failed unsupported SWI compile left a partial package" >&2
     exit 1
 fi
 
