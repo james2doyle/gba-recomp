@@ -54,6 +54,10 @@ Em 2026-10-13, as fixtures do MOV `LSL #0` passaram em O0/O2. A compilação est
 
 No commit local `fffdc2099a67e2fde58ee98ba7557ecc82cae2cb`, as fixtures sintéticas de BX e despacho por modo passaram em O0/O2. Uma nova compilação estática da ROM com o mesmo SHA-256 acima avançou até `0x080003A4`, halfword `0xB5F0`, e falhou com `unsupported_thumb_instruction`. A classificação como `PUSH {r4-r7,lr}` é inferência do formato Thumb, corroborada como observação de fonte em SRC-20. Nenhum pacote foi criado; LeafGreen não foi executada. Este resultado aponta apenas para a próxima lacuna alcançável observada pelo descobridor atual; não é um trace de execução nem inventário completo do jogo.
 
+## Tentativa após SPEC-019/020 — PUSH e MOV high Thumb
+
+No commit local `1011efd7d5fd298e6f165989968949f0658e5e64`, as fixtures estritamente AOT de PUSH Thumb e MOV high passaram em O0/O2 em macOS arm64, junto da suíte anterior. Nova compilação estática da mesma ROM passou pelas instruções em `0x080003A4` (`0xB5F0`, inferida como `PUSH {r4-r7,lr}`) e `0x080003A6` (`0x4647`, inferida como `MOV r7,r8`), e parou em `0x080003AA`, halfword `0x20FF`, com `unsupported_thumb_instruction`. A leitura de `0x20FF` como `MOVS r0,#0xFF` é inferência pelo formato, corroborada pelas fontes SRC-22. Nenhum pacote LeafGreen foi criado e a ROM não foi executada. O limite descreve a próxima instrução alcançável pela descoberta estática, não um trace de runtime nem a cobertura completa do título.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.
