@@ -28,7 +28,8 @@ mGBA clonado nesta entrega por `git clone https://github.com/mgba-emu/mgba.git v
 | SRC-08 | confirmed | mGBA `src/gba/bios.c`, `savedata.c`, `overrides.c`, `sio.c`, `include/mgba/internal/gba/cart/` | BIOS, backups, RTC, sensores e serial têm contratos próprios |
 | SRC-09 | confirmed | mGBA `include/mgba/internal/arm/arm.h:29`: modos CPU, bancos e vetores | Modelar estado arquitetural completo, sem omitir modos por suposição |
 | SRC-10 | confirmed | gba-recomp `docs/architecture.md`, `docs/launcher.md`, `crates/input-config/`, `crates/screen/` | Referência de UX e apresentação; afirmações de compatibilidade do texto não foram reproduzidas |
-| SRC-11 | confirmed | mGBA commit `143adf5aa2a60c6036810b0cd72445e13d74b0e6`, `src/arm/decoder-arm.c` e `src/arm/isa-arm.c`: classifica MSR CPSR por campos c/f e troca bancos na mudança de modo | Observação da fonte de referência; não é validação em hardware nem código transplantado |
+| SRC-11 | confirmed | mGBA commit `143adf5aa2a60c6036810b0cd72445e13d74b0e6`, `src/arm/isa-arm.c:704-727` aplica `MSR` por campos c/f/state; `src/arm/arm.c:14-45` troca bancos FIQ e SP/LR por modo | Observação da fonte de referência; não é validação em hardware nem código transplantado |
+| SRC-12 | confirmed | mGBA no mesmo commit, `src/arm/isa-arm.c:373-390,556`: famílias LDR/STR ARM usam cálculo de endereço e callbacks `memory.load32`/store; PC-relative não significa ponteiro host | Fonte observa consulta ao modelo de memória; literal fixado em AOT neste incremento é contrato estreito próprio e não valida o bus |
 
 ## Detalhamento da referência GBA
 

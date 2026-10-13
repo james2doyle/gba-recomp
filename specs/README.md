@@ -15,3 +15,4 @@ Contratos em Draft ou Review documental. MUST indica obrigação verificável, S
 - [SPEC-011 — Conformance e validação por jogo](SPEC-011-verification.md)
 - [SPEC-012 — Primeiro homebrew recompilado](SPEC-012-first-homebrew.md)
 - [SPEC-013 — Bancos ARM e transferência de PSR](SPEC-013-banked-cpu-and-psr.md)
+- [SPEC-014 — Loads literais PC-relativas em ROM](SPEC-014-rom-literal-loads.md)
