@@ -14,8 +14,8 @@ LeafGreen alcança estaticamente o halfword 0xDF01 em 0x081E3BCC, inferido como 
 - SWI-04: a chamada HLE MUST preservar registradores CPU, CPSR, SPSRs e modo Thumb, exceto avançar PC para guest_pc + 2. Não há transição ao modo SVC: esta política modela chamada BIOS por HLE.
 - SWI-05: a HLE MUST atualizar as regiões e latches listados nesta spec. Bit 0x01 zera toda EWRAM; 0x02 zera IWRAM [0x03000000,0x03007E00), preservando os últimos 0x200 bytes; 0x04 zera palette RAM; 0x08 zera VRAM; 0x10 zera OAM.
 - SWI-06: com r0 & 0x20, a HLE MUST escrever SIOCNT=0, RCNT=0x8000, SIOMLT_SEND=0, JOYCNT=0, JOY_RECV=0 e JOY_TRANS=0 nos latches de I/O.
-- SWI-07: com r0 & 0x40, MUST zerar os registradores de som abrangidos por SOUND1CNT_LO até SOUNDCNT_X, SOUND BIAS MUST virar 0x0200 e os 32 bytes de wave RAM MUST virar zero.
-- SWI-08: com r0 & 0x80, MUST limpar os latches de vídeo, DMA, timers, IE, IF, WAITCNT e IME que RegisterRamReset escreve. Defaults affine BG2PA/BG2PD/BG3PA/BG3PD são 0x0100; DISPCNT MUST ser 0x0080 em toda chamada. DISPSTAT preserva bits de status 0–2 e limpa campos graváveis; VCOUNT permanece read-only. Escrever 0xFFFF em IF limpa os bits pendentes, cujo latch fica zero.
+- SWI-07: com r0 & 0x40, MUST zerar os registradores de som abrangidos por SOUND1CNT_LO até SOUNDCNT_X, SOUND BIAS MUST virar 0x0200 e os 32 bytes de wave RAM MUST virar zero. A escrita zero em SOUNDCNT_X preserva os bits de status dos canais 0–3 e limpa o bit 7.
+- SWI-08: com r0 & 0x80, MUST limpar os latches de vídeo, DMA, timers, IE, IF, WAITCNT e IME que RegisterRamReset escreve. Os registradores de vídeo contínuos entre BG0CNT (0x008) e BLDY (0x054) recebem os valores de reset; a lacuna reservada 0x056–0x05E permanece inalterada. Defaults affine BG2PA/BG2PD/BG3PA/BG3PD são 0x0100; DISPCNT MUST ser 0x0080 em toda chamada. DISPSTAT preserva bits 0–1 existentes, limpa os campos graváveis e recalcula o bit 2 comparando VCOUNT ao novo campo de comparação (zero durante o reset); VCOUNT permanece read-only. Escrever 0xFFFF em IF limpa os bits pendentes, cujo latch fica zero.
 - SWI-09: a instrução conta como uma instrução AOT e avança uma unidade no modelo abstrato atual. Isso não afirma equivalência com ciclos de hardware. O helper MUST validar ABI, ponteiros, versões e relação entre os contextos antes de qualquer mutação; falha não altera CPU nem memória.
 - SWI-10: pacotes MUST registrar abi_version=4 e bios_hle_version=1. Nenhum pacote pode depender de uma versão HLE não declarada.
 
@@ -32,7 +32,7 @@ O entry point emitido é gba_block_v4(GbaRuntimeV4*, GbaExitV3*). Helpers de mem
 | Cada bit de r0 0–7 testado isoladamente | Somente os efeitos definidos para esse bit |
 | Máscaras combinadas e bits altos | Efeitos combinados; bits altos sem efeito |
 | IWRAM reset | 0x7E00 bytes limpos; sentinela final de 0x200 bytes preservada |
-| Reset de IO | Valores/defaults e semântica de DISPSTAT, VCOUNT e IF conforme SWI-08 |
+| Reset de IO | Valores/defaults, DISPSTAT (incluindo recomputação de bit 2), VCOUNT, IF, SOUNDCNT_X e lacunas reservadas conforme SWI-07/08 |
 | Registradores CPU e banco atual | Inalterados, exceto PC+2; CPSR.T continua ativo |
 | ABI/contexto ausente ou incompatível | Fault explícito, nenhuma mutação |
 | Outro imediato SWI | Falha de descoberta; nenhum executável ou pacote parcial |
@@ -41,6 +41,6 @@ O entry point emitido é gba_block_v4(GbaRuntimeV4*, GbaExitV3*). Helpers de mem
 
 ## Evidência, limites e referências
 
-KNO-004 fixa a ROM em SHA-256 2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825. SRC-24 registra mGBA commit 143adf5aa2a60c6036810b0cd72445e13d74b0e6 e gba-recomp commit de4edf59b872d887046d6a3b005e2df551b6d44c. mGBA implementa os resets em src/gba/bios.c e despacha IO em src/gba/io.c; gba-recomp tem HLE parcial em crates/gba-core/src/hle.rs. Essas são observações de fonte, não execução diferencial nem validação em hardware.
+KNO-004 fixa a ROM em SHA-256 2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825. SRC-24 registra mGBA commit 143adf5aa2a60c6036810b0cd72445e13d74b0e6 e gba-recomp commit de4edf59b872d887046d6a3b005e2df551b6d44c. mGBA implementa os resets em src/gba/bios.c e as regras de DISPSTAT/SOUNDCNT_X em src/gba/video.c e src/gba/io.c. A política local deriva dessas observações de fonte; não houve execução diferencial nem validação em hardware.
 
 A implementação local cobre somente os efeitos descritos acima. Bus geral, leitura/escrita MMIO fora da chamada, renderer, APU, timing real, backup, outros SWIs e execução LeafGreen permanecem fora deste contrato.
