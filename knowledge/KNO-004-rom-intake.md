@@ -58,6 +58,10 @@ No commit local `fffdc2099a67e2fde58ee98ba7557ecc82cae2cb`, as fixtures sintéti
 
 No commit local `1011efd7d5fd298e6f165989968949f0658e5e64`, as fixtures estritamente AOT de PUSH Thumb e MOV high passaram em O0/O2 em macOS arm64, junto da suíte anterior. Nova compilação estática da mesma ROM passou pelas instruções em `0x080003A4` (`0xB5F0`, inferida como `PUSH {r4-r7,lr}`) e `0x080003A6` (`0x4647`, inferida como `MOV r7,r8`), e parou em `0x080003AA`, halfword `0x20FF`, com `unsupported_thumb_instruction`. A leitura de `0x20FF` como `MOVS r0,#0xFF` é inferência pelo formato, corroborada pelas fontes SRC-22. Nenhum pacote LeafGreen foi criado e a ROM não foi executada. O limite descreve a próxima instrução alcançável pela descoberta estática, não um trace de runtime nem a cobertura completa do título.
 
+## Tentativa após SPEC-021 — MOVS Thumb imediato
+
+No commit `508c51c98e50b8812e9ef9bc18f61997621fb3cc`, as fixtures estritamente AOT de MOVS Thumb imediato passaram em O0/O2, preservando C/V e atualizando N/Z. A compilação estática da ROM avançou de `0x080003AA` (`0x20FF`, inferido como `MOVS r0,#0xFF`) até `0x080003AC`, onde parou em `0xF1E3` (`unsupported_thumb_instruction`). A leitura estática do halfword seguinte em `0x080003AE` encontrou `0xFC0E`. Pelos campos e com a regra corroborada por SRC-23, esses halfwords formam provavelmente um BL Thumb: o LR parcial calculado é `0x081E33B0` e o destino `0x081E3BCC`, dentro da imagem ROM identificada. Isso é inferência estática, não trace nem execução. Nenhum pacote foi criado.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

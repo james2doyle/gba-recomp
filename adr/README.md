@@ -14,3 +14,4 @@
 - [ADR-012-thumb-push-runtime-helper](ADR-012-thumb-push-runtime-helper.md)
 - [ADR-013-thumb-high-register-mov](ADR-013-thumb-high-register-mov.md)
 - [ADR-014-thumb-movs-immediate](ADR-014-thumb-movs-immediate.md)
+- [ADR-015-thumb-bl-static-pair](ADR-015-thumb-bl-static-pair.md)

@@ -23,3 +23,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-019 — PUSH Thumb para RAM física em AOT estrito](SPEC-019-thumb-push.md)
 - [SPEC-020 — MOV Thumb entre registradores high em AOT estrito](SPEC-020-thumb-high-mov.md)
 - [SPEC-021 — MOVS Thumb imediato em AOT estrito](SPEC-021-thumb-movs-immediate.md)
+- [SPEC-022 — BL Thumb de duas metades em AOT estrito](SPEC-022-thumb-bl-pair.md)
