@@ -450,6 +450,65 @@ verify_thumb_movs() {
 verify_thumb_movs thumb-movs-immediate '{"status":"budget_exhausted","steps":9,"r0":255,"r1":255,"pc":"0x080000D8","cpsr":"0x3000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_movs thumb-movs-zero '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000D8","cpsr":"0x7000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 
+verify_thumb_lsl() {
+    mode=$1
+    expected=$2
+    steps=$3
+    thumb_lsl_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_lsl_rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        cargo run --locked --quiet -p gba-recomp -- compile \
+            --rom "$thumb_lsl_rom" --out "$package" --opt "$optimization" --steps "$steps"
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["abi_version"] == 4
+PY
+    done
+}
+verify_thumb_lsl thumb-lsl-zero-carry-clear '{"status":"budget_exhausted","steps":8,"r0":0,"r1":2147483648,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+verify_thumb_lsl thumb-lsl-zero-carry-set '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":0,"pc":"0x08000086","cpsr":"0x7000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+verify_thumb_lsl thumb-lsl-one-carry '{"status":"budget_exhausted","steps":8,"r0":0,"r1":2,"pc":"0x08000086","cpsr":"0x2000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+verify_thumb_lsl thumb-lsl-nineteen '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+verify_thumb_lsl thumb-lsl-thirtyone '{"status":"budget_exhausted","steps":8,"r0":0,"r1":0,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+verify_thumb_lsl thumb-lsl-nonalias '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":4096,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+verify_thumb_lsl thumb-lsl-bx '{"status":"budget_exhausted","steps":6,"r0":67108980,"r1":134217960,"pc":"0x080000E8","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}' 6
+
+for mode in thumb-lsr-unsupported thumb-asr-unsupported thumb-lsl-register-unsupported; do
+    thumb_shift_rom="$root/target/gba020/$mode.gba"
+    thumb_shift_package="$root/target/gba020/$mode-package"
+    thumb_shift_output="$root/target/gba020/$mode.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_shift_rom" --mode "$mode"
+    rm -rf "$thumb_shift_package"
+    if cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$thumb_shift_rom" --out "$thumb_shift_package" --opt O0 --steps 8 \
+        >"$thumb_shift_output" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        exit 1
+    fi
+    if ! grep -q 'unsupported_thumb_instruction at 0x08000084' "$thumb_shift_output"; then
+        cat "$thumb_shift_output" >&2
+        echo "$mode did not report its source PC" >&2
+        exit 1
+    fi
+    if [ -e "$thumb_shift_package" ]; then
+        echo "$mode failure left a partial package" >&2
+        exit 1
+    fi
+done
+
 thumb_bl_rom="$root/target/gba020/thumb-bl.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_bl_rom" --mode thumb-bl
 for optimization in O0 O2; do

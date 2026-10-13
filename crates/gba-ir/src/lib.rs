@@ -83,6 +83,11 @@ pub enum ArmOperation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThumbOperation {
+    LslImmediate {
+        rd: u8,
+        rs: u8,
+        amount: u8,
+    },
     BranchExchange {
         rm: u8,
     },
@@ -385,6 +390,20 @@ impl ArmProgram {
                 return Err(VerifyError::DuplicateInstructionPc(instruction.guest_pc));
             }
             match instruction.operation {
+                ThumbOperation::LslImmediate { rd, rs, amount } => {
+                    let encoded_rd = (instruction.encoding & 0x7) as u8;
+                    let encoded_rs = ((instruction.encoding >> 3) & 0x7) as u8;
+                    let encoded_amount = ((instruction.encoding >> 6) & 0x1F) as u8;
+                    if instruction.encoding & 0xF800 != 0
+                        || rd != encoded_rd
+                        || rs != encoded_rs
+                        || amount != encoded_amount
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            instruction.encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::BranchExchange { rm } => verify_operand_register(rm)?,
                 ThumbOperation::MovImmediate { rd, .. } if rd > 7 => {
                     return Err(VerifyError::InvalidThumbImmediateRegister(rd));
@@ -532,6 +551,15 @@ impl ArmProgram {
         }
         for instruction in &self.thumb_instructions {
             match instruction.operation {
+                ThumbOperation::LslImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
                 ThumbOperation::BranchExchange { .. }
                     if !self.branch_targets.iter().any(|target| {
                         target.source_mode == IsaMode::Thumb
@@ -777,6 +805,21 @@ pub fn execute_thumb_instruction(
         });
     }
     match instruction.operation {
+        ThumbOperation::LslImmediate { rd, rs, amount } => {
+            let old_source = state.r[rs as usize];
+            let result = old_source.wrapping_shl(u32::from(amount));
+            let carry = if amount == 0 {
+                state.cpsr & 0x2000_0000
+            } else {
+                u32::from(old_source & (1_u32 << (32 - u32::from(amount))) != 0) << 29
+            };
+            state.r[rd as usize] = result;
+            state.cpsr = (state.cpsr & !0xE000_0000)
+                | (result & 0x8000_0000)
+                | (u32::from(result == 0) << 30)
+                | carry;
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
         ThumbOperation::BranchExchange { rm } => {
             let target = if rm == REG_PC {
                 instruction.guest_pc.wrapping_add(4)
@@ -1154,6 +1197,41 @@ mod tests {
     }
 
     #[test]
+    fn thumb_lsl_immediate_updates_flags_with_armv4t_zero_shift_carry_rules() {
+        let cases = [
+            (0x8000_0000, 0, 0x0000_003F, 1, 1, 0x8000_003F),
+            (0, 0, 0x3000_003F, 1, 1, 0x7000_003F),
+            (0x8000_0001, 1, 0x0000_003F, 1, 1, 0x2000_003F),
+            (0x4000_0000, 1, 0x3000_003F, 0, 1, 0x9000_003F),
+            (0x0000_1000, 19, 0x3000_003F, 0, 1, 0x9000_003F),
+            (0x0000_2000, 19, 0x0000_003F, 1, 1, 0x6000_003F),
+            (2, 31, 0x0000_003F, 1, 1, 0x6000_003F),
+            (1, 31, 0x3000_003F, 0, 1, 0x9000_003F),
+        ];
+        for (value, amount, cpsr, rd, rs, expected_cpsr) in cases {
+            let guest_pc = 0x0800_0100;
+            let encoding = (u16::from(amount) << 6) | (u16::from(rs) << 3) | u16::from(rd);
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::LslImmediate { rd, rs, amount },
+            };
+            let mut cpu = state(guest_pc);
+            cpu.cpsr = cpsr;
+            cpu.r[rs as usize] = value;
+            let expected_value = value.wrapping_shl(u32::from(amount));
+            execute_thumb_instruction(&mut cpu, instruction).unwrap();
+            assert_eq!(cpu.r[rd as usize], expected_value);
+            if rd != rs {
+                assert_eq!(cpu.r[rs as usize], value);
+            }
+            assert_eq!(cpu.r[15], guest_pc + 2);
+            assert_eq!(cpu.cpsr, expected_cpsr);
+            assert_eq!(cpu.guest_cycle, 6);
+        }
+    }
+
+    #[test]
     fn thumb_bl_halves_set_and_validate_link_register_before_static_dispatch() {
         let prefix = ThumbInstruction {
             guest_pc: 0x0800_0084,
@@ -1225,6 +1303,39 @@ mod tests {
         assert_eq!(
             program.verify(),
             Err(VerifyError::InvalidThumbImmediateRegister(8))
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_lsl_encoding_fields_and_alignment() {
+        let make_program = |guest_pc, rd, rs, amount| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![ThumbInstruction {
+                guest_pc,
+                encoding: 0x04C9,
+                operation: ThumbOperation::LslImmediate { rd, rs, amount },
+            }],
+            branch_targets: vec![],
+        };
+        assert_eq!(
+            make_program(0x0800_0100, 0, 1, 19).verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x04C9))
+        );
+        assert_eq!(
+            make_program(0x0800_0100, 1, 1, 18).verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x04C9))
+        );
+        assert_eq!(
+            make_program(0x0800_0101, 1, 1, 19).verify(),
+            Err(VerifyError::MisalignedThumbPc(0x0800_0101))
+        );
+        assert_eq!(
+            make_program(0x0800_0100, 1, 1, 19).verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: 0x0800_0100,
+                target: 0x0800_0102,
+            })
         );
     }
 

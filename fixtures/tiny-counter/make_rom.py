@@ -109,6 +109,57 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xE4:0xE8] = struct.pack("<I", 0x80000000)
         image[0xF0:0xF8] = struct.pack("<2I", 0x08000085, 0x080000D4)
+    elif mode == "thumb-lsl-bx":
+        image[0x84:0x88] = struct.pack(
+            "<2H", 0x0041, 0x4708
+        )  # LSLS r1,r0,#1; BX r1.
+        image[0xC0:0xCC] = struct.pack(
+            "<3I",
+            0xE59F0008,  # LDR r0, [pc,#8] -> 0x04000074 at 0xD0.
+            0xE59F2008,  # LDR r2, [pc,#8] -> Thumb entry | 1 at 0xD4.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD0:0xD8] = struct.pack("<2I", 0x04000074, 0x08000085)
+        image[0xE8:0xEC] = struct.pack("<I", 0xEAFFFFFE)  # B self.
+    elif mode in (
+        "thumb-lsl-zero-carry-clear",
+        "thumb-lsl-zero-carry-set",
+        "thumb-lsl-one-carry",
+        "thumb-lsl-nineteen",
+        "thumb-lsl-thirtyone",
+        "thumb-lsl-nonalias",
+        "thumb-lsr-unsupported",
+        "thumb-asr-unsupported",
+        "thumb-lsl-register-unsupported",
+    ):
+        cases = {
+            "thumb-lsl-zero-carry-clear": (0x0009, 0x80000000, 0x00000000),
+            "thumb-lsl-zero-carry-set": (0x0009, 0x00000000, 0x80000000),
+            "thumb-lsl-one-carry": (0x0049, 0x80000001, 0x00000000),
+            "thumb-lsl-nineteen": (0x04C9, 0x00001000, 0x80000000),
+            "thumb-lsl-thirtyone": (0x07C9, 0x00000002, 0x00000000),
+            "thumb-lsl-nonalias": (0x04C8, 0x00001000, 0x80000000),
+            "thumb-lsr-unsupported": (0x0849, 0x00000001, 0x00000000),
+            "thumb-asr-unsupported": (0x1049, 0x00000001, 0x00000000),
+            "thumb-lsl-register-unsupported": (0x4089, 0x00000001, 0x00000000),
+        }
+        shift, source, compare = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", shift, 0x4718
+        )  # Thumb shift; BX r3.
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE59F1018,  # LDR r1, [pc,#0x18] -> source at 0xE0.
+            0xE59F0018,  # LDR r0, [pc,#0x18] -> compare lhs at 0xE4.
+            0xE3500001,  # CMP r0,#1 prepares C/V for the shift.
+            0xE59F2004,  # LDR r2, [pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE59F3004,  # LDR r3, [pc,#4] -> ARM loop at 0xE8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xE8] = struct.pack(
+            "<4I", 0x08000085, 0x080000E8, source, compare
+        )
+        image[0xE8:0xEC] = struct.pack("<I", 0xEAFFFFFE)  # B self.
     elif mode in (
         "thumb-bl",
         "thumb-bl-broken-pair",
@@ -265,6 +316,16 @@ def main() -> None:
             "thumb-mov",
             "thumb-movs-immediate",
             "thumb-movs-zero",
+            "thumb-lsl-bx",
+            "thumb-lsl-zero-carry-clear",
+            "thumb-lsl-zero-carry-set",
+            "thumb-lsl-one-carry",
+            "thumb-lsl-nineteen",
+            "thumb-lsl-thirtyone",
+            "thumb-lsl-nonalias",
+            "thumb-lsr-unsupported",
+            "thumb-asr-unsupported",
+            "thumb-lsl-register-unsupported",
             "thumb-bl",
             "thumb-bl-broken-pair",
             "thumb-bl-suffix-without-prefix",

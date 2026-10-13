@@ -377,6 +377,26 @@ fn process_thumb_instruction(
     branch_targets: &mut BTreeSet<StaticBranchTarget>,
 ) -> Result<(), String> {
     match instruction.operation {
+        ThumbOperation::LslImmediate { rd, rs, amount } => {
+            let shifted_source = match &state.registers[rs as usize] {
+                AbstractValue::Unknown => AbstractValue::Unknown,
+                AbstractValue::Constants(values) => AbstractValue::Constants(
+                    values
+                        .iter()
+                        .map(|value| value.wrapping_shl(u32::from(amount)))
+                        .collect(),
+                ),
+            };
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = shifted_source;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::BranchExchange { rm } => {
             let targets = read_operand(state, rm, instruction.guest_pc.wrapping_add(4));
             let Some(values) = targets.values() else {
@@ -888,6 +908,60 @@ mod tests {
         assert_eq!(
             incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
             AbstractValue::constant(0xFF)
+        );
+    }
+
+    #[test]
+    fn propagates_thumb_lsl_constants_and_invalidates_unknown_destinations() {
+        let image = bx_interwork_rom();
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x04C8,
+            operation: ThumbOperation::LslImmediate {
+                rd: 0,
+                rs: 1,
+                amount: 19,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(0, 0xDEAD_BEEF);
+        state.set_constant(1, 0x0000_1000);
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let next_state = &incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)];
+        assert_eq!(
+            next_state.registers[0],
+            AbstractValue::constant(0x8000_0000)
+        );
+        assert_eq!(
+            next_state.registers[1],
+            AbstractValue::constant(0x0000_1000)
+        );
+
+        state.registers[1] = AbstractValue::Unknown;
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
+            AbstractValue::Unknown
         );
     }
 }

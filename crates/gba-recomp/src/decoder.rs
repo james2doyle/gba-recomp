@@ -158,6 +158,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             "Thumb address 0x{guest_pc:08X} is not halfword aligned"
         ));
     }
+    if encoding & 0xF800 == 0 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::LslImmediate {
+                rd: (encoding & 0x7) as u8,
+                rs: ((encoding >> 3) & 0x7) as u8,
+                amount: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
     if encoding & 0xFF00 == 0xDF00 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -381,6 +392,29 @@ mod tests {
             ThumbOperation::MovImmediate { rd: 0, value: 7 }
         );
         assert!(decode_thumb(0x0800_0085, 0x4708).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_lsl_immediate_and_rejects_other_shift_formats() {
+        assert_eq!(
+            decode_thumb(0x0800_03B2, 0x04C9).unwrap().operation,
+            ThumbOperation::LslImmediate {
+                rd: 1,
+                rs: 1,
+                amount: 19,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x0000).unwrap().operation,
+            ThumbOperation::LslImmediate {
+                rd: 0,
+                rs: 0,
+                amount: 0,
+            }
+        );
+        for encoding in [0x0849, 0x1049, 0x4089] {
+            assert!(decode_thumb(0x0800_0084, encoding).is_err());
+        }
     }
 
     #[test]
