@@ -1,4 +1,4 @@
-use gba_ir::{ArmInstruction, ArmOperation};
+use gba_ir::{ArmInstruction, ArmOperation, ThumbInstruction, ThumbOperation};
 
 pub fn decode_arm(guest_pc: u32, encoding: u32) -> Result<ArmInstruction, String> {
     if guest_pc & 3 != 0 {
@@ -9,7 +9,11 @@ pub fn decode_arm(guest_pc: u32, encoding: u32) -> Result<ArmInstruction, String
         return unsupported(guest_pc, encoding, "condition 0xF is outside ARMv4T subset");
     }
 
-    let operation = if encoding & 0x0C00_0000 == 0x0400_0000 {
+    let operation = if encoding & 0x0FFF_FFF0 == 0x012F_FF10 {
+        ArmOperation::BranchExchange {
+            rm: (encoding & 0xF) as u8,
+        }
+    } else if encoding & 0x0C00_0000 == 0x0400_0000 {
         let immediate_offset = encoding & (1 << 25) == 0;
         let pre_indexed = encoding & (1 << 24) != 0;
         let byte_transfer = encoding & (1 << 22) != 0;
@@ -148,6 +152,26 @@ pub fn decode_arm(guest_pc: u32, encoding: u32) -> Result<ArmInstruction, String
     })
 }
 
+pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, String> {
+    if guest_pc & 1 != 0 {
+        return Err(format!(
+            "Thumb address 0x{guest_pc:08X} is not halfword aligned"
+        ));
+    }
+    if encoding & 0xFF87 == 0x4700 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::BranchExchange {
+                rm: ((encoding >> 3) & 0xF) as u8,
+            },
+        });
+    }
+    Err(format!(
+        "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X}"
+    ))
+}
+
 fn unsupported<T>(guest_pc: u32, encoding: u32, reason: &str) -> Result<T, String> {
     Err(format!(
         "unsupported_instruction at 0x{guest_pc:08X}: 0x{encoding:08X} ({reason})"
@@ -213,6 +237,10 @@ mod tests {
             ArmOperation::MovRegister { rd: 14, rm: 15 }
         );
         assert_eq!(
+            decode_arm(0x0800_0230, 0xE12F_FF11).unwrap().operation,
+            ArmOperation::BranchExchange { rm: 1 }
+        );
+        assert_eq!(
             decode_arm(0x0800_0230, 0xE1A0_0001).unwrap().operation,
             ArmOperation::MovRegister { rd: 0, rm: 1 }
         );
@@ -257,6 +285,16 @@ mod tests {
         assert!(decode_arm(0x0800_0148, 0xE1A0_F001).is_err()); // destination PC
         assert!(decode_arm(0x0800_014C, 0xE1A0_0031).is_err()); // register-specified shift
         assert!(decode_arm(0x0800_0150, 0xE1A1_0001).is_err()); // nonzero ignored Rn
+    }
+
+    #[test]
+    fn decodes_only_thumb_branch_exchange_in_this_increment() {
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x4708).unwrap().operation,
+            ThumbOperation::BranchExchange { rm: 1 }
+        );
+        assert!(decode_thumb(0x0800_0084, 0x2007).is_err());
+        assert!(decode_thumb(0x0800_0085, 0x4708).is_err());
     }
 
     #[test]

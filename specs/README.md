@@ -19,3 +19,4 @@ Contratos em Draft ou Review documental. MUST indica obrigação verificável, S
 - [SPEC-015 — ADD imediato relativo ao PC em ARM](SPEC-015-arm-pc-relative-add.md)
 - [SPEC-016 — STR ARM de palavra para RAM física](SPEC-016-ram-word-stores.md)
 - [SPEC-017 — MOV ARM entre registradores sem shift](SPEC-017-arm-mov-register.md)
+- [SPEC-018 — Branch exchange ARM/Thumb em AOT estrito](SPEC-018-arm-thumb-branch-exchange.md)

@@ -34,6 +34,34 @@ def generate(mode: str = "valid") -> bytes:
             0xE129F000,  # MSR CPSR_fc, r0 (x/s fields clear)
             branch(0xC8, 0xC8),  # B finished
         )
+    elif mode == "bx-interwork":
+        image[0x84:0x86] = struct.pack("<H", 0x4708)  # Thumb BX r1 -> ARM code.
+        image[0xC0:0xD0] = struct.pack(
+            "<4I",
+            0xE59F0008,  # LDR r0, [pc, #8] -> Thumb target at 0x08000084 | 1
+            0xE59F1008,  # LDR r1, [pc, #8] -> misaligned ARM target at 0x080000CE
+            0xE12FFF10,  # BX r0 -> Thumb
+            branch(0xCC, 0xCC),  # B finished
+        )
+        image[0xD0:0xD8] = struct.pack("<2I", 0x08000085, 0x080000CE)
+    elif mode == "bx-out-of-range":
+        image[0xC0:0xCC] = struct.pack(
+            "<3I",
+            0xE59F0008,  # LDR r0, [pc, #8] -> address beyond the source ROM
+            branch(0xC4, 0xC8),
+            0xE12FFF10,  # BX r0
+        )
+        image[0xD0:0xD4] = struct.pack("<I", 0x09000001)
+    elif mode == "bx-condition-false":
+        image[0x84:0x86] = struct.pack("<H", 0x4708)  # Statically reachable Thumb BX r1.
+        image[0xC0:0xD0] = struct.pack(
+            "<4I",
+            0xE59F0010,  # LDR r0, [pc, #16] -> Thumb address | 1
+            0xE59F1010,  # LDR r1, [pc, #16] -> misaligned ARM target
+            0x012FFF10,  # BXEQ r0; false with initial Z=0
+            0xEAFFFFFE,  # B finished
+        )
+        image[0xD8:0xE0] = struct.pack("<2I", 0x08000085, 0x080000CE)
     elif mode == "literal-load":
         image[0xC0:0xC8] = struct.pack(
             "<2I",
@@ -121,6 +149,9 @@ def main() -> None:
         "--mode",
         choices=(
             "valid",
+            "bx-interwork",
+            "bx-out-of-range",
+            "bx-condition-false",
             "msr-mode",
             "literal-load",
             "literal-condition-false",

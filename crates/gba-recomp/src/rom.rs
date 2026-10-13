@@ -118,6 +118,20 @@ impl RomImage {
                 .expect("four bytes were range checked"),
         ))
     }
+
+    pub fn read_thumb_halfword(&self, address: u32) -> Result<u16, String> {
+        if address & 1 != 0 {
+            return Err(format!(
+                "Thumb address 0x{address:08X} is not halfword aligned"
+            ));
+        }
+        let offset = self.offset_for_guest(address, 2)?;
+        Ok(u16::from_le_bytes(
+            self.bytes[offset..offset + 2]
+                .try_into()
+                .expect("two bytes were range checked"),
+        ))
+    }
 }
 
 pub fn header_checksum(bytes: &[u8]) -> u8 {
@@ -192,5 +206,15 @@ mod tests {
         assert_eq!(image.read_arm_word(ROM_BASE).unwrap(), 0);
         assert!(image.read_arm_word(ROM_BASE + 1).is_err());
         assert!(image.read_arm_word(ROM_BASE + 256).is_err());
+    }
+
+    #[test]
+    fn reads_little_endian_thumb_halfwords_with_alignment_and_bounds_checks() {
+        let mut bytes = valid_image();
+        bytes[0xC0..0xC2].copy_from_slice(&0x4708_u16.to_le_bytes());
+        let image = RomImage::from_bytes(bytes).unwrap();
+        assert_eq!(image.read_thumb_halfword(ROM_BASE + 0xC0).unwrap(), 0x4708);
+        assert!(image.read_thumb_halfword(ROM_BASE + 0xC1).is_err());
+        assert!(image.read_thumb_halfword(ROM_BASE + 256).is_err());
     }
 }

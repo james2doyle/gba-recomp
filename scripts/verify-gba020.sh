@@ -353,6 +353,75 @@ for mode in store-out-of-range store-unaligned; do
     fi
 done
 
+bx_rom="$root/target/gba020/bx-interwork.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$bx_rom" --mode bx-interwork
+for optimization in O0 O2; do
+    package="$root/target/gba020/bx-interwork-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$bx_rom" --out "$package" --opt "$optimization" --steps 6
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":6,"r0":134217861,"r1":134217934,"pc":"0x080000CC","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization ARM/Thumb BX fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["instructions_aot"] == 6
+PY
+done
+
+bx_false_rom="$root/target/gba020/bx-condition-false.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$bx_false_rom" --mode bx-condition-false
+for optimization in O0 O2; do
+    package="$root/target/gba020/bx-condition-false-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$bx_false_rom" --out "$package" --opt "$optimization" --steps 4
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":4,"r0":134217861,"r1":134217934,"pc":"0x080000CC","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization false-condition BX fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["instructions_aot"] == 6
+PY
+done
+
+bx_range_rom="$root/target/gba020/bx-out-of-range.gba"
+bx_range_package="$root/target/gba020/bx-out-of-range-package"
+bx_range_output="$root/target/gba020/bx-out-of-range.txt"
+python3 fixtures/tiny-counter/make_rom.py --out "$bx_range_rom" --mode bx-out-of-range
+rm -rf "$bx_range_package"
+if cargo run --locked --quiet -p gba-recomp -- compile \
+    --rom "$bx_range_rom" --out "$bx_range_package" --opt O0 --steps 4 \
+    >"$bx_range_output" 2>&1; then
+    echo "out-of-ROM BX target unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -q 'branch_target_out_of_rom at 0x080000C8' "$bx_range_output"; then
+    cat "$bx_range_output" >&2
+    echo "out-of-ROM BX target did not report its source PC" >&2
+    exit 1
+fi
+if [ -e "$bx_range_package" ]; then
+    echo "failed BX compile left a partial package" >&2
+    exit 1
+fi
+
 bad_rom="$root/target/gba020/unsupported.gba"
 bad_package="$root/target/gba020/unsupported-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$bad_rom" --mode unsupported

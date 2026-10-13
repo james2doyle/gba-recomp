@@ -10,3 +10,4 @@
 - [ADR-008-arm-pc-relative-add](ADR-008-arm-pc-relative-add.md)
 - [ADR-009-versioned-bus-context](ADR-009-versioned-bus-context.md)
 - [ADR-010-arm-mov-register](ADR-010-arm-mov-register.md)
+- [ADR-011-arm-thumb-branch-exchange](ADR-011-arm-thumb-branch-exchange.md)

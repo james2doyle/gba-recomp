@@ -119,7 +119,7 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     let package = build_native_package(&image, &program, optimization, steps, &output)?;
     println!("package: {}", package.display());
     println!("rom_sha256: {}", image.sha256);
-    println!("instructions_aot: {}", program.instructions.len());
+    println!("instructions_aot: {}", instruction_count(&program));
     println!("optimization: {}", optimization.as_str());
     println!("target: {}", native_target().triple);
     Ok(())
@@ -322,9 +322,13 @@ fn render_manifest(
         emit_info.llvm_version,
         emit_info.triple,
         optimization.as_str(),
-        program.instructions.len(),
+        instruction_count(program),
         step_limit,
     )
+}
+
+fn instruction_count(program: &ArmProgram) -> usize {
+    program.instructions.len() + program.thumb_instructions.len()
 }
 
 fn parse_optimization(value: &str) -> Result<Optimization, String> {

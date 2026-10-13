@@ -5,9 +5,10 @@ use std::fmt;
 pub const GBA_IR_VERSION: u16 = 1;
 pub const REG_PC: u8 = 15;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum IsaMode {
     Arm,
+    Thumb,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -71,10 +72,33 @@ pub enum ArmOperation {
         offset: u16,
         up: bool,
     },
+    BranchExchange {
+        rm: u8,
+    },
     Branch {
         target: u32,
         link: bool,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ThumbOperation {
+    BranchExchange { rm: u8 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ThumbInstruction {
+    pub guest_pc: u32,
+    pub encoding: u16,
+    pub operation: ThumbOperation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct StaticBranchTarget {
+    pub source_mode: IsaMode,
+    pub source_pc: u32,
+    pub target_mode: IsaMode,
+    pub target_pc: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,6 +114,8 @@ pub struct ArmInstruction {
 pub struct ArmProgram {
     pub version: u16,
     pub instructions: Vec<ArmInstruction>,
+    pub thumb_instructions: Vec<ThumbInstruction>,
+    pub branch_targets: Vec<StaticBranchTarget>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,6 +131,7 @@ pub enum StepFault {
     AbiMismatch,
     CycleOverflow,
     ProgramCounterMismatch { expected: u32, actual: u32 },
+    IsaModeMismatch { expected: IsaMode, actual: IsaMode },
     BankedRuntimeRequired,
     RomLiteralUnresolved,
     MemoryRuntimeRequired,
@@ -119,6 +146,12 @@ impl fmt::Display for StepFault {
                 f,
                 "instruction at 0x{expected:08X} was dispatched with PC 0x{actual:08X}"
             ),
+            Self::IsaModeMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "instruction mode {expected:?} was dispatched in {actual:?} state"
+                )
+            }
             Self::BankedRuntimeRequired => {
                 f.write_str("MSR CPSR requires the banked runtime ABI v2")
             }
@@ -138,6 +171,7 @@ impl std::error::Error for StepFault {}
 pub enum VerifyError {
     UnsupportedVersion(u16),
     MisalignedArmPc(u32),
+    MisalignedThumbPc(u32),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -147,6 +181,8 @@ pub enum VerifyError {
     MisalignedRomLiteral(u32),
     UnresolvedRomLiteral(u32),
     DuplicateInstructionPc(u32),
+    BranchExchangeWithoutTargets { mode: IsaMode, pc: u32 },
+    BranchTargetSourceInvalid { mode: IsaMode, pc: u32 },
     UnsupportedInstructionEncoding(u32),
     MissingSuccessor { pc: u32, target: u32 },
 }
@@ -158,6 +194,9 @@ impl fmt::Display for VerifyError {
                 write!(f, "unsupported GBA IR version {version}")
             }
             Self::MisalignedArmPc(pc) => write!(f, "ARM guest PC 0x{pc:08X} is not 4-byte aligned"),
+            Self::MisalignedThumbPc(pc) => {
+                write!(f, "Thumb guest PC 0x{pc:08X} is not halfword aligned")
+            }
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
                 write!(f, "GBA-010 ALU slice accepts one instruction, got {count}")
@@ -190,6 +229,14 @@ impl fmt::Display for VerifyError {
             Self::DuplicateInstructionPc(pc) => {
                 write!(f, "multiple guest instructions have PC 0x{pc:08X}")
             }
+            Self::BranchExchangeWithoutTargets { mode, pc } => write!(
+                f,
+                "{mode:?} BX at 0x{pc:08X} has no statically discovered target"
+            ),
+            Self::BranchTargetSourceInvalid { mode, pc } => write!(
+                f,
+                "static branch target at 0x{pc:08X} does not originate at a {mode:?} BX"
+            ),
             Self::UnsupportedInstructionEncoding(encoding) => {
                 write!(f, "unsupported ARM encoding 0x{encoding:08X}")
             }
@@ -206,15 +253,15 @@ impl ArmProgram {
         if self.version != GBA_IR_VERSION {
             return Err(VerifyError::UnsupportedVersion(self.version));
         }
-        if self.instructions.is_empty() {
+        if self.instructions.is_empty() && self.thumb_instructions.is_empty() {
             return Err(VerifyError::EmptyBlock);
         }
-        let mut pcs = std::collections::HashSet::with_capacity(self.instructions.len());
+        let mut arm_pcs = std::collections::HashSet::with_capacity(self.instructions.len());
         for instruction in &self.instructions {
             if instruction.guest_pc & 3 != 0 {
                 return Err(VerifyError::MisalignedArmPc(instruction.guest_pc));
             }
-            if !pcs.insert(instruction.guest_pc) {
+            if !arm_pcs.insert(instruction.guest_pc) {
                 return Err(VerifyError::DuplicateInstructionPc(instruction.guest_pc));
             }
             if instruction.condition > 14 {
@@ -257,6 +304,7 @@ impl ArmProgram {
                     verify_general_register(rd)?;
                     verify_general_register(rn)?;
                 }
+                ArmOperation::BranchExchange { rm } => verify_operand_register(rm)?,
                 ArmOperation::Branch { target, .. } => {
                     if target & 3 != 0 {
                         return Err(VerifyError::MisalignedBranchTarget(target));
@@ -264,30 +312,116 @@ impl ArmProgram {
                 }
             }
         }
+        let mut thumb_pcs = std::collections::HashSet::with_capacity(self.thumb_instructions.len());
+        for instruction in &self.thumb_instructions {
+            if instruction.guest_pc & 1 != 0 {
+                return Err(VerifyError::MisalignedThumbPc(instruction.guest_pc));
+            }
+            if !thumb_pcs.insert(instruction.guest_pc) {
+                return Err(VerifyError::DuplicateInstructionPc(instruction.guest_pc));
+            }
+            match instruction.operation {
+                ThumbOperation::BranchExchange { rm } => verify_operand_register(rm)?,
+            }
+        }
+        for target in &self.branch_targets {
+            let source_exists = match target.source_mode {
+                IsaMode::Arm => arm_pcs.contains(&target.source_pc),
+                IsaMode::Thumb => thumb_pcs.contains(&target.source_pc),
+            };
+            let target_exists = match target.target_mode {
+                IsaMode::Arm => arm_pcs.contains(&target.target_pc),
+                IsaMode::Thumb => thumb_pcs.contains(&target.target_pc),
+            };
+            if !source_exists || !target_exists {
+                return Err(VerifyError::MissingSuccessor {
+                    pc: target.source_pc,
+                    target: target.target_pc,
+                });
+            }
+            let source_is_bx = match target.source_mode {
+                IsaMode::Arm => self.instructions.iter().any(|instruction| {
+                    instruction.guest_pc == target.source_pc
+                        && matches!(instruction.operation, ArmOperation::BranchExchange { .. })
+                }),
+                IsaMode::Thumb => self.thumb_instructions.iter().any(|instruction| {
+                    instruction.guest_pc == target.source_pc
+                        && matches!(instruction.operation, ThumbOperation::BranchExchange { .. })
+                }),
+            };
+            if !source_is_bx {
+                return Err(VerifyError::BranchTargetSourceInvalid {
+                    mode: target.source_mode,
+                    pc: target.source_pc,
+                });
+            }
+            match target.target_mode {
+                IsaMode::Arm if target.target_pc & 3 != 0 => {
+                    return Err(VerifyError::MisalignedBranchTarget(target.target_pc));
+                }
+                IsaMode::Thumb if target.target_pc & 1 != 0 => {
+                    return Err(VerifyError::MisalignedThumbPc(target.target_pc));
+                }
+                _ => {}
+            }
+        }
         for instruction in &self.instructions {
             let fallthrough = instruction.guest_pc.wrapping_add(4);
             match instruction.operation {
                 ArmOperation::Branch { target, link } => {
-                    if !pcs.contains(&target) {
+                    if !arm_pcs.contains(&target) {
                         return Err(VerifyError::MissingSuccessor {
                             pc: instruction.guest_pc,
                             target,
                         });
                     }
-                    if (instruction.condition != 14 || link) && !pcs.contains(&fallthrough) {
+                    if (instruction.condition != 14 || link) && !arm_pcs.contains(&fallthrough) {
                         return Err(VerifyError::MissingSuccessor {
                             pc: instruction.guest_pc,
                             target: fallthrough,
                         });
                     }
                 }
-                _ if !pcs.contains(&fallthrough) => {
+                ArmOperation::BranchExchange { .. } => {
+                    if !self.branch_targets.iter().any(|target| {
+                        target.source_mode == IsaMode::Arm
+                            && target.source_pc == instruction.guest_pc
+                    }) {
+                        return Err(VerifyError::BranchExchangeWithoutTargets {
+                            mode: IsaMode::Arm,
+                            pc: instruction.guest_pc,
+                        });
+                    }
+                    if instruction.condition != 14 && !arm_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                _ if !arm_pcs.contains(&fallthrough) => {
                     return Err(VerifyError::MissingSuccessor {
                         pc: instruction.guest_pc,
                         target: fallthrough,
                     });
                 }
                 _ => {}
+            }
+        }
+        for instruction in &self.thumb_instructions {
+            match instruction.operation {
+                ThumbOperation::BranchExchange { .. }
+                    if !self.branch_targets.iter().any(|target| {
+                        target.source_mode == IsaMode::Thumb
+                            && target.source_pc == instruction.guest_pc
+                    }) =>
+                {
+                    return Err(VerifyError::BranchExchangeWithoutTargets {
+                        mode: IsaMode::Thumb,
+                        pc: instruction.guest_pc,
+                    });
+                }
+                ThumbOperation::BranchExchange { .. } => {}
             }
         }
         Ok(())
@@ -349,6 +483,12 @@ pub fn execute_instruction(
             actual: state.r[REG_PC as usize],
         });
     }
+    if state.cpsr & 0x20 != 0 {
+        return Err(StepFault::IsaModeMismatch {
+            expected: IsaMode::Arm,
+            actual: IsaMode::Thumb,
+        });
+    }
 
     let executes = condition_passes(instruction.condition, state.cpsr);
     let pc_after = instruction.guest_pc.wrapping_add(4);
@@ -393,6 +533,22 @@ pub fn execute_instruction(
             ArmOperation::StoreWord { .. } => {
                 return Err(StepFault::MemoryRuntimeRequired);
             }
+            ArmOperation::BranchExchange { rm } => {
+                let target = if rm == REG_PC {
+                    instruction.guest_pc.wrapping_add(8)
+                } else {
+                    state.r[rm as usize]
+                };
+                if target & 1 != 0 {
+                    state.cpsr |= 0x20;
+                    state.r[REG_PC as usize] = target & !1;
+                } else {
+                    state.cpsr &= !0x20;
+                    state.r[REG_PC as usize] = target & !3;
+                }
+                state.guest_cycle += 1;
+                return Ok(());
+            }
             ArmOperation::Branch { target, link } => {
                 if link {
                     state.r[14] = pc_after;
@@ -404,6 +560,48 @@ pub fn execute_instruction(
         }
     }
     state.r[REG_PC as usize] = pc_after;
+    state.guest_cycle += 1;
+    Ok(())
+}
+
+pub fn execute_thumb_instruction(
+    state: &mut CpuState,
+    instruction: ThumbInstruction,
+) -> Result<(), StepFault> {
+    if state.abi_version != 1 {
+        return Err(StepFault::AbiMismatch);
+    }
+    if state.guest_cycle == u64::MAX {
+        return Err(StepFault::CycleOverflow);
+    }
+    if state.r[REG_PC as usize] != instruction.guest_pc {
+        return Err(StepFault::ProgramCounterMismatch {
+            expected: instruction.guest_pc,
+            actual: state.r[REG_PC as usize],
+        });
+    }
+    if state.cpsr & 0x20 == 0 {
+        return Err(StepFault::IsaModeMismatch {
+            expected: IsaMode::Thumb,
+            actual: IsaMode::Arm,
+        });
+    }
+    match instruction.operation {
+        ThumbOperation::BranchExchange { rm } => {
+            let target = if rm == REG_PC {
+                instruction.guest_pc.wrapping_add(4)
+            } else {
+                state.r[rm as usize]
+            };
+            if target & 1 != 0 {
+                state.cpsr |= 0x20;
+                state.r[REG_PC as usize] = target & !1;
+            } else {
+                state.cpsr &= !0x20;
+                state.r[REG_PC as usize] = target & !3;
+            }
+        }
+    }
     state.guest_cycle += 1;
     Ok(())
 }
@@ -577,6 +775,71 @@ mod tests {
     }
 
     #[test]
+    fn arm_bx_switches_to_thumb_and_masks_only_bit_zero() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0xE12F_FF10,
+            condition: 14,
+            operation: ArmOperation::BranchExchange { rm: 0 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0x0800_0101;
+        let flags_without_t = cpu.cpsr & !0x20;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[15], 0x0800_0100);
+        assert_eq!(cpu.cpsr & 0x20, 0x20);
+        assert_eq!(cpu.cpsr & !0x20, flags_without_t);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn arm_bx_to_arm_clears_t_and_word_aligns_target() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0xE12F_FF10,
+            condition: 14,
+            operation: ArmOperation::BranchExchange { rm: 0 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0x0800_0102;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[15], 0x0800_0100);
+        assert_eq!(cpu.cpsr & 0x20, 0);
+    }
+
+    #[test]
+    fn false_arm_bx_preserves_mode_and_advances_pc() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0x012F_FF10,
+            condition: 0,
+            operation: ArmOperation::BranchExchange { rm: 0 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0x0800_0101;
+        let cpsr = cpu.cpsr;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[15], instruction.guest_pc + 4);
+        assert_eq!(cpu.cpsr, cpsr);
+    }
+
+    #[test]
+    fn thumb_bx_switches_back_to_arm_and_word_aligns_target() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0x4708,
+            operation: ThumbOperation::BranchExchange { rm: 1 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[1] = 0x0800_0202;
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[15], 0x0800_0200);
+        assert_eq!(cpu.cpsr & 0x20, 0);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
     fn failed_pc_relative_add_predicate_preserves_destination_and_flags() {
         let instruction = ArmInstruction {
             guest_pc: 0x0800_0000,
@@ -656,6 +919,8 @@ mod tests {
                     guest_address: 0x0800_000C,
                 },
             }],
+            thumb_instructions: vec![],
+            branch_targets: vec![],
         };
         assert_eq!(
             program.verify(),
@@ -698,6 +963,8 @@ mod tests {
                     link: false,
                 },
             }],
+            thumb_instructions: vec![],
+            branch_targets: vec![],
         };
         assert!(matches!(
             program.verify(),
