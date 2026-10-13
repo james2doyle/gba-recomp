@@ -62,6 +62,10 @@ No commit local `1011efd7d5fd298e6f165989968949f0658e5e64`, as fixtures estritam
 
 No commit `508c51c98e50b8812e9ef9bc18f61997621fb3cc`, as fixtures estritamente AOT de MOVS Thumb imediato passaram em O0/O2, preservando C/V e atualizando N/Z. A compilação estática da ROM avançou de `0x080003AA` (`0x20FF`, inferido como `MOVS r0,#0xFF`) até `0x080003AC`, onde parou em `0xF1E3` (`unsupported_thumb_instruction`). A leitura estática do halfword seguinte em `0x080003AE` encontrou `0xFC0E`. Pelos campos e com a regra corroborada por SRC-23, esses halfwords formam provavelmente um BL Thumb: o LR parcial calculado é `0x081E33B0` e o destino `0x081E3BCC`, dentro da imagem ROM identificada. Isso é inferência estática, não trace nem execução. Nenhum pacote foi criado.
 
+## Tentativa após SPEC-022 — BL Thumb estático
+
+No commit `8db71bb5f91a569015ec643130d62d5427de1e22`, as fixtures de BL Thumb com retorno por `BX LR` passaram em O0/O2, mantendo as duas meias-instruções na IR e no orçamento AOT. A recompilação estática de LeafGreen passou pelo par raw `0xF1E3/0xFC0E` em `0x080003AC/0x080003AE` e alcançou `0x081E3BCC`, onde parou em `0xDF01` com `unsupported_thumb_instruction`. O halfword seguinte em `0x081E3BCE` é `0x4770`. Classificar `0xDF01` como Thumb SWI #1 (RegisterRamReset) é inferência pelo formato, corroborada pelas observações de fonte SRC-24; não é trace do jogo. O código de referência mostra que essa HLE pode limpar EWRAM/IWRAM, memória gráfica e registradores de I/O conforme `r0`; esses efeitos ainda não existem no runtime local. Nenhum pacote LeafGreen foi criado e a ROM não foi executada.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.
