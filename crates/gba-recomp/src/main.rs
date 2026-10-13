@@ -254,7 +254,7 @@ fn link_runner(
             "-Wextra",
             "-Werror",
             "-fuse-ld=lld",
-            "-Wl,--threads=8",
+            "-Wl,--threads=10",
         ])
         .arg("-I")
         .arg(header.parent().expect("header has package directory"))

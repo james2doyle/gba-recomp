@@ -14,7 +14,7 @@ O LLVM traduz a CPU; o runtime reproduz barramento, PPU, APU, DMA, timers, IRQ, 
 
 O projeto inclui intake com SHA-256 e um fluxo estritamente AOT ROM→LLVM→executável host para a homebrew headless Tiny Counter. Em macOS arm64, o gate headless passou em O0/O2 para as instruções e fixtures cobertas. Isso inclui ARM/Thumb `BX`, `PUSH`, MOV high, `MOVS` imediato, `BL` com retorno `BX LR` e Thumb SWI #1 (`RegisterRamReset`) por HLE versionada ABI v4; o runtime também testa `STR`/`PUSH` em EWRAM/IWRAM físicas por ABI v3. O pacote Tiny Counter tem apenas executável e manifesto e não carrega LLVM. O gate Linux x86-64 segue pendente; bus geral, mirrors, MMIO, BIOS restante, vídeo, áudio e input ainda não estão modelados. A compilação estática de LeafGreen passou por `0x081E3BCC` (`0xDF01`, inferido como SWI #1), retornou por `BX LR` e parou em `0x080003B2` (`0x04C9`, inferido como LSL Thumb imediato). Nenhum pacote LeafGreen foi criado e o jogo não foi executado. [KNO-004](knowledge/KNO-004-rom-intake.md) registra as tentativas e [KNO-005](knowledge/KNO-005-isa-coverage.md) compara as famílias cobertas nas referências com o subset local. [ROADMAP.md](ROADMAP.md) é a fonte de progresso.
 
-O workspace usa até oito jobs do Cargo e oito threads do LLD no link dos pacotes nativos. No Mac mini M4 de 10 CPUs lógicas, isso amplia o paralelismo e mantém alguma margem para o sistema.
+O workspace usa até dez jobs do Cargo e dez threads do LLD no link dos pacotes nativos, aproveitando as 10 CPUs lógicas do Mac mini M4 para acelerar compilações locais.
 
 - [Arquitetura](docs/architecture.md) e [fluxo do usuário](docs/product-flow.md).
 - [Especificações](specs/README.md), [decisões](adr/README.md) e [plano](plans/PLAN-001-delivery.md).

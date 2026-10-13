@@ -1,3 +1,3 @@
 [build]
-# Use most CPU cores while leaving headroom for the host on the 10-core M4.
-jobs = 8
+# Use all logical CPUs on the 10-core M4 for local builds.
+jobs = 10

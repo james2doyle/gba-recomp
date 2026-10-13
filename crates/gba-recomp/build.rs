@@ -9,7 +9,7 @@ fn main() {
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").expect("Cargo sets CARGO_CFG_TARGET_OS");
     println!("cargo:rustc-link-arg=-fuse-ld=lld");
-    println!("cargo:rustc-link-arg=-Wl,--threads=8");
+    println!("cargo:rustc-link-arg=-Wl,--threads=10");
 
     match target_os.as_str() {
         "macos" => {
