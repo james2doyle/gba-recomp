@@ -99,6 +99,42 @@ uint32_t gba_store16_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
     return GBA_EXIT_CONTINUE_V2;
 }
 
+uint32_t gba_store8_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                       uint32_t guest_ea, uint32_t value) {
+    if (out == NULL) {
+        return GBA_EXIT_FAULT_V2;
+    }
+    out->reason = GBA_EXIT_CONTINUE_V2;
+    out->next_pc = rt == NULL ? 0 : rt->cpu.r[15];
+    out->fault_address = 0;
+    out->fault_code = GBA_MEMORY_FAULT_NONE_V3;
+
+    if (rt == NULL) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_RUNTIME_V3);
+    }
+    if (rt->abi_version != GBA_ABI_VERSION_V3 ||
+        rt->cpu.abi_version != GBA_ABI_VERSION_V2) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_ABI_V3);
+    }
+    if (rt->memory == NULL) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_NULL_MEMORY_V3);
+    }
+
+    uint8_t *destination;
+    if (guest_ea >= UINT32_C(0x02000000) &&
+        guest_ea < UINT32_C(0x02040000)) {
+        destination = &rt->memory->ewram[guest_ea - UINT32_C(0x02000000)];
+    } else if (guest_ea >= UINT32_C(0x03000000) &&
+               guest_ea < UINT32_C(0x03008000)) {
+        destination = &rt->memory->iwram[guest_ea - UINT32_C(0x03000000)];
+    } else {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_REGION_V3);
+    }
+
+    *destination = (uint8_t)value;
+    return GBA_EXIT_CONTINUE_V2;
+}
+
 uint32_t gba_push_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                            uint32_t register_list) {
     if (out == NULL) {

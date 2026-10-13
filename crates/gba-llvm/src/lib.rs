@@ -412,6 +412,28 @@ unsafe fn build_arm_program_function(
     if store16_helper.is_null() {
         return Err("LLVMAddFunction for gba_store16_v3 returned null".to_owned());
     }
+    let mut store8_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(exit_type, 0),
+            i32_type,
+            i32_type,
+        ]
+    };
+    let store8_helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            store8_parameters.as_mut_ptr(),
+            store8_parameters.len() as u32,
+            0,
+        )
+    };
+    let store8_helper_name = CString::new("gba_store8_v3").expect("static name contains no NUL");
+    let store8_helper =
+        unsafe { LLVMAddFunction(module, store8_helper_name.as_ptr(), store8_helper_type) };
+    if store8_helper.is_null() {
+        return Err("LLVMAddFunction for gba_store8_v3 returned null".to_owned());
+    }
     let mut push_parameters = unsafe {
         [
             LLVMPointerType(runtime_v3_type, 0),
@@ -686,6 +708,8 @@ unsafe fn build_arm_program_function(
                 push_helper,
                 store16_helper_type,
                 store16_helper,
+                store8_helper_type,
+                store8_helper,
                 runtime_v4,
                 hle_helper_type,
                 hle_helper,
@@ -1169,6 +1193,8 @@ unsafe fn lower_thumb_instruction(
     push_helper: LLVMValueRef,
     store16_helper_type: LLVMTypeRef,
     store16_helper: LLVMValueRef,
+    store8_helper_type: LLVMTypeRef,
+    store8_helper: LLVMValueRef,
     runtime_v4: LLVMValueRef,
     hle_helper_type: LLVMTypeRef,
     hle_helper: LLVMValueRef,
@@ -1408,6 +1434,90 @@ unsafe fn lower_thumb_instruction(
                     context,
                     function,
                     &format!("thumb_strh_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
+            unsafe { LLVMBuildRet(builder, status) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::StoreByteImmediate { rd, rb, imm5 } => {
+            if rd > 7 || rb > 7 || imm5 > 31 {
+                return Err(format!(
+                    "invalid Thumb STRB operands at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+            let base_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rb) };
+            let value_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            // Load both operands first so Rd==Rb observes the pre-instruction value.
+            let base = unsafe {
+                LLVMBuildLoad2(builder, i32_type, base_pointer, c"thumb_strb_base".as_ptr())
+            };
+            let value = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    value_pointer,
+                    c"thumb_strb_value".as_ptr(),
+                )
+            };
+            let byte_offset = unsafe { LLVMConstInt(i32_type, u64::from(imm5), 0) };
+            // Plain LLVM i32 addition has guest u32 wrapping semantics; keep the
+            // unmodified guest EA as an integer for the runtime to validate.
+            let guest_ea = unsafe {
+                LLVMBuildAdd(builder, base, byte_offset, c"thumb_strb_guest_ea".as_ptr())
+            };
+            let mut arguments = [runtime, exit, guest_ea, value];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    store8_helper_type,
+                    store8_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"thumb_strb_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_strb_succeeded".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_strb_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_strb_failure_{:08X}", instruction.guest_pc),
                 )
             };
             unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };

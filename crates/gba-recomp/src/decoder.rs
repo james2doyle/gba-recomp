@@ -171,6 +171,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0x7000 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::StoreByteImmediate {
+                rd: (encoding & 0x7) as u8,
+                rb: ((encoding >> 3) & 0x7) as u8,
+                imm5: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0x8000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -533,6 +544,40 @@ mod tests {
         for encoding in [0x8808, 0x5A08, 0x5208] {
             assert!(
                 decode_thumb(0x0800_03B8, encoding).is_err(),
+                "encoding 0x{encoding:04X} must remain unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn decodes_thumb_strb_immediate_format_9_and_rejects_other_byte_forms() {
+        assert_eq!(
+            decode_thumb(0x0800_0998, 0x7005).unwrap().operation,
+            ThumbOperation::StoreByteImmediate {
+                rd: 5,
+                rb: 0,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0998, 0x77C5).unwrap().operation,
+            ThumbOperation::StoreByteImmediate {
+                rd: 5,
+                rb: 0,
+                imm5: 31,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0998, 0x77FD).unwrap().operation,
+            ThumbOperation::StoreByteImmediate {
+                rd: 5,
+                rb: 7,
+                imm5: 31,
+            }
+        );
+        for encoding in [0x7808, 0x5408, 0x5C08] {
+            assert!(
+                decode_thumb(0x0800_0998, encoding).is_err(),
                 "encoding 0x{encoding:04X} must remain unsupported"
             );
         }

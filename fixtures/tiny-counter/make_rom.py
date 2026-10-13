@@ -386,6 +386,95 @@ def generate(mode: str = "valid") -> bytes:
             "<4I", 0x08000085, 0x080000EC, value, base
         )
         image[0xEC:0xF0] = struct.pack("<I", branch(0xEC, 0xEC))
+    elif mode in (
+        "thumb-strb-ewram-zero-even",
+        "thumb-strb-ewram-thirtyone-odd",
+        "thumb-strb-iwram-zero-odd",
+        "thumb-strb-iwram-thirtyone-even",
+        "thumb-strb-ewram-thirtyone-even-alias",
+        "thumb-strb-invalid-odd",
+        "thumb-strb-wraparound",
+        "thumb-ldrb-unsupported",
+        "thumb-strb-register-unsupported",
+    ):
+        cases = {
+            # Format 9: 01110 imm5 Rb Rd. The word initialized below makes
+            # the exact target byte and its untouched neighbors observable.
+            "thumb-strb-ewram-zero-even": (0x7008, 0xAABBCCDD, 0x02000000, 0x02000000),
+            "thumb-strb-ewram-thirtyone-odd": (
+                0x77C8,
+                0x12345678,
+                0x01FFFFE2,
+                0x02000000,
+            ),
+            "thumb-strb-iwram-zero-odd": (
+                0x7008,
+                0x0000CDEF,
+                0x03000001,
+                0x03000000,
+            ),
+            "thumb-strb-iwram-thirtyone-even": (
+                0x77C8,
+                0x000000BE,
+                0x02FFFFE1,
+                0x03000000,
+            ),
+            # Rd==Rb: old r1 is both the address base and store value.
+            "thumb-strb-ewram-thirtyone-even-alias": (
+                0x77C9,
+                0x00000000,
+                0x01FFFFE1,
+                0x02000000,
+            ),
+            "thumb-strb-invalid-odd": (
+                0x77C8,
+                0x000000A5,
+                0x03FFFFE2,
+                0x02000000,
+            ),
+            # 0xFFFFFFE1 + 31 wraps to the exact guest EA 0.
+            "thumb-strb-wraparound": (
+                0x77C8,
+                0x0000005A,
+                0xFFFFFFE1,
+                0x02000000,
+            ),
+            "thumb-ldrb-unsupported": (
+                0x7808,
+                0x000000A5,
+                0x02000000,
+                0x02000000,
+            ),
+            # STRB r0,[r1,r2], Format 7 register-offset.
+            "thumb-strb-register-unsupported": (
+                0x5488,
+                0x000000A5,
+                0x02000000,
+                0x02000000,
+            ),
+        }
+        encoding, value, base, initialized_region = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # STRB/negative form; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xE8] = struct.pack(
+            "<10I",
+            0xE59F0020,  # LDR r0,[pc,#0x20] -> sentinel word at 0xE8.
+            0xE59F1020,  # LDR r1,[pc,#0x20] -> EWRAM/IWRAM start at 0xEC.
+            0xE5810000,  # STR sentinel,[r1], preserving three adjacent bytes.
+            0xE3A04080,  # MOV r4,#0x80.
+            0xE3540080,  # CMP r4,#0x80 -> Z=1,C=1; STRB must preserve flags.
+            0xE59F0014,  # LDR r0,[pc,#0x14] -> byte value at 0xF0.
+            0xE59F1014,  # LDR r1,[pc,#0x14] -> byte-store base at 0xF4.
+            0xE59F2018,  # LDR r2,[pc,#0x18] -> Thumb entry | 1 at 0xFC.
+            0xE28F3010,  # ADD r3,pc,#0x10 -> ARM loop at 0x080000F8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xE8:0xF8] = struct.pack(
+            "<4I", 0x44332211, initialized_region, value, base
+        )
+        image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
+        image[0xFC:0x100] = struct.pack("<I", 0x08000085)
     elif mode.startswith("store-"):
         guest_address = {
             "store-ewram": 0x02000000,
@@ -478,6 +567,15 @@ def main() -> None:
             "thumb-strh-invalid-odd",
             "thumb-ldrh-unsupported",
             "thumb-strh-register-unsupported",
+            "thumb-strb-ewram-zero-even",
+            "thumb-strb-ewram-thirtyone-odd",
+            "thumb-strb-iwram-zero-odd",
+            "thumb-strb-iwram-thirtyone-even",
+            "thumb-strb-ewram-thirtyone-even-alias",
+            "thumb-strb-invalid-odd",
+            "thumb-strb-wraparound",
+            "thumb-ldrb-unsupported",
+            "thumb-strb-register-unsupported",
             "store-ewram",
             "store-iwram",
             "store-out-of-range",

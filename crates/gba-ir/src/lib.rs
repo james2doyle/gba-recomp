@@ -111,6 +111,11 @@ pub enum ThumbOperation {
         rb: u8,
         imm5: u8,
     },
+    StoreByteImmediate {
+        rd: u8,
+        rb: u8,
+        imm5: u8,
+    },
     BranchExchange {
         rm: u8,
     },
@@ -246,6 +251,7 @@ pub enum VerifyError {
     InvalidThumbRomLiteralRegister(u8),
     InvalidThumbAddSubtractRegister(u8),
     InvalidThumbHalfwordStoreRegister(u8),
+    InvalidThumbByteStoreRegister(u8),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -293,6 +299,10 @@ impl fmt::Display for VerifyError {
             Self::InvalidThumbHalfwordStoreRegister(register) => write!(
                 f,
                 "Thumb STRH immediate register r{register} is not a low register"
+            ),
+            Self::InvalidThumbByteStoreRegister(register) => write!(
+                f,
+                "Thumb STRB immediate register r{register} is not a low register"
             ),
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
@@ -526,6 +536,26 @@ impl ArmProgram {
                         )));
                     }
                 }
+                ThumbOperation::StoreByteImmediate { rd, rb, imm5 } => {
+                    for register in [rd, rb] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbByteStoreRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_imm5 = ((encoding >> 6) & 0x1F) as u8;
+                    let encoded_rb = ((encoding >> 3) & 0x7) as u8;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    if encoding & 0xF800 != 0x7000
+                        || rd != encoded_rd
+                        || rb != encoded_rb
+                        || imm5 != encoded_imm5
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::BranchExchange { rm } => verify_operand_register(rm)?,
                 ThumbOperation::MovImmediate { rd, .. } if rd > 7 => {
                     return Err(VerifyError::InvalidThumbImmediateRegister(rd));
@@ -704,6 +734,15 @@ impl ArmProgram {
                     }
                 }
                 ThumbOperation::StoreHalfwordImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::StoreByteImmediate { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
                         return Err(VerifyError::MissingSuccessor {
@@ -1024,6 +1063,9 @@ pub fn execute_thumb_instruction(
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
         ThumbOperation::StoreHalfwordImmediate { .. } => {
+            return Err(StepFault::MemoryRuntimeRequired);
+        }
+        ThumbOperation::StoreByteImmediate { .. } => {
             return Err(StepFault::MemoryRuntimeRequired);
         }
         ThumbOperation::BranchExchange { rm } => {
@@ -1349,6 +1391,29 @@ mod tests {
         cpu.cpsr |= 0x20;
         cpu.r[0] = 0xAABB_CCDD;
         cpu.r[1] = 0x0200_0001;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn thumb_byte_store_requires_memory_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0x77C5,
+            operation: ThumbOperation::StoreByteImmediate {
+                rd: 5,
+                rb: 0,
+                imm5: 31,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[5] = 0xAABB_CCDD;
+        cpu.r[0] = 0x0200_0001;
         let before = cpu;
         assert_eq!(
             execute_thumb_instruction(&mut cpu, instruction),
@@ -1955,6 +2020,122 @@ mod tests {
         assert_eq!(
             invalid_register.verify(),
             Err(VerifyError::InvalidThumbHalfwordStoreRegister(8))
+        );
+
+        let missing_fallthrough = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![store],
+            branch_targets: vec![],
+        };
+        assert_eq!(
+            missing_fallthrough.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_strb_fields_and_fallthrough() {
+        let guest_pc = 0x0800_0100;
+        let store = ThumbInstruction {
+            guest_pc,
+            encoding: 0x7005,
+            operation: ThumbOperation::StoreByteImmediate {
+                rd: 5,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        let make_program = |store| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                store,
+                ThumbInstruction {
+                    guest_pc: guest_pc + 2,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc,
+            }],
+        };
+        assert!(make_program(store).verify().is_ok());
+
+        let max_offset_store = ThumbInstruction {
+            guest_pc,
+            encoding: 0x77FD,
+            operation: ThumbOperation::StoreByteImmediate {
+                rd: 5,
+                rb: 7,
+                imm5: 31,
+            },
+        };
+        assert!(make_program(max_offset_store).verify().is_ok());
+
+        let aliased_store = ThumbInstruction {
+            guest_pc,
+            encoding: 0x7000,
+            operation: ThumbOperation::StoreByteImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        assert!(make_program(aliased_store).verify().is_ok());
+
+        for operation in [
+            ThumbOperation::StoreByteImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 1,
+            },
+            ThumbOperation::StoreByteImmediate {
+                rd: 1,
+                rb: 0,
+                imm5: 0,
+            },
+            ThumbOperation::StoreByteImmediate {
+                rd: 5,
+                rb: 1,
+                imm5: 0,
+            },
+        ] {
+            let mut mismatched = make_program(store);
+            mismatched.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                mismatched.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(0x7005))
+            );
+        }
+
+        for encoding in [0x7808, 0x5408, 0x8008] {
+            let mut out_of_family = make_program(store);
+            out_of_family.thumb_instructions[0].encoding = encoding;
+            assert_eq!(
+                out_of_family.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                    encoding,
+                )))
+            );
+        }
+
+        let mut invalid_register = make_program(store);
+        invalid_register.thumb_instructions[0].operation = ThumbOperation::StoreByteImmediate {
+            rd: 8,
+            rb: 0,
+            imm5: 0,
+        };
+        assert_eq!(
+            invalid_register.verify(),
+            Err(VerifyError::InvalidThumbByteStoreRegister(8))
         );
 
         let missing_fallthrough = ArmProgram {
