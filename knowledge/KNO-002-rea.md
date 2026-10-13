@@ -21,3 +21,7 @@ O MCP REA foi usado efetivamente com `record_unknown` para preservar a lacuna de
 6. Exportar bundle por investigação, registrar IDs em KNO, encerrar sessão nativa quando aberta e resolver unknown somente com evidência adequada.
 
 A especificação cobre o processo. Cobertura AOT por título permanece explicitamente não resolvida.
+
+## Continuação em 2026-10-13
+
+Na retomada para implementar GBA-020, a chamada `mcp__rea__binary_session({})` falhou no transporte com `Transport closed`. `command -v rea` não encontrou CLI instalada nesta shell. Não foi repetida a abertura da ROM raw, pois KNO-004 já registra `unsupported binary format`; não há Evidence ID novo nem observação de análise. A investigação do código fonte continua por leitura local. A captura REA por ROM segue pendente até reconexão ou suporte de formato.

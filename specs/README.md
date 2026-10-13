@@ -13,3 +13,4 @@ Contratos em Draft ou Review documental. MUST indica obrigação verificável, S
 - [SPEC-009 — Menu de vídeo, áudio e controles](SPEC-009-settings-menu.md)
 - [SPEC-010 — Destinos LLVM e distribuição](SPEC-010-platform-packaging.md)
 - [SPEC-011 — Conformance e validação por jogo](SPEC-011-verification.md)
+- [SPEC-012 — Primeiro homebrew recompilado](SPEC-012-first-homebrew.md)
