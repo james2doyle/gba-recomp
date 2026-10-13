@@ -338,6 +338,54 @@ def generate(mode: str = "valid") -> bytes:
         )
     elif mode == "mov-register-shift":
         image[0xC0:0xC4] = struct.pack("<I", 0xE1A00081)  # MOV r0, r1, LSL #1
+    elif mode in (
+        "thumb-strh-ewram-zero-even",
+        "thumb-strh-ewram-thirtyone-odd-alias",
+        "thumb-strh-iwram-zero-odd",
+        "thumb-strh-iwram-thirtyone-even",
+        "thumb-strh-invalid-odd",
+        "thumb-ldrh-unsupported",
+        "thumb-strh-register-unsupported",
+    ):
+        cases = {
+            # Format 10: 1000 0 imm5 Rb Rd. The loop keeps the final PC
+            # stable so the runner can inspect state immediately after STRH.
+            "thumb-strh-ewram-zero-even": (0x8008, 0x0000ABCD, 0x02000000),
+            "thumb-strh-ewram-thirtyone-odd-alias": (
+                0x87C0,
+                0x01FFFFC3,
+                0,
+            ),
+            "thumb-strh-iwram-zero-odd": (0x8008, 0x0000BEEF, 0x03000001),
+            "thumb-strh-iwram-thirtyone-even": (
+                0x87C8,
+                0x00001357,
+                0x02FFFFC2,
+            ),
+            "thumb-strh-invalid-odd": (0x8008, 0x0000A55A, 0x04000001),
+            "thumb-ldrh-unsupported": (0x8808, 0x0000ABCD, 0x02000000),
+            # STRH r0,[r1,r2], Format 7 register-offset, which stays out of
+            # the immediate-only Format 10 contract.
+            "thumb-strh-register-unsupported": (0x5288, 0x0000ABCD, 0x02000000),
+        }
+        encoding, value, base = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # STRH/negative form; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xDC] = struct.pack(
+            "<7I",
+            0xE59F001C,  # LDR r0,[pc,#0x1C] -> value at 0xE4.
+            0xE59F101C,  # LDR r1,[pc,#0x1C] -> base at 0xE8.
+            0xE3A04080,  # MOV r4,#0x80.
+            0xE3540080,  # CMP r4,#0x80 -> Z=1,C=1; STRH must preserve them.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xDC.
+            0xE59F3004,  # LDR r3,[pc,#4] -> ARM return loop at 0xE0.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xDC:0xEC] = struct.pack(
+            "<4I", 0x08000085, 0x080000EC, value, base
+        )
+        image[0xEC:0xF0] = struct.pack("<I", branch(0xEC, 0xEC))
     elif mode.startswith("store-"):
         guest_address = {
             "store-ewram": 0x02000000,
@@ -423,6 +471,13 @@ def main() -> None:
             "mov-register-pc",
             "mov-register-condition-false",
             "mov-register-shift",
+            "thumb-strh-ewram-zero-even",
+            "thumb-strh-ewram-thirtyone-odd-alias",
+            "thumb-strh-iwram-zero-odd",
+            "thumb-strh-iwram-thirtyone-even",
+            "thumb-strh-invalid-odd",
+            "thumb-ldrh-unsupported",
+            "thumb-strh-register-unsupported",
             "store-ewram",
             "store-iwram",
             "store-out-of-range",

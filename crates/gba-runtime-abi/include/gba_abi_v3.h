@@ -38,6 +38,8 @@ typedef struct GbaExitV3 {
 uint32_t gba_block_v3(GbaRuntimeV3 *rt, GbaExitV3 *out);
 uint32_t gba_store32_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                         uint32_t guest_address, uint32_t value);
+uint32_t gba_store16_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                        uint32_t guest_ea, uint32_t value);
 uint32_t gba_push_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                            uint32_t register_list);
 

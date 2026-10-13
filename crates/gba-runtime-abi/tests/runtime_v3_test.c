@@ -91,6 +91,129 @@ static void test_rejections_do_not_mutate_cpu_or_memory(void) {
     assert(exit.fault_code == GBA_MEMORY_FAULT_ABI_V3);
 }
 
+static void expect_atomic_store16_fault(GbaRuntimeV3 *rt, GbaMemoryV1 *memory,
+                                        GbaExitV3 *exit, uint32_t guest_ea,
+                                        GbaMemoryFaultV3 expected_code) {
+    GbaMemoryV1 before_memory;
+    GbaRuntimeV2 before_cpu = rt->cpu;
+    memcpy(&before_memory, memory, sizeof(before_memory));
+
+    assert(gba_store16_v3(rt, exit, guest_ea, UINT32_C(0xDEADBEEF)) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit->reason == GBA_EXIT_FAULT_V2);
+    assert(exit->next_pc == before_cpu.r[15]);
+    assert(exit->fault_address == guest_ea);
+    assert(exit->fault_code == (uint32_t)expected_code);
+    assert(memcmp(memory, &before_memory, sizeof(before_memory)) == 0);
+    assert(memcmp(&rt->cpu, &before_cpu, sizeof(before_cpu)) == 0);
+}
+
+static void test_store16_physical_ram_little_endian_and_boundaries(void) {
+    GbaRuntimeV3 rt;
+    GbaMemoryV1 memory;
+    GbaRuntimeV2 before_cpu;
+    GbaExitV3 exit;
+    init(&rt, &memory);
+    before_cpu = rt.cpu;
+
+    memset(&memory.ewram[0], 0xA5, 5);
+    assert(gba_store16_v3(&rt, &exit, UINT32_C(0x02000002),
+                          UINT32_C(0xAABBCCDD)) == GBA_EXIT_CONTINUE_V2);
+    assert(memory.ewram[0] == 0xA5 && memory.ewram[1] == 0xA5);
+    assert(memory.ewram[2] == 0xDD && memory.ewram[3] == 0xCC);
+    assert(memory.ewram[4] == 0xA5);
+
+    memset(&memory.iwram[0], 0x5A, 5);
+    assert(gba_store16_v3(&rt, &exit, UINT32_C(0x03000003),
+                          UINT32_C(0x12345678)) == GBA_EXIT_CONTINUE_V2);
+    assert(memory.iwram[0] == 0x5A && memory.iwram[1] == 0x5A);
+    assert(memory.iwram[2] == 0x78 && memory.iwram[3] == 0x56);
+    assert(memory.iwram[4] == 0x5A);
+
+    memset(&memory.ewram[0x3FFFD], 0xA5, 3);
+    assert(gba_store16_v3(&rt, &exit, UINT32_C(0x0203FFFF),
+                          UINT32_C(0xAABBCCDD)) == GBA_EXIT_CONTINUE_V2);
+    assert(memory.ewram[0x3FFFD] == 0xA5);
+    assert(memory.ewram[0x3FFFE] == 0xDD && memory.ewram[0x3FFFF] == 0xCC);
+
+    memset(&memory.iwram[0x7FFD], 0x5A, 3);
+    assert(gba_store16_v3(&rt, &exit, UINT32_C(0x03007FFF),
+                          UINT32_C(0x12345678)) == GBA_EXIT_CONTINUE_V2);
+    assert(memory.iwram[0x7FFD] == 0x5A);
+    assert(memory.iwram[0x7FFE] == 0x78 && memory.iwram[0x7FFF] == 0x56);
+
+    assert(memcmp(&rt.cpu, &before_cpu, sizeof(before_cpu)) == 0);
+    assert(exit.reason == GBA_EXIT_CONTINUE_V2);
+    assert(exit.next_pc == UINT32_C(0x08000224));
+    assert(exit.fault_address == 0);
+    assert(exit.fault_code == GBA_MEMORY_FAULT_NONE_V3);
+}
+
+static void test_store16_rejections_are_atomic(void) {
+    GbaRuntimeV3 rt;
+    GbaMemoryV1 memory;
+    GbaExitV3 exit;
+    init(&rt, &memory);
+
+    const uint32_t outside_addresses[] = {
+        UINT32_C(0x01FFFFFE), /* just below EWRAM */
+        UINT32_C(0x02040000), /* EWRAM mirror boundary */
+        UINT32_C(0x02040001), /* odd address in the mirror window */
+        UINT32_C(0x02FFFFFF), /* end of the EWRAM mirror window */
+        UINT32_C(0x03008000), /* IWRAM mirror boundary */
+        UINT32_C(0x04000000), /* MMIO */
+        UINT32_C(0x08000000), /* ROM */
+        UINT32_MAX,
+    };
+    for (size_t index = 0;
+         index < sizeof(outside_addresses) / sizeof(outside_addresses[0]);
+         ++index) {
+        expect_atomic_store16_fault(&rt, &memory, &exit, outside_addresses[index],
+                                    GBA_MEMORY_FAULT_REGION_V3);
+    }
+
+    rt.abi_version = GBA_ABI_VERSION_V3 + 1;
+    expect_atomic_store16_fault(&rt, &memory, &exit, UINT32_C(0x02000001),
+                                GBA_MEMORY_FAULT_ABI_V3);
+    rt.abi_version = GBA_ABI_VERSION_V3;
+
+    rt.cpu.abi_version = GBA_ABI_VERSION_V2 + 1;
+    expect_atomic_store16_fault(&rt, &memory, &exit, UINT32_C(0x03000001),
+                                GBA_MEMORY_FAULT_ABI_V3);
+    rt.cpu.abi_version = GBA_ABI_VERSION_V2;
+
+    rt.memory = NULL;
+    expect_atomic_store16_fault(&rt, &memory, &exit, UINT32_C(0x02000001),
+                                GBA_MEMORY_FAULT_NULL_MEMORY_V3);
+}
+
+static void test_store16_null_runtime_and_output(void) {
+    GbaMemoryV1 memory;
+    GbaMemoryV1 before_memory;
+    GbaRuntimeV3 rt;
+    GbaRuntimeV2 before_cpu;
+    GbaExitV3 exit;
+    memset(&memory, 0xA5, sizeof(memory));
+    memcpy(&before_memory, &memory, sizeof(before_memory));
+    memset(&exit, 0xFF, sizeof(exit));
+
+    assert(gba_store16_v3(NULL, &exit, UINT32_C(0x02000001),
+                          UINT32_C(0xAABBCCDD)) == GBA_EXIT_FAULT_V2);
+    assert(exit.reason == GBA_EXIT_FAULT_V2);
+    assert(exit.next_pc == 0);
+    assert(exit.fault_address == UINT32_C(0x02000001));
+    assert(exit.fault_code == GBA_MEMORY_FAULT_RUNTIME_V3);
+    assert(memcmp(&memory, &before_memory, sizeof(memory)) == 0);
+
+    init(&rt, &memory);
+    before_cpu = rt.cpu;
+    memcpy(&before_memory, &memory, sizeof(before_memory));
+    assert(gba_store16_v3(&rt, NULL, UINT32_C(0x02000000),
+                          UINT32_C(0xAABBCCDD)) == GBA_EXIT_FAULT_V2);
+    assert(memcmp(&rt.cpu, &before_cpu, sizeof(before_cpu)) == 0);
+    assert(memcmp(&memory, &before_memory, sizeof(memory)) == 0);
+}
+
 static void test_thumb_push_order_and_stack_pointer_writeback(void) {
     GbaRuntimeV3 rt;
     GbaMemoryV1 memory;
@@ -171,6 +294,9 @@ int main(void) {
     GbaExitV3 exit;
     test_physical_ram_boundaries_and_little_endian();
     test_rejections_do_not_mutate_cpu_or_memory();
+    test_store16_physical_ram_little_endian_and_boundaries();
+    test_store16_rejections_are_atomic();
+    test_store16_null_runtime_and_output();
     test_thumb_push_order_and_stack_pointer_writeback();
     test_thumb_push_rejections_are_atomic();
     init(&rt, &memory);
@@ -179,6 +305,7 @@ int main(void) {
     assert(gba_push_thumb_v3(NULL, &exit, UINT32_C(1)) == GBA_EXIT_FAULT_V2);
     assert(exit.fault_code == GBA_MEMORY_FAULT_RUNTIME_V3);
     assert(gba_store32_v3(&rt, NULL, 0, 0) == GBA_EXIT_FAULT_V2);
+    assert(gba_store16_v3(&rt, NULL, 0, 0) == GBA_EXIT_FAULT_V2);
     assert(gba_push_thumb_v3(&rt, NULL, UINT32_C(1)) == GBA_EXIT_FAULT_V2);
     return 0;
 }

@@ -171,6 +171,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0x8000 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::StoreHalfwordImmediate {
+                rd: (encoding & 0x7) as u8,
+                rb: ((encoding >> 3) & 0x7) as u8,
+                imm5: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -499,6 +510,32 @@ mod tests {
             );
         }
         assert!(decode_thumb(0x0800_0084, 0x4008).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_strh_immediate_format_10_and_rejects_other_halfword_forms() {
+        assert_eq!(
+            decode_thumb(0x0800_03B8, 0x8008).unwrap().operation,
+            ThumbOperation::StoreHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03B8, 0x87C8).unwrap().operation,
+            ThumbOperation::StoreHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 31,
+            }
+        );
+        for encoding in [0x8808, 0x5A08, 0x5208] {
+            assert!(
+                decode_thumb(0x0800_03B8, encoding).is_err(),
+                "encoding 0x{encoding:04X} must remain unsupported"
+            );
+        }
     }
 
     #[test]

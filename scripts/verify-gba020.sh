@@ -378,6 +378,104 @@ for mode in store-out-of-range store-unaligned; do
     fi
 done
 
+verify_thumb_strh() {
+    mode=$1
+    expected=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        cargo run --locked --quiet -p gba-recomp -- compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 10
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode Thumb STRH fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 11
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == 10
+PY
+    done
+}
+
+verify_thumb_strh thumb-strh-ewram-zero-even \
+    '{"status":"budget_exhausted","steps":10,"r0":43981,"r1":33554432,"pc":"0x080000EC","cpsr":"0x6000001F","guest_cycle":10,"ewram_word0":43981,"iwram_word0":0}'
+verify_thumb_strh thumb-strh-ewram-thirtyone-odd-alias \
+    '{"status":"budget_exhausted","steps":10,"r0":33554371,"r1":0,"pc":"0x080000EC","cpsr":"0x6000001F","guest_cycle":10,"ewram_word0":65475,"iwram_word0":0}'
+verify_thumb_strh thumb-strh-iwram-zero-odd \
+    '{"status":"budget_exhausted","steps":10,"r0":48879,"r1":50331649,"pc":"0x080000EC","cpsr":"0x6000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":48879}'
+verify_thumb_strh thumb-strh-iwram-thirtyone-even \
+    '{"status":"budget_exhausted","steps":10,"r0":4951,"r1":50331586,"pc":"0x080000EC","cpsr":"0x6000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":4951}'
+
+thumb_strh_invalid_rom="$root/target/gba020/thumb-strh-invalid-odd.gba"
+thumb_strh_invalid_package="$root/target/gba020/thumb-strh-invalid-odd-package"
+thumb_strh_invalid_output="$root/target/gba020/thumb-strh-invalid-odd.txt"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$thumb_strh_invalid_rom" --mode thumb-strh-invalid-odd
+rm -rf "$thumb_strh_invalid_package"
+cargo run --locked --quiet -p gba-recomp -- compile \
+    --rom "$thumb_strh_invalid_rom" --out "$thumb_strh_invalid_package" \
+    --opt O2 --steps 10
+python3 - "$thumb_strh_invalid_package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 11
+assert manifest["optimization"] == "O2"
+assert manifest["run_instruction_budget"] == 10
+PY
+if "$thumb_strh_invalid_package/game" >"$thumb_strh_invalid_output" 2>&1; then
+    echo "out-of-region Thumb STRH unexpectedly completed" >&2
+    exit 1
+fi
+if ! grep -Fq \
+    'guest stopped: reason=4 pc=0x08000084 address=0x04000001 fault_code=5' \
+    "$thumb_strh_invalid_output"; then
+    cat "$thumb_strh_invalid_output" >&2
+    echo "out-of-region Thumb STRH did not report the faulting PC, original EA, and REGION code" >&2
+    exit 1
+fi
+
+for mode in thumb-ldrh-unsupported thumb-strh-register-unsupported; do
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package"
+    output="$root/target/gba020/$mode.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    rm -rf "$package"
+    if cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$rom" --out "$package" --opt O0 --steps 8 >"$output" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        exit 1
+    fi
+    if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$output"; then
+        cat "$output" >&2
+        echo "$mode did not report its Thumb source PC" >&2
+        exit 1
+    fi
+    if [ -e "$package" ]; then
+        echo "$mode failure left a partial package" >&2
+        exit 1
+    fi
+done
+
 push_rom="$root/target/gba020/thumb-push.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$push_rom" --mode thumb-push
 for optimization in O0 O2; do
