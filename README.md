@@ -1,4 +1,4 @@
-# GBA Recomp — especificação
+# GBA Recomp — recompilador experimental
 
 Projeto de recompilador estático **GBA → GBA IR → LLVM IR → plataforma host**, com runtime de hardware, perfis de ajuste fino por jogo e menu de vídeo, áudio e controles.
 
@@ -12,12 +12,12 @@ ROM .gba + perfil por SHA-256 + símbolos opcionais
 
 O LLVM traduz a CPU; o runtime reproduz barramento, PPU, APU, DMA, timers, IRQ, BIOS e cartucho. “Qualquer plataforma” é uma arquitetura extensível: cada destino precisa de backend LLVM, toolchain de link, runtime e adaptadores host. Não significa suporte automático a todo SO.
 
-O bootstrap implementa um slice ALU de GBA IR para LLVM e ABI C; a fixture O0/O2 já emite, linka e executa em macOS arm64. A validação Linux x86-64 segue pendente. Ainda não há intake, recompilação de ROM ou jogo executável. O método SDD segue `../switch-recomp-research`, adaptado ao GBA. [ROADMAP.md](ROADMAP.md) é a fonte de progresso.
+O projeto agora inclui intake com SHA-256, decoder/descoberta ARM restritos e um fluxo ROM→LLVM→executável host para a homebrew headless Tiny Counter. Em macOS arm64, O0 e O2 executaram 100 instruções com o mesmo estado final; o pacote tem apenas executável e manifesto e não carrega LLVM. O gate Linux x86-64 segue pendente. A fixture não implementa bus, memória de jogo, BIOS, vídeo, áudio ou input. A ROM LeafGreen local ainda falha no primeiro opcode não suportado, registrado em [KNO-004](knowledge/KNO-004-rom-intake.md); nenhum jogo comercial foi executado. O método SDD segue `../switch-recomp-research`, adaptado ao GBA. [ROADMAP.md](ROADMAP.md) é a fonte de progresso.
 
 - [Arquitetura](docs/architecture.md) e [fluxo do usuário](docs/product-flow.md).
 - [Especificações](specs/README.md), [decisões](adr/README.md) e [plano](plans/PLAN-001-delivery.md).
 - [Baseline de toolchain](toolchain.lock.toml) e [decisão ADR-004](adr/ADR-004-toolchain-baseline.md).
-- [Scaffold Rust](Cargo.toml) e [verificação da fixture GBA-010](scripts/verify-gba010.sh).
+- [Workspace Rust](Cargo.toml), [verificação GBA-010](scripts/verify-gba010.sh) e [verificação do primeiro homebrew](scripts/verify-gba020.sh).
 - [Evidências](knowledge/KNO-001-evidence.md), [uso do REA](knowledge/KNO-002-rea.md) e [questões abertas](knowledge/KNO-003-open-questions.md).
 
 ## Validar o slice GBA-010
@@ -29,6 +29,21 @@ scripts/verify-gba010.sh
 ```
 
 O script emite O0/O2, verifica o formato do objeto, linka e executa o harness C e grava o relatório sob `target/gba010/`. A validação nativa atual é macOS arm64; Linux x86-64 permanece pendente no roadmap.
+
+## Compilar a fixture Tiny Counter
+
+Com a mesma toolchain LLVM fixada, gere a ROM sintética, compile-a e execute o pacote nativo:
+
+```sh
+python3 fixtures/tiny-counter/make_rom.py --out target/tiny-counter.gba
+cargo run -p gba-recomp -- compile --rom target/tiny-counter.gba \
+  --out target/tiny-counter-o2 --opt O2 --steps 100
+target/tiny-counter-o2/game
+```
+
+O resultado esperado é `r0=10`, PC `0x080000D0` e CPSR `0x6000001F`. O contador só exercita `MOV`, `ADD`, `CMP` e branches ARM. `gba-recomp inspect-rom --rom <path>` mostra a identidade validada; qualquer instrução alcançável fora desse subconjunto faz `compile` falhar antes de publicar um pacote.
+
+Para repetir O0/O2 e as rejeições da fixture, execute `scripts/verify-gba020.sh`. O pacote contém `game` e `manifest.json`; não contém a ROM, objetos temporários nem dependências LLVM.
 - [Perfil por jogo](specs/SPEC-008-game-profiles.md) e [menu de configuração](specs/SPEC-009-settings-menu.md).
 - [Exemplos TOML](profiles/README.md) para contratos ainda não implementados.
 

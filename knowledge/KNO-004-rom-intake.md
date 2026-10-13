@@ -32,6 +32,10 @@ Esses IDs documentam a questão, não validam a ROM em execução.
 
 Criado [perfil draft](../profiles/leafgreen-bpge-rev1.toml), com hash exato e seed de entrada ARM. BIOS HLE, backup e RTC permanecem não resolvidos. Não foram acrescentados jump tables, overlays ou hooks especulativos. GBA-090 qualifica cenários após os marcos básicos; ainda não se pode afirmar que esse título compila ou executa.
 
+## Pré-análise local GBA-020
+
+Em 2026-10-13, o comando `gba-recomp inspect-rom` repetiu localmente SHA-256, tamanho e campos de header acima. `gba-recomp compile` começou a descoberta a partir do entrypoint e parou em `0x08000208`, palavra `0xE129F000`, com `unsupported instruction family is not implemented`. A saída não contém pacote; não houve decompilação REA nem execução da ROM. Isso mede somente o limite do decoder do commit `0dfbfb593b3882c6412f9048db786f064d881483`; não classifica semanticamente a instrução nem resolve a cobertura de LeafGreen.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

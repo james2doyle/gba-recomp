@@ -71,4 +71,10 @@ mGBA: `LICENSE` declara MPL-2.0; terceiros têm seus próprios avisos. gba-recom
 
 ## Limites
 
-Sem benchmarking, decompilação ou execução de jogos. Afirmações do vendor como compatibilidade ampla e custo desprezível de fallback permanecem não verificadas. Constantes de referência não substituem testes de borda de HBlank, bus e IRQ. A seleção de Rust/LLVM e o slice ALU estão exercitados apenas em macOS arm64; Linux x86-64, SDL e garantias por jogo continuam sem prova.
+Sem benchmarking ou decompilação. A fixture sintética Tiny Counter foi executada apenas na janela headless documentada abaixo; nenhum título comercial foi executado. Afirmações do vendor como compatibilidade ampla e custo desprezível de fallback permanecem não verificadas. Constantes de referência não substituem testes de borda de HBlank, bus e IRQ. GBA-010 e GBA-020 foram exercitados apenas em macOS arm64; Linux x86-64, SDL e garantias por jogo continuam sem prova.
+
+## Evidência de implementação GBA-020
+
+Em 2026-10-13, o commit `0dfbfb593b3882c6412f9048db786f064d881483` gerou `fixtures/tiny-counter` e emitiu seis instruções ARM alcançáveis para um dispatcher host LLVM. Os executáveis O0/O2 foram linkados e rodaram nativamente em macOS arm64 até o orçamento de 100 instruções, ambos retornando `r0=10`, `PC=0x080000D0`, `CPSR=0x6000001F`. Os hashes dos pacotes e a matriz de verificação estão em [gba020-macos-arm64.json](evidence/gba020-macos-arm64.json). Isso é evidência da fixture sintética; o pacote não usa memória, MMIO, BIOS, vídeo, áudio ou input.
+
+A tentativa local de compilar a ROM LeafGreen com SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825` foi recusada em `0x08000208`, palavra `0xE129F000`. A observação é a fronteira do decoder atual, não prova de decodificação completa, semântica dessa palavra ou execução do título. REA não produziu evidência nova nessa retomada porque `binary_session` retornou `Transport closed`; KNO-002 registra o limite.

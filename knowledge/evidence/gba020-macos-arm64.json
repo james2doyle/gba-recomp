@@ -1,0 +1,72 @@
+{
+  "record_type": "local-execution-evidence",
+  "date": "2026-10-13",
+  "source_commit": "0dfbfb593b3882c6412f9048db786f064d881483",
+  "environment": {
+    "os": "macOS 15.3.1 (24D70)",
+    "architecture": "arm64",
+    "rust": "1.99.0 (b940084d7eb6a299eb4bfeb8e34901bc051e7ac4)",
+    "llvm_backend": "23.1.3",
+    "llvm_sys": "231.0.1",
+    "target": "aarch64-apple-darwin",
+    "linker": "LLVM lld 23.1.3",
+    "sysroot": "MacOSX15.5.sdk"
+  },
+  "fixture": {
+    "name": "Tiny Counter",
+    "source": "fixtures/tiny-counter/make_rom.py",
+    "game_code": "TCGE",
+    "rom_size": 256,
+    "rom_sha256": "374dd35b3fe29ad1b75b7bab03f776745da7875c72e97922d786c19574cbe760",
+    "instructions_aot": 6,
+    "step_budget": 100,
+    "timing_semantics": "one abstract unit per instruction"
+  },
+  "builds": [
+    {
+      "optimization": "O0",
+      "executable_sha256": "2fcd799a106c86f1506069684ac104d10223ac92ce08ae233e787f7f97f5c6cb",
+      "manifest_sha256": "f47b20eb06b82252d663f441e4afaefd8389af5745af9b1b68af6468a2eb942c",
+      "stdout": "{\"status\":\"budget_exhausted\",\"steps\":100,\"r0\":10,\"pc\":\"0x080000D0\",\"cpsr\":\"0x6000001F\",\"guest_cycle\":100}",
+      "dynamic_llvm_dependency": false
+    },
+    {
+      "optimization": "O2",
+      "executable_sha256": "460d49274aa54d501db1d819d8e0e73428293610dc8c24c1fc5a762238c65600",
+      "manifest_sha256": "bc585e9afcc511520060f9709fe4de1d0a2bacc568a242a4993990cb1392a9c8",
+      "stdout": "{\"status\":\"budget_exhausted\",\"steps\":100,\"r0\":10,\"pc\":\"0x080000D0\",\"cpsr\":\"0x6000001F\",\"guest_cycle\":100}",
+      "dynamic_llvm_dependency": false
+    }
+  ],
+  "verification": {
+    "script": "scripts/verify-gba020.sh",
+    "result": "passed",
+    "negative_cases": [
+      "bad header checksum rejected before package creation",
+      "reachable unsupported instruction rejected before package creation",
+      "branch target outside ROM rejected before package creation"
+    ],
+    "package_files": ["game", "manifest.json"],
+    "package_contains_rom": false,
+    "package_contains_object_or_bitcode": false,
+    "otool_loads": ["/usr/lib/libSystem.B.dylib"]
+  },
+  "leafgreen_preflight": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command_result": "compile rejected before package creation",
+    "first_reported_location": "0x08000208",
+    "raw_word": "0xE129F000",
+    "diagnostic": "unsupported instruction family is not implemented",
+    "interpretation": "The current decoder rejected this word. No instruction semantics, full CFG, or game execution is established by this observation."
+  },
+  "rea": {
+    "new_evidence_ids": [],
+    "status": "MCP binary_session returned Transport closed; no new REA analysis evidence"
+  },
+  "limitations": [
+    "CPU-only headless fixture; no guest memory or MMIO",
+    "No Thumb, BIOS, bus timing, PPU, APU, input, save, overlays, or self-modifying code",
+    "Execution result applies only to this generated fixture and 100-instruction window",
+    "Linux x86-64 toolchain execution remains pending"
+  ]
+}

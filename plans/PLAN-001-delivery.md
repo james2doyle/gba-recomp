@@ -4,7 +4,7 @@ O status está exclusivamente no [roadmap](../ROADMAP.md). Cada incremento deve 
 
 ## 1. Fundação e CPU mínima — GBA-005/010/020
 
-GBA-005 fixa Rust/LLVM/bindings e os perfis dos dois hosts em ADR-004 e `toolchain.lock.toml`. GBA-010 já tem scaffold, ABI v1, IR mínima e emissão LLVM; a fixture O0/O2 passou em macOS arm64, e o gate Linux x86-64 permanece pendente. GBA-020 agora especifica em SPEC-012 uma ROM homebrew gerada, intake SHA-256, descoberta ARM por branches diretos, emissão AOT de funções por instrução e execução headless com orçamento explícito. O primeiro programa calcula um contador até 10; não exercita hardware. Instrução fora do subconjunto falha antes da publicação. A execução Mac pode avançar enquanto o gate Linux de GBA-010 permanece aberto, sem declarar o host Linux suportado.
+GBA-005 fixa Rust/LLVM/bindings e os perfis dos dois hosts em ADR-004 e `toolchain.lock.toml`. GBA-010 tem scaffold, ABI v1, IR mínima e emissão LLVM; a fixture O0/O2 passou em macOS arm64, e o gate Linux x86-64 permanece pendente. GBA-020 especifica em SPEC-012 e implementa intake SHA-256, descoberta de branches diretos, decoder ARM restrito, dispatcher LLVM por PC e pacote nativo headless. A ROM Tiny Counter percorre seis instruções AOT e O0/O2 produzem o mesmo estado após 100 passos em macOS arm64. O programa só exercita registradores e flags; memória, MMIO e periféricos são os próximos contratos. A execução Mac não declara o host Linux suportado nem fecha GBA-010.
 
 ## 2. Hardware e dispatch — GBA-025/030/040/045/050
 
