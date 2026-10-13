@@ -16,3 +16,4 @@
 - [ADR-014-thumb-movs-immediate](ADR-014-thumb-movs-immediate.md)
 - [ADR-015-thumb-bl-static-pair](ADR-015-thumb-bl-static-pair.md)
 - [ADR-016-versioned-hle-state](ADR-016-versioned-hle-state.md)
+- [ADR-017-additive-halfword-store-abi](ADR-017-additive-halfword-store-abi.md)

@@ -28,3 +28,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-024 — Thumb LSL imediato em AOT estrito](SPEC-024-thumb-lsl-immediate.md)
 - [SPEC-025 — Thumb LDR literal de ROM em AOT estrito](SPEC-025-thumb-ldr-literal.md)
 - [SPEC-026 — ADD/SUB Thumb Format 2 em AOT estrito](SPEC-026-thumb-add-sub-format-2.md)
+- [SPEC-027 — STRH Thumb imediato Format 10 em AOT estrito](SPEC-027-thumb-strh-immediate.md)
