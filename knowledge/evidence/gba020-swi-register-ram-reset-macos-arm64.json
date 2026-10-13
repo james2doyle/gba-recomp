@@ -1,0 +1,81 @@
+{
+  "record_type": "local-build-and-static-discovery",
+  "date": "2026-10-13",
+  "source_commit": "aab31ae40f64aeeba4a437ea34f36b8b3f08d0f4",
+  "spec_commit": "7f6d61d2c5b947067db96ed7db25530e0a3f92f6",
+  "environment": {
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "memory_bytes": 17179869184,
+    "rust": "1.99.0 (b940084d7 2026-09-28)",
+    "llvm_backend": "23.1.3",
+    "llvm_sys": "231.0.1",
+    "target": "aarch64-apple-darwin"
+  },
+  "parallelism": {
+    "cargo_jobs": 8,
+    "lld_threads": 8,
+    "observed_lld_cpu_percent_peak_sample": 754.1,
+    "measurement_scope": "One ps sample during workspace test-binary link; not a sustained throughput benchmark"
+  },
+  "rust_tests": {
+    "command": "cargo test --locked --workspace",
+    "result": "passed",
+    "gba_ir_tests": 25,
+    "gba_recomp_tests": 28,
+    "wall_time_seconds": 80.81
+  },
+  "headless_gate": {
+    "script": "scripts/verify-gba020.sh",
+    "host": "Darwin/arm64",
+    "result": "passed",
+    "wall_time_seconds": 38.608,
+    "hle_c_test": "passed",
+    "strict_aot_negative_case": "Thumb SWI #2 rejected during discovery without a partial package"
+  },
+  "swi_fixture": {
+    "name": "thumb-swi-reset",
+    "source": "fixtures/tiny-counter/make_rom.py",
+    "rom_size": 256,
+    "rom_sha256": "cf89332ed7d30148e18ad2590033a8b0d4b4d237da643d4f031f4fb0ddd882ec",
+    "instructions_aot": 12,
+    "step_budget": 9,
+    "state_stdout": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2,\"r1\":0,\"pc\":\"0x0800008A\",\"cpsr\":\"0x0000003F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+    "abi_version": 4,
+    "machine_state_version": 1,
+    "bios_hle_version": 1,
+    "execution_mode": "strict-aot",
+    "builds": [
+      {
+        "optimization": "O0",
+        "game_sha256": "908b5f16f9f6b0766cc4dc6fcbea485d3649a7c8d64d1d13add45fdd9497ad50",
+        "manifest_sha256": "6079af88e20f59f1f64f69010a8f9059f35d9f4fabeff6717d226bb3bb42bd98"
+      },
+      {
+        "optimization": "O2",
+        "game_sha256": "b098c2b3da56ad67a33e7e20f85c4ac5c287dfe816696db6f0f5631544d5e274",
+        "manifest_sha256": "6e9e94d7717d7a2d0caa334dd9ae3aa1622ade8db3dcdcca7a39fc35a73533d2"
+      }
+    ]
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-swi-o2-20261013 --opt O2 --steps 100",
+    "result": "rejected before package creation",
+    "reported_pc": "0x080003B2",
+    "raw_halfword": "0x04C9",
+    "classification": "Thumb Format 1 LSLS r1,r1,#19; inferred from encoding and corroborated by SRC-25",
+    "next_raw_halfword_observed": "0x4A2C",
+    "reachable_successor_claimed": false,
+    "diagnostic": "unsupported_thumb_instruction",
+    "rom_executed": false,
+    "rea_decompilation": false
+  },
+  "limitations": [
+    "SWI HLE implements only RegisterRamReset #1 and the latches named in SPEC-023.",
+    "The LeafGreen result is static AOT discovery; no package or game execution was produced.",
+    "No general bus, PPU, APU, input, backup, other BIOS SWIs, or hardware differential is established.",
+    "Linux x86-64 qualification remains pending."
+  ]
+}

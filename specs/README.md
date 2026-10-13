@@ -25,3 +25,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-021 — MOVS Thumb imediato em AOT estrito](SPEC-021-thumb-movs-immediate.md)
 - [SPEC-022 — BL Thumb de duas metades em AOT estrito](SPEC-022-thumb-bl-pair.md)
 - [SPEC-023 — Thumb SWI #1 RegisterRamReset em AOT estrito](SPEC-023-thumb-swi-register-ram-reset.md)
+- [SPEC-024 — Thumb LSL imediato em AOT estrito](SPEC-024-thumb-lsl-immediate.md)
