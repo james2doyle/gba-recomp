@@ -1299,6 +1299,29 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::AddSubtract {
+            rd,
+            rn,
+            operand,
+            immediate,
+            subtract,
+        } => unsafe {
+            lower_thumb_add_sub_format2(
+                context,
+                builder,
+                runtime_type,
+                exit_type,
+                runtime,
+                exit,
+                cycles,
+                instruction,
+                rd,
+                rn,
+                operand,
+                immediate,
+                subtract,
+            )?
+        },
         ThumbOperation::LoadPcRelativeWord { .. } => {
             return Err(format!(
                 "unresolved Thumb ROM literal at 0x{:08X}",
@@ -1716,6 +1739,215 @@ unsafe fn lower_thumb_instruction(
             };
         }
     }
+    Ok(())
+}
+
+unsafe fn lower_thumb_add_sub_format2(
+    context: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    runtime_type: LLVMTypeRef,
+    exit_type: LLVMTypeRef,
+    runtime: LLVMValueRef,
+    exit: LLVMValueRef,
+    cycles: LLVMValueRef,
+    instruction: &ThumbInstruction,
+    rd: u8,
+    rn: u8,
+    operand: u8,
+    immediate: bool,
+    subtract: bool,
+) -> Result<(), String> {
+    if rd > 7 || rn > 7 || operand > 7 {
+        return Err(format!(
+            "invalid Thumb ADD/SUB Format 2 registers at 0x{:08X}",
+            instruction.guest_pc
+        ));
+    }
+    let i32_type = unsafe { LLVMInt32TypeInContext(context) };
+    let lhs_pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, rn) };
+    let lhs =
+        unsafe { LLVMBuildLoad2(builder, i32_type, lhs_pointer, c"thumb_addsub_lhs".as_ptr()) };
+    let rhs = if immediate {
+        unsafe { LLVMConstInt(i32_type, u64::from(operand), 0) }
+    } else {
+        let rhs_pointer =
+            unsafe { register_pointer(builder, context, runtime_type, runtime, operand) };
+        unsafe { LLVMBuildLoad2(builder, i32_type, rhs_pointer, c"thumb_addsub_rhs".as_ptr()) }
+    };
+    let result = if subtract {
+        unsafe { LLVMBuildSub(builder, lhs, rhs, c"thumb_sub_result".as_ptr()) }
+    } else {
+        unsafe { LLVMBuildAdd(builder, lhs, rhs, c"thumb_add_result".as_ptr()) }
+    };
+    let destination_pointer =
+        unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+    unsafe { LLVMBuildStore(builder, result, destination_pointer) };
+
+    let zero = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntEQ,
+            result,
+            LLVMConstInt(i32_type, 0, 0),
+            c"thumb_addsub_is_zero".as_ptr(),
+        )
+    };
+    let carry = if subtract {
+        unsafe {
+            LLVMBuildICmp(
+                builder,
+                LLVMIntPredicate::LLVMIntUGE,
+                lhs,
+                rhs,
+                c"thumb_sub_no_borrow".as_ptr(),
+            )
+        }
+    } else {
+        unsafe {
+            LLVMBuildICmp(
+                builder,
+                LLVMIntPredicate::LLVMIntULT,
+                result,
+                lhs,
+                c"thumb_add_carry".as_ptr(),
+            )
+        }
+    };
+    let lhs_xor_rhs =
+        unsafe { LLVMBuildXor(builder, lhs, rhs, c"thumb_addsub_lhs_xor_rhs".as_ptr()) };
+    let lhs_xor_result = unsafe {
+        LLVMBuildXor(
+            builder,
+            lhs,
+            result,
+            c"thumb_addsub_lhs_xor_result".as_ptr(),
+        )
+    };
+    let overflow_lhs_xor_rhs = if subtract {
+        lhs_xor_rhs
+    } else {
+        unsafe { LLVMBuildNot(builder, lhs_xor_rhs, c"thumb_add_same_sign_mask".as_ptr()) }
+    };
+    let overflow_bits = unsafe {
+        LLVMBuildAnd(
+            builder,
+            overflow_lhs_xor_rhs,
+            lhs_xor_result,
+            c"thumb_addsub_overflow_bits".as_ptr(),
+        )
+    };
+    let overflow_sign = unsafe {
+        LLVMBuildAnd(
+            builder,
+            overflow_bits,
+            LLVMConstInt(i32_type, 0x8000_0000, 0),
+            c"thumb_addsub_overflow_sign".as_ptr(),
+        )
+    };
+    let overflow = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntNE,
+            overflow_sign,
+            LLVMConstInt(i32_type, 0, 0),
+            c"thumb_addsub_overflow".as_ptr(),
+        )
+    };
+    let zero_flag = unsafe {
+        LLVMBuildSelect(
+            builder,
+            zero,
+            LLVMConstInt(i32_type, 0x4000_0000, 0),
+            LLVMConstInt(i32_type, 0, 0),
+            c"thumb_addsub_zero_flag".as_ptr(),
+        )
+    };
+    let carry_flag = unsafe {
+        LLVMBuildSelect(
+            builder,
+            carry,
+            LLVMConstInt(i32_type, 0x2000_0000, 0),
+            LLVMConstInt(i32_type, 0, 0),
+            c"thumb_addsub_carry_flag".as_ptr(),
+        )
+    };
+    let overflow_flag = unsafe {
+        LLVMBuildSelect(
+            builder,
+            overflow,
+            LLVMConstInt(i32_type, 0x1000_0000, 0),
+            LLVMConstInt(i32_type, 0, 0),
+            c"thumb_addsub_overflow_flag".as_ptr(),
+        )
+    };
+    let cpsr_pointer =
+        unsafe { LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr()) };
+    let old_cpsr = unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+    let preserved_cpsr = unsafe {
+        LLVMBuildAnd(
+            builder,
+            old_cpsr,
+            LLVMConstInt(i32_type, u64::from(!0xF000_0000_u32), 0),
+            c"thumb_addsub_cpsr_without_nzcv".as_ptr(),
+        )
+    };
+    let negative_flag = unsafe {
+        LLVMBuildAnd(
+            builder,
+            result,
+            LLVMConstInt(i32_type, 0x8000_0000, 0),
+            c"thumb_addsub_negative_flag".as_ptr(),
+        )
+    };
+    let flags_nz = unsafe {
+        LLVMBuildOr(
+            builder,
+            negative_flag,
+            zero_flag,
+            c"thumb_addsub_flags_nz".as_ptr(),
+        )
+    };
+    let flags_nzc = unsafe {
+        LLVMBuildOr(
+            builder,
+            flags_nz,
+            carry_flag,
+            c"thumb_addsub_flags_nzc".as_ptr(),
+        )
+    };
+    let flags_nzcv = unsafe {
+        LLVMBuildOr(
+            builder,
+            flags_nzc,
+            overflow_flag,
+            c"thumb_addsub_flags_nzcv".as_ptr(),
+        )
+    };
+    let updated_cpsr = unsafe {
+        LLVMBuildOr(
+            builder,
+            preserved_cpsr,
+            flags_nzcv,
+            c"thumb_addsub_updated_cpsr".as_ptr(),
+        )
+    };
+    unsafe { LLVMBuildStore(builder, updated_cpsr, cpsr_pointer) };
+
+    let next_pc =
+        unsafe { LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0) };
+    unsafe {
+        commit_thumb_instruction(
+            context,
+            builder,
+            runtime_type,
+            exit_type,
+            runtime,
+            exit,
+            cycles,
+            i32_type,
+            next_pc,
+        )
+    };
     Ok(())
 }
 

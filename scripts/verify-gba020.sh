@@ -509,6 +509,88 @@ for mode in thumb-lsr-unsupported thumb-asr-unsupported thumb-lsl-register-unsup
     fi
 done
 
+verify_thumb_addsub() {
+    mode=$1
+    expected=$2
+    thumb_addsub_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_addsub_rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        cargo run --locked --quiet -p gba-recomp -- compile \
+            --rom "$thumb_addsub_rom" --out "$package" --opt "$optimization" --steps 8
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["abi_version"] == 4
+PY
+    done
+}
+verify_thumb_addsub thumb-addsub-add-register '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483647,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_addsub thumb-addsub-sub-register '{"status":"budget_exhausted","steps":8,"r0":1,"r1":4294967295,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_addsub thumb-addsub-add-imm-zero '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_addsub thumb-addsub-add-imm-seven '{"status":"budget_exhausted","steps":8,"r0":4294967295,"r1":4294967288,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_addsub thumb-addsub-sub-imm-zero '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0xA000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_addsub thumb-addsub-sub-imm-seven '{"status":"budget_exhausted","steps":8,"r0":4294967295,"r1":6,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_addsub thumb-addsub-add-imm-carry '{"status":"budget_exhausted","steps":8,"r0":0,"r1":4294967295,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_addsub thumb-addsub-sub-imm-overflow '{"status":"budget_exhausted","steps":8,"r0":2147483647,"r1":2147483648,"pc":"0x08000086","cpsr":"0x3000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+
+thumb_addsub_bx_rom="$root/target/gba020/thumb-addsub-literal-bx.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$thumb_addsub_bx_rom" --mode thumb-addsub-literal-bx
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-addsub-literal-bx-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$thumb_addsub_bx_rom" --out "$package" --opt "$optimization" --steps 6
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":6,"r0":134217928,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization 0x1C10 Thumb ADD/SUB -> BX fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["instructions_aot"] == 7
+PY
+done
+
+thumb_addsub_bad_rom="$root/target/gba020/thumb-addsub-out-of-family.gba"
+thumb_addsub_bad_package="$root/target/gba020/thumb-addsub-out-of-family-package"
+thumb_addsub_bad_output="$root/target/gba020/thumb-addsub-out-of-family.txt"
+python3 fixtures/tiny-counter/make_rom.py --out "$thumb_addsub_bad_rom" --mode thumb-addsub-out-of-family
+rm -rf "$thumb_addsub_bad_package"
+if cargo run --locked --quiet -p gba-recomp -- compile \
+    --rom "$thumb_addsub_bad_rom" --out "$thumb_addsub_bad_package" --opt O0 --steps 8 \
+    >"$thumb_addsub_bad_output" 2>&1; then
+    echo "out-of-family Thumb ADD/SUB fixture unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -q 'unsupported_thumb_instruction at 0x08000084' "$thumb_addsub_bad_output"; then
+    cat "$thumb_addsub_bad_output" >&2
+    echo "out-of-family Thumb ADD/SUB fixture did not report its source PC" >&2
+    exit 1
+fi
+if [ -e "$thumb_addsub_bad_package" ]; then
+    echo "out-of-family Thumb ADD/SUB failure left a partial package" >&2
+    exit 1
+fi
+
 thumb_ldr_rom="$root/target/gba020/thumb-ldr-literal-bx.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_ldr_rom" --mode thumb-ldr-literal-bx
 for optimization in O0 O2; do

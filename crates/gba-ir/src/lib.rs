@@ -99,6 +99,13 @@ pub enum ThumbOperation {
         rs: u8,
         amount: u8,
     },
+    AddSubtract {
+        rd: u8,
+        rn: u8,
+        operand: u8,
+        immediate: bool,
+        subtract: bool,
+    },
     BranchExchange {
         rm: u8,
     },
@@ -232,6 +239,7 @@ pub enum VerifyError {
     InvalidThumbPushRegisterList(u16),
     InvalidThumbImmediateRegister(u8),
     InvalidThumbRomLiteralRegister(u8),
+    InvalidThumbAddSubtractRegister(u8),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -271,6 +279,10 @@ impl fmt::Display for VerifyError {
             Self::InvalidThumbRomLiteralRegister(register) => write!(
                 f,
                 "Thumb ROM literal destination r{register} is not a low register"
+            ),
+            Self::InvalidThumbAddSubtractRegister(register) => write!(
+                f,
+                "Thumb ADD/SUB Format 2 register r{register} is not a low register"
             ),
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
@@ -454,6 +466,36 @@ impl ArmProgram {
                         )));
                     }
                 }
+                ThumbOperation::AddSubtract {
+                    rd,
+                    rn,
+                    operand,
+                    immediate,
+                    subtract,
+                } => {
+                    for register in [rd, rn, operand] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbAddSubtractRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_immediate = encoding & (1 << 10) != 0;
+                    let encoded_subtract = encoding & (1 << 9) != 0;
+                    let encoded_operand = ((encoding >> 6) & 0x7) as u8;
+                    let encoded_rn = ((encoding >> 3) & 0x7) as u8;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    if encoding & 0xF800 != 0x1800
+                        || immediate != encoded_immediate
+                        || subtract != encoded_subtract
+                        || operand != encoded_operand
+                        || rn != encoded_rn
+                        || rd != encoded_rd
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::BranchExchange { rm } => verify_operand_register(rm)?,
                 ThumbOperation::MovImmediate { rd, .. } if rd > 7 => {
                     return Err(VerifyError::InvalidThumbImmediateRegister(rd));
@@ -614,6 +656,15 @@ impl ArmProgram {
                     return Err(VerifyError::UnresolvedThumbRomLiteral(instruction.guest_pc));
                 }
                 ThumbOperation::LslImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::AddSubtract { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
                         return Err(VerifyError::MissingSuccessor {
@@ -894,6 +945,43 @@ pub fn execute_thumb_instruction(
                 | (result & 0x8000_0000)
                 | (u32::from(result == 0) << 30)
                 | carry;
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
+        ThumbOperation::AddSubtract {
+            rd,
+            rn,
+            operand,
+            immediate,
+            subtract,
+        } => {
+            let lhs = state.r[rn as usize];
+            let rhs = if immediate {
+                u32::from(operand)
+            } else {
+                state.r[operand as usize]
+            };
+            let (result, carry, overflow) = if subtract {
+                let result = lhs.wrapping_sub(rhs);
+                (
+                    result,
+                    lhs >= rhs,
+                    ((lhs ^ rhs) & (lhs ^ result) & 0x8000_0000) != 0,
+                )
+            } else {
+                let wide = u64::from(lhs) + u64::from(rhs);
+                let result = wide as u32;
+                (
+                    result,
+                    wide > u64::from(u32::MAX),
+                    (!(lhs ^ rhs) & (lhs ^ result) & 0x8000_0000) != 0,
+                )
+            };
+            let nzcv = (result & 0x8000_0000)
+                | (u32::from(result == 0) << 30)
+                | (u32::from(carry) << 29)
+                | (u32::from(overflow) << 28);
+            state.r[rd as usize] = result;
+            state.cpsr = (state.cpsr & !0xF000_0000) | nzcv;
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
         ThumbOperation::BranchExchange { rm } => {
@@ -1308,6 +1396,117 @@ mod tests {
     }
 
     #[test]
+    fn thumb_addsub_format2_sets_all_nzcv_flags_and_preserves_control_bits() {
+        let cases = [
+            (0, 1, 1, true, false, 0xFFFF_FFFF, 1, 0, 0x6000_00FF),
+            (
+                0,
+                1,
+                1,
+                true,
+                false,
+                0x7FFF_FFFF,
+                1,
+                0x8000_0000,
+                0x9000_00FF,
+            ),
+            (0, 1, 1, true, true, 0, 1, 0xFFFF_FFFF, 0x8000_00FF),
+            (
+                0,
+                1,
+                1,
+                true,
+                true,
+                0x8000_0000,
+                1,
+                0x7FFF_FFFF,
+                0x3000_00FF,
+            ),
+            (
+                0,
+                1,
+                0,
+                true,
+                false,
+                0x8000_0000,
+                0,
+                0x8000_0000,
+                0x8000_00FF,
+            ),
+            (
+                0,
+                1,
+                0,
+                true,
+                true,
+                0x8000_0000,
+                0,
+                0x8000_0000,
+                0xA000_00FF,
+            ),
+            (0, 1, 0, false, false, 2, 1, 3, 0x0000_00FF),
+            (1, 1, 0, false, true, 3, 1, 2, 0x2000_00FF),
+            (1, 1, 7, true, false, 5, 7, 12, 0x0000_00FF),
+        ];
+        for (rd, rn, operand, immediate, subtract, lhs, rhs, expected, expected_cpsr) in cases {
+            let guest_pc = 0x0800_0100;
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding: 0x1800
+                    | (u16::from(immediate) << 10)
+                    | (u16::from(subtract) << 9)
+                    | (u16::from(operand) << 6)
+                    | (u16::from(rn) << 3)
+                    | u16::from(rd),
+                operation: ThumbOperation::AddSubtract {
+                    rd,
+                    rn,
+                    operand,
+                    immediate,
+                    subtract,
+                },
+            };
+            let mut cpu = state(guest_pc);
+            cpu.cpsr = 0xF000_00FF;
+            cpu.r[rn as usize] = lhs;
+            if !immediate {
+                cpu.r[operand as usize] = rhs;
+            }
+            let before = cpu.r;
+            execute_thumb_instruction(&mut cpu, instruction).unwrap();
+            assert_eq!(cpu.r[rd as usize], expected);
+            assert_eq!(cpu.cpsr, expected_cpsr);
+            assert_eq!(cpu.cpsr & 0x0FFF_FFFF, 0x0000_00FF);
+            for register in 0..16 {
+                if register != usize::from(rd) && register != usize::from(REG_PC) {
+                    assert_eq!(cpu.r[register], before[register]);
+                }
+            }
+            assert_eq!(cpu.r[REG_PC as usize], guest_pc + 2);
+            assert_eq!(cpu.guest_cycle, 6);
+        }
+
+        let guest_pc = 0x0800_0100;
+        let subtract_zero = ThumbInstruction {
+            guest_pc,
+            encoding: 0x1E09,
+            operation: ThumbOperation::AddSubtract {
+                rd: 1,
+                rn: 1,
+                operand: 0,
+                immediate: true,
+                subtract: true,
+            },
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr = 0x0000_00FF;
+        cpu.r[1] = 9;
+        execute_thumb_instruction(&mut cpu, subtract_zero).unwrap();
+        assert_eq!(cpu.r[1], 9);
+        assert_eq!(cpu.cpsr, 0x2000_00FF);
+    }
+
+    #[test]
     fn thumb_rom_literal_loads_constant_without_changing_flags() {
         let guest_pc = 0x0800_0086;
         let instruction = ThumbInstruction {
@@ -1457,6 +1656,137 @@ mod tests {
             Err(VerifyError::MissingSuccessor {
                 pc: 0x0800_0100,
                 target: 0x0800_0102,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_addsub_fields_alignment_and_fallthrough() {
+        let guest_pc = 0x0800_0100;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x1C10,
+            operation: ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 2,
+                operand: 0,
+                immediate: true,
+                subtract: false,
+            },
+        };
+        let arm_loop = ArmInstruction {
+            guest_pc: 0x0800_0080,
+            encoding: 0xEAFF_FFFE,
+            condition: 14,
+            operation: ArmOperation::Branch {
+                target: 0x0800_0080,
+                link: false,
+            },
+        };
+        let bx = ThumbInstruction {
+            guest_pc: guest_pc + 2,
+            encoding: 0x4700,
+            operation: ThumbOperation::BranchExchange { rm: 0 },
+        };
+        let valid_program = || ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![arm_loop],
+            thumb_instructions: vec![instruction, bx],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Arm,
+                target_pc: arm_loop.guest_pc,
+            }],
+        };
+        assert!(valid_program().verify().is_ok());
+
+        let mut mismatched = valid_program();
+        mismatched.thumb_instructions[0].operation = ThumbOperation::AddSubtract {
+            rd: 0,
+            rn: 1,
+            operand: 0,
+            immediate: true,
+            subtract: false,
+        };
+        assert_eq!(
+            mismatched.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x1C10))
+        );
+
+        for operation in [
+            ThumbOperation::AddSubtract {
+                rd: 1,
+                rn: 2,
+                operand: 0,
+                immediate: true,
+                subtract: false,
+            },
+            ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 2,
+                operand: 1,
+                immediate: true,
+                subtract: false,
+            },
+            ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 2,
+                operand: 0,
+                immediate: false,
+                subtract: false,
+            },
+            ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 2,
+                operand: 0,
+                immediate: true,
+                subtract: true,
+            },
+        ] {
+            let mut mismatched_field = valid_program();
+            mismatched_field.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                mismatched_field.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(0x1C10))
+            );
+        }
+
+        let mut out_of_family = valid_program();
+        out_of_family.thumb_instructions[0].encoding = 0x4008;
+        assert_eq!(
+            out_of_family.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x4008))
+        );
+
+        let mut invalid_register = valid_program();
+        invalid_register.thumb_instructions[0].operation = ThumbOperation::AddSubtract {
+            rd: 8,
+            rn: 2,
+            operand: 0,
+            immediate: true,
+            subtract: false,
+        };
+        assert_eq!(
+            invalid_register.verify(),
+            Err(VerifyError::InvalidThumbAddSubtractRegister(8))
+        );
+
+        let mut misaligned = valid_program();
+        misaligned.thumb_instructions[0].guest_pc += 1;
+        assert_eq!(
+            misaligned.verify(),
+            Err(VerifyError::MisalignedThumbPc(guest_pc + 1))
+        );
+
+        let mut missing_fallthrough = valid_program();
+        missing_fallthrough.thumb_instructions.pop();
+        missing_fallthrough.branch_targets.clear();
+        assert_eq!(
+            missing_fallthrough.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
             })
         );
     }

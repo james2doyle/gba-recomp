@@ -158,6 +158,19 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             "Thumb address 0x{guest_pc:08X} is not halfword aligned"
         ));
     }
+    if encoding & 0xF800 == 0x1800 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::AddSubtract {
+                rd: (encoding & 0x7) as u8,
+                rn: ((encoding >> 3) & 0x7) as u8,
+                operand: ((encoding >> 6) & 0x7) as u8,
+                immediate: encoding & (1 << 10) != 0,
+                subtract: encoding & (1 << 9) != 0,
+            },
+        });
+    }
     if encoding & 0xF800 == 0 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -433,6 +446,59 @@ mod tests {
         for encoding in [0x0849, 0x1049, 0x4089] {
             assert!(decode_thumb(0x0800_0084, encoding).is_err());
         }
+    }
+
+    #[test]
+    fn decodes_all_thumb_add_sub_format_2_variants() {
+        let cases = [
+            (
+                0x1808,
+                ThumbOperation::AddSubtract {
+                    rd: 0,
+                    rn: 1,
+                    operand: 0,
+                    immediate: false,
+                    subtract: false,
+                },
+            ),
+            (
+                0x1A08,
+                ThumbOperation::AddSubtract {
+                    rd: 0,
+                    rn: 1,
+                    operand: 0,
+                    immediate: false,
+                    subtract: true,
+                },
+            ),
+            (
+                0x1C10,
+                ThumbOperation::AddSubtract {
+                    rd: 0,
+                    rn: 2,
+                    operand: 0,
+                    immediate: true,
+                    subtract: false,
+                },
+            ),
+            (
+                0x1FC8,
+                ThumbOperation::AddSubtract {
+                    rd: 0,
+                    rn: 1,
+                    operand: 7,
+                    immediate: true,
+                    subtract: true,
+                },
+            ),
+        ];
+        for (encoding, expected) in cases {
+            assert_eq!(
+                decode_thumb(0x0800_0084, encoding).unwrap().operation,
+                expected
+            );
+        }
+        assert!(decode_thumb(0x0800_0084, 0x4008).is_err());
     }
 
     #[test]

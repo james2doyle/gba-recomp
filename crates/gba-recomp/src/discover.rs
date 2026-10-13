@@ -198,6 +198,26 @@ impl AbstractValue {
         }
     }
 
+    fn wrapping_add_subtract(&self, other: &Self, subtract: bool) -> Self {
+        let (Self::Constants(left), Self::Constants(right)) = (self, other) else {
+            return Self::Unknown;
+        };
+        let mut values = BTreeSet::new();
+        for lhs in left {
+            for rhs in right {
+                values.insert(if subtract {
+                    lhs.wrapping_sub(*rhs)
+                } else {
+                    lhs.wrapping_add(*rhs)
+                });
+                if values.len() > MAX_CONSTANT_TARGETS {
+                    return Self::Unknown;
+                }
+            }
+        }
+        Self::Constants(values)
+    }
+
     fn values(&self) -> Option<&BTreeSet<u32>> {
         match self {
             Self::Unknown => None,
@@ -400,6 +420,29 @@ fn process_thumb_instruction(
         ThumbOperation::LoadRomLiteral { rd, value, .. } => {
             let mut next_state = state.clone();
             next_state.set_constant(rd, value);
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
+        ThumbOperation::AddSubtract {
+            rd,
+            rn,
+            operand,
+            immediate,
+            subtract,
+        } => {
+            let rhs = if immediate {
+                AbstractValue::constant(u32::from(operand))
+            } else {
+                state.registers[operand as usize].clone()
+            };
+            let result = state.registers[rn as usize].wrapping_add_subtract(&rhs, subtract);
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = result;
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
@@ -670,6 +713,22 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn thumb_addsub_bx_rom() -> RomImage {
+        let mut bytes = counter_rom().bytes().to_vec();
+        let thumb = [0x4A14_u16, 0x1C10, 0x4700]; // LDR r2,[PC,#0x50]; ADDS r0,r2,#0; BX r0.
+        for (index, halfword) in thumb.into_iter().enumerate() {
+            let offset = 0x84 + index * 2;
+            bytes[offset..offset + 2].copy_from_slice(&halfword.to_le_bytes());
+        }
+        bytes[0xC0..0xC4].copy_from_slice(&0xE59F_2008_u32.to_le_bytes());
+        bytes[0xC4..0xC8].copy_from_slice(&0xE12F_FF12_u32.to_le_bytes());
+        bytes[0xC8..0xCC].copy_from_slice(&0xEAFF_FFFE_u32.to_le_bytes());
+        bytes[0xD0..0xD4].copy_from_slice(&0x0800_0085_u32.to_le_bytes());
+        bytes[0xD8..0xDC].copy_from_slice(&0x0800_00C8_u32.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     #[test]
     fn discovers_entry_branch_loop_and_fallthrough() {
         let program = discover_arm_program(&counter_rom()).unwrap();
@@ -740,6 +799,138 @@ mod tests {
         }));
         assert_eq!(program.thumb_instructions.len(), 2);
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn thumb_addsub_zero_immediate_propagates_literal_to_valid_bx_target() {
+        let program = discover_arm_program(&thumb_addsub_bx_rom()).unwrap();
+        assert!(program.thumb_instructions.iter().any(|instruction| {
+            instruction.guest_pc == ROM_BASE + 0x86
+                && instruction.operation
+                    == ThumbOperation::AddSubtract {
+                        rd: 0,
+                        rn: 2,
+                        operand: 0,
+                        immediate: true,
+                        subtract: false,
+                    }
+        }));
+        assert!(program.branch_targets.contains(&StaticBranchTarget {
+            source_mode: IsaMode::Thumb,
+            source_pc: ROM_BASE + 0x88,
+            target_mode: IsaMode::Arm,
+            target_pc: ROM_BASE + 0xC8,
+        }));
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn thumb_addsub_constant_propagation_invalidates_unknown_inputs() {
+        let image = thumb_addsub_bx_rom();
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x1C10,
+            operation: ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 2,
+                operand: 0,
+                immediate: true,
+                subtract: false,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(2, 0xFFFF_FFFF);
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
+            AbstractValue::constant(0xFFFF_FFFF)
+        );
+
+        state.registers[2] = AbstractValue::Unknown;
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
+            AbstractValue::Unknown
+        );
+
+        let add_wrap = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x1C50,
+            operation: ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 2,
+                operand: 1,
+                immediate: true,
+                subtract: false,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(2, u32::MAX);
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            add_wrap,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
+            AbstractValue::constant(0)
+        );
+
+        let register_subtract = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x1AD0,
+            operation: ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 2,
+                operand: 3,
+                immediate: false,
+                subtract: true,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(2, 1);
+        state.set_constant(3, 2);
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            register_subtract,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
+            AbstractValue::constant(u32::MAX)
+        );
     }
 
     #[test]

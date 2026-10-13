@@ -160,6 +160,57 @@ def generate(mode: str = "valid") -> bytes:
             "<4I", 0x08000085, 0x080000E8, source, compare
         )
         image[0xE8:0xEC] = struct.pack("<I", 0xEAFFFFFE)  # B self.
+    elif mode in (
+        "thumb-addsub-add-register",
+        "thumb-addsub-sub-register",
+        "thumb-addsub-add-imm-zero",
+        "thumb-addsub-add-imm-seven",
+        "thumb-addsub-sub-imm-zero",
+        "thumb-addsub-sub-imm-seven",
+        "thumb-addsub-add-imm-carry",
+        "thumb-addsub-sub-imm-overflow",
+        "thumb-addsub-out-of-family",
+    ):
+        cases = {
+            "thumb-addsub-add-register": (0x1808, 0x7FFFFFFF, 1),
+            "thumb-addsub-sub-register": (0x1A09, 0, 1),
+            "thumb-addsub-add-imm-zero": (0x1C09, 0x80000000, 0x80000000),
+            "thumb-addsub-add-imm-seven": (0x1DC8, 0xFFFFFFF8, 0x80000000),
+            "thumb-addsub-sub-imm-zero": (0x1E09, 0x80000000, 0x80000000),
+            "thumb-addsub-sub-imm-seven": (0x1FC8, 6, 0x80000000),
+            "thumb-addsub-add-imm-carry": (0x1C48, 0xFFFFFFFF, 0x80000000),
+            "thumb-addsub-sub-imm-overflow": (0x1E48, 0x80000000, 0x80000000),
+            "thumb-addsub-out-of-family": (0x4008, 0x12345678, 0x80000000),
+        }
+        encoding, source, compare = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # ADD/SUB Format 2; BX r3.
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE59F1018,  # LDR r1,[pc,#0x18] -> source at 0xE0.
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> compare seed at 0xE4.
+            0xE3500001,  # CMP r0,#1 prepares initial C/V.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE59F3004,  # LDR r3,[pc,#4] -> ARM loop at 0xE8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xE8] = struct.pack(
+            "<4I", 0x08000085, 0x080000E8, source, compare
+        )
+        image[0xE8:0xEC] = struct.pack("<I", 0xEAFFFFFE)  # B self.
+    elif mode == "thumb-addsub-literal-bx":
+        image[0x84:0x8A] = struct.pack(
+            "<3H", 0x4A14, 0x1C10, 0x4700
+        )  # LDR r2 literal; ADDS r0,r2,#0; BX r0.
+        image[0xC0:0xCC] = struct.pack(
+            "<3I",
+            0xE59F2008,  # LDR r2,[pc,#8] -> Thumb entry | 1 at 0xD0.
+            0xE12FFF12,  # BX r2.
+            0xEAFFFFFE,  # ARM target: B self.
+        )
+        image[0xD0:0xD4] = struct.pack("<I", 0x08000085)
+        image[0xD8:0xDC] = struct.pack("<I", 0x080000C8)
     elif mode in ("thumb-ldr-literal-bx", "thumb-ldr-literal-out-of-rom"):
         literal_load = 0x4916 if mode == "thumb-ldr-literal-bx" else 0x49FF
         image[0x86:0x8A] = struct.pack(
@@ -341,6 +392,16 @@ def main() -> None:
             "thumb-lsr-unsupported",
             "thumb-asr-unsupported",
             "thumb-lsl-register-unsupported",
+            "thumb-addsub-add-register",
+            "thumb-addsub-sub-register",
+            "thumb-addsub-add-imm-zero",
+            "thumb-addsub-add-imm-seven",
+            "thumb-addsub-sub-imm-zero",
+            "thumb-addsub-sub-imm-seven",
+            "thumb-addsub-add-imm-carry",
+            "thumb-addsub-sub-imm-overflow",
+            "thumb-addsub-out-of-family",
+            "thumb-addsub-literal-bx",
             "thumb-ldr-literal-bx",
             "thumb-ldr-literal-out-of-rom",
             "thumb-bl",
