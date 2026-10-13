@@ -1,0 +1,15 @@
+[package]
+name = "gba-llvm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+gba-ir.workspace = true
+gba-runtime-abi.workspace = true
+llvm-sys.workspace = true
+
+[lints]
+workspace = true

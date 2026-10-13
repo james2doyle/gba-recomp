@@ -1,0 +1,12 @@
+{
+  "size": 16777216,
+  "sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+  "title": "POKEMON LEAF",
+  "game_code": "BPGE",
+  "maker": "01",
+  "fixed": 150,
+  "version": 1,
+  "header_checksum": 128,
+  "calculated_checksum": 128,
+  "entry_word": "0xea00007f"
+}

@@ -1,0 +1,9 @@
+version = 1
+rom_sha256 = "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825"
+
+# Exemplo de preferências do usuário, não recomendação técnica para este jogo.
+[audio]
+volume = 80
+
+[video]
+integer_scale = true

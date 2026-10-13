@@ -1,0 +1,43 @@
+# Intake real; tuning e compatibilidade ainda não qualificados.
+format = "gba-recomp-profile"
+version = 1
+id = "leafgreen-bpge-rev1"
+status = "draft"
+
+[image]
+sha256 = "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825"
+size = 16777216
+game_code = "BPGE"
+revision = 1
+
+[analysis]
+max_blocks = 100000
+
+[[analysis.seeds]]
+address = 0x08000000
+mode = "arm"
+origin = "header"
+evidence = "KNO-004"
+
+[runtime]
+execution_mode = "strict-aot"
+bios_policy = "hle"
+hle_contract = "unresolved"
+backup = "unresolved"
+timing = "accurate"
+rtc = "unresolved"
+
+[compiler]
+optimization = "O2"
+sharding = "deterministic"
+
+[presentation_defaults.video]
+aspect = "3:2"
+filter = "nearest"
+
+[evidence]
+notes = ["KNO-004", "KNO-002"]
+backup_candidate = "flash-128k"
+backup_basis = "FLASH1M_V103 signature; requires protocol validation"
+coverage = "header-only"
+rea_unknown = "unk_6ed4d5b1e57239579ee9218986275269f540616e5858fb89be3b27cd8e568c28"

@@ -1,0 +1,45 @@
+use std::env;
+use std::path::PathBuf;
+use std::process::Command;
+
+fn main() {
+    println!("cargo:rerun-if-env-changed=LLVM_CONFIG");
+    println!("cargo:rerun-if-env-changed=LLVM_SYS_231_PREFIX");
+    println!("cargo:rerun-if-env-changed=SDKROOT");
+
+    let target_os = env::var("CARGO_CFG_TARGET_OS").expect("Cargo sets CARGO_CFG_TARGET_OS");
+    println!("cargo:rustc-link-arg=-fuse-ld=lld");
+
+    match target_os.as_str() {
+        "macos" => {
+            let sysroot = env::var_os("SDKROOT")
+                .map(PathBuf::from)
+                .filter(|path| path.is_dir())
+                .unwrap_or_else(macos_sdk_path);
+            println!("cargo:rustc-link-arg=-isysroot");
+            println!("cargo:rustc-link-arg={}", sysroot.display());
+            println!("cargo:rustc-link-arg=-mmacosx-version-min=14.0.0");
+        }
+        "linux" => {}
+        other => panic!("unsupported compiler host OS: {other}"),
+    }
+}
+
+fn macos_sdk_path() -> PathBuf {
+    let output = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-path"])
+        .output()
+        .unwrap_or_else(|error| panic!("cannot query the macOS SDK with xcrun: {error}"));
+    if !output.status.success() {
+        panic!("xcrun --sdk macosx --show-sdk-path failed");
+    }
+    let path = String::from_utf8(output.stdout)
+        .expect("xcrun returned non-UTF-8 SDK path")
+        .trim()
+        .to_owned();
+    let path = PathBuf::from(path);
+    if !path.is_dir() {
+        panic!("macOS SDK does not exist: {}", path.display());
+    }
+    path
+}

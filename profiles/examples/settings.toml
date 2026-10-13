@@ -1,0 +1,36 @@
+version = 1
+
+[video]
+fullscreen = false
+integer_scale = true
+window_scale = 3
+aspect = "3:2"
+filter = "nearest"
+color_correction = "off"
+lcd_response = "off"
+vsync = true
+
+[audio]
+device = "default"
+volume = 100
+mute = false
+latency_ms = 60
+preferred_sample_rate = 48000
+
+[input]
+preferred_gamepad = "auto"
+deadzone = 0.20
+opposite_directions = "neutral"
+menu_key = "Escape"
+
+[input.keyboard]
+a = "KeyX"
+b = "KeyZ"
+l = "KeyA"
+r = "KeyS"
+start = "Enter"
+select = "Backspace"
+up = "ArrowUp"
+down = "ArrowDown"
+left = "ArrowLeft"
+right = "ArrowRight"

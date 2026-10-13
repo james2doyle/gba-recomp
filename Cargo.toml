@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "crates/gba-ir",
+    "crates/gba-runtime-abi",
+    "crates/gba-llvm",
+    "crates/gba-recomp",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+gba-ir = { path = "crates/gba-ir" }
+gba-runtime-abi = { path = "crates/gba-runtime-abi" }
+gba-llvm = { path = "crates/gba-llvm" }
+llvm-sys = { version = "=231.0.1", default-features = false, features = ["no-llvm-linking", "disable-alltargets-init"] }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
