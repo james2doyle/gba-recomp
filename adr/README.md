@@ -17,3 +17,4 @@
 - [ADR-015-thumb-bl-static-pair](ADR-015-thumb-bl-static-pair.md)
 - [ADR-016-versioned-hle-state](ADR-016-versioned-hle-state.md)
 - [ADR-017-additive-halfword-store-abi](ADR-017-additive-halfword-store-abi.md)
+- [ADR-018-additive-byte-store-abi](ADR-018-additive-byte-store-abi.md)

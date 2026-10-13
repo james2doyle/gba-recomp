@@ -1,0 +1,92 @@
+{
+  "record_type": "local-build-and-static-discovery",
+  "date": "2026-10-13",
+  "source_commit": "0a241c96f9b04fa4cea08d2169a297e967b09548",
+  "spec_commit": "38ad332e413563b67d2b25c098ada7c9a236f772",
+  "environment": {
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "rust": "1.99.0",
+    "llvm_backend": "23.1.3",
+    "target": "aarch64-apple-darwin"
+  },
+  "parallelism": {
+    "cargo_jobs": 10,
+    "lld_threads": 10,
+    "measurement": "Configured to use the host's 10 logical CPUs; no sustained throughput benchmark was made."
+  },
+  "rust_tests": {
+    "command": "cargo test --locked --workspace",
+    "result": "passed",
+    "gba_ir_tests": 34,
+    "gba_recomp_tests": 38,
+    "build_time_seconds": 77
+  },
+  "headless_gate": {
+    "script": "scripts/verify-gba020.sh",
+    "host": "Darwin/arm64",
+    "result": "passed",
+    "strict_aot": true,
+    "optimization_levels": ["O0", "O2"],
+    "positive_fixtures": {
+      "thumb-strh-ewram-zero-even": {
+        "rom_sha256": "315982a5f2eb9c5689280cd14608b19e914e59380889695b7d9f7ba1a3ff3102",
+        "expected_state": "EWRAM word0=0x0000ABCD; flags, registers, PC, and cycles checked",
+        "O0": {"game_sha256": "6334416207e2822210f4f7014de5098c1e2cb79b9d7367bd52cf9439287614ea", "manifest_sha256": "6d7ac305f6a95775351ffaa573c586a8fb4d147f5383653b3971cee160b38421"},
+        "O2": {"game_sha256": "db819954e76262256f431a70720fae1eb39f3ed523c47f7078d823fada8bca5c", "manifest_sha256": "403e61d14a36a6569e035b544f466a257cc7b898e57781a2702e061bdb5e46f5"}
+      },
+      "thumb-strh-ewram-thirtyone-odd-alias": {
+        "rom_sha256": "bcbfb4993ecca29c9d189823e391f28f28747aa372ae372d3098441f294dc76c",
+        "expected_state": "odd EA aligns down to EWRAM word0 halfword 0xFFC3; Rd==Rb is checked",
+        "O0": {"game_sha256": "b468857fb7737949b685690355a69161f09d8cb577ed4b5ce5653952f7b0a43c", "manifest_sha256": "059fdb6f2ce0ea4a3c3ec753a1150b8d48ab65ab8328fbc7199d30bdbe6832d1"},
+        "O2": {"game_sha256": "3816f246ea407c1081b3c81d6c62f2a1eb32dcfd6bd281ae2e1b090dcd136f24", "manifest_sha256": "82e8c5d837e7a5a9f00e077640139a3889f82a0f509abfdbe0cd114f0412e1fa"}
+      },
+      "thumb-strh-iwram-zero-odd": {
+        "rom_sha256": "e08ce593f1152c09e0d244d652009354568c22fa395452f1a1971992599e29f1",
+        "expected_state": "odd EA aligns down to IWRAM word0 halfword 0xBEEF",
+        "O0": {"game_sha256": "f5e7d5dd3f2fbe1fffbc4207a3d09a7315e30177ec3c91d9557f11970a38871c", "manifest_sha256": "f26ca933b171a848e03793f9eee79c0778c1d047f0f4ac80286777e7f5988152"},
+        "O2": {"game_sha256": "a3554b575235828c2951bb1098400f91e20a5f5d223023ba72b4104588376616", "manifest_sha256": "887db9676a7804929fbfceb291bc5c7f403f2592f575d5d917b927e4bf4ddb15"}
+      },
+      "thumb-strh-iwram-thirtyone-even": {
+        "rom_sha256": "3415552be7c154c58764aa5aeec2df70bd73746ec64af76c4df1ed3348c48bde",
+        "expected_state": "IWRAM final halfword becomes 0x1357",
+        "O0": {"game_sha256": "f5523737ccde865dae61c0f1ab1b03941b0ac4c7249c88aeb118871dea0cdf0e", "manifest_sha256": "d5478c1bc5f07d21897da93ab8b4ee7be685dd024bb70f46edcf98a92f36cbba"},
+        "O2": {"game_sha256": "d4cb33720524e077ee2996d1d33950cc852c4968f0f7e3b4281f51730fd1cf77", "manifest_sha256": "194a242af5e9ffd2352809c78229b30139adc544e30ce07f92136b98d74f7965"}
+      }
+    },
+    "runtime_fault": {
+      "rom_sha256": "831f63587ba2ce3317495e91146d1afd3531c3b4159715cb2bb52e8175ad7563",
+      "manifest_sha256": "2ccd505b024d70b6325d415291782316fe44d778c07d70a1480b932732a03fed",
+      "game_sha256": "b14e7107716dcb4d5527748fefd59ba8dedf9dff1e091dc11edcfaf17b547c8c",
+      "stdout": "guest stopped: reason=4 pc=0x08000084 address=0x04000001 fault_code=5"
+    },
+    "negative_fixtures": {
+      "thumb-ldrh-unsupported": {"rom_sha256": "99100a444761ebac38ccfc5932e95aba74ac77e96904eb57cd19931dbd4915f5", "package_directory_created": false},
+      "thumb-strh-register-unsupported": {"rom_sha256": "ca97c1ff307fc1232ff936f433b7e0e07e67095c70d0d4ebcadcc7bb727a54ad", "package_directory_created": false}
+    }
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-strh-0a241c9 --opt O2 --steps 100",
+    "result": "rejected before package creation",
+    "reported_pc": "0x08000998",
+    "raw_halfword": "0x7005",
+    "diagnostic": "unsupported_thumb_instruction",
+    "classification": "Thumb Format 9 STRB r5,[r0,#0]; inferred from encoding and corroborated by SRC-29",
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea_decompilation": false
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  },
+  "limitations": [
+    "Fixtures validate the SPEC-027 strict-AOT halfword-store subset only on macOS arm64.",
+    "LeafGreen records static discovery only; no runtime register values, package generation, or game execution were observed.",
+    "The STRB classification at 0x08000998 is an inference from encoding corroborated by pinned source, not dynamic reachability.",
+    "No differential run against hardware was performed.",
+    "Linux x86-64 qualification remains pending."
+  ]
+}
