@@ -8,6 +8,8 @@ Preservar CPU e efeitos de hardware através de otimizações LLVM e emitir obje
 
 ## Requisitos normativos
 
+- ABI-07: ABI v4 preserva GbaRuntimeV3 como prefixo, acrescenta estado de máquina versionado e emite gba_block_v4, conforme [SPEC-023](SPEC-023-thumb-swi-register-ram-reset.md) e [ADR-016](../adr/ADR-016-versioned-hle-state.md). Objetos v1–v4 não podem ser misturados; helpers v3 recebem somente o prefixo verificado.
+
 - IR-01: GBA IR MUST ter versão, tipos de largura explícita, blocos, parâmetros SSA, terminadores e operações para registradores/flags, load/store guest, controle, ticks/checkpoints e exceções. Verificador MUST rejeitar tipo incorreto, uso sem definição, CFG inválido e efeito sem ordenação.
 - IR-02: efeitos de memória, eventos, IRQ e guard MUST formar sequência explícita; barreiras semânticas não podem desaparecer por considerar helper puro. Otimizações MAY eliminar flags mortas apenas quando nenhum checkpoint/exception/fallback observa o estado intermediário.
 - IR-03: lowering MUST usar i32 para endereços guest e auxiliares i64 quando necessário. Aritmética modular não recebe `nsw`/`nuw` sem prova. Shifts fora da largura e divisões excepcionais de helpers BIOS MUST ser tratados antes da operação LLVM que produziria poison/UB. `freeze` não substitui semântica guest.
