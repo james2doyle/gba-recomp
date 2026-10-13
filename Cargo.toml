@@ -17,6 +17,7 @@ license = "MIT OR Apache-2.0"
 gba-ir = { path = "crates/gba-ir" }
 gba-runtime-abi = { path = "crates/gba-runtime-abi" }
 gba-llvm = { path = "crates/gba-llvm" }
+sha2 = "=0.10.9"
 llvm-sys = { version = "=231.0.1", default-features = false, features = ["no-llvm-linking", "disable-alltargets-init"] }
 
 [workspace.lints.rust]

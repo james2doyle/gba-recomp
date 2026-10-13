@@ -4,7 +4,7 @@ use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr;
 
-use gba_ir::GbaIrBlock;
+use gba_ir::{ArmInstruction, ArmOperation, ArmProgram, GbaIrBlock};
 use llvm_sys::LLVMIntPredicate;
 use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyModule};
 use llvm_sys::core::*;
@@ -92,6 +92,594 @@ pub fn emit_block(
     // All LLVM handles are created, used, and disposed within this call. The only
     // guest addresses in the module are integer register values, never host pointers.
     unsafe { emit_block_llvm(block, output, optimization) }
+}
+
+pub fn emit_arm_program(
+    program: &ArmProgram,
+    output: &Path,
+    optimization: Optimization,
+) -> Result<EmitInfo, String> {
+    program.verify().map_err(|error| error.to_string())?;
+    if output.exists() {
+        std::fs::remove_file(output)
+            .map_err(|error| format!("cannot replace {}: {error}", output.display()))?;
+    }
+    let parent = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
+    unsafe { emit_arm_program_llvm(program, output, optimization) }
+}
+
+unsafe fn emit_arm_program_llvm(
+    program: &ArmProgram,
+    output: &Path,
+    optimization: Optimization,
+) -> Result<EmitInfo, String> {
+    let target = native_target();
+    let triple = CString::new(target.triple).expect("static triple contains no NUL");
+    let cpu = CString::new(target.cpu).expect("static CPU contains no NUL");
+    let features = CString::new(target.features).expect("static features contain no NUL");
+    let target_name = triple.to_string_lossy();
+    let target_prefix = if target.triple.starts_with("x86_64-") {
+        "x86"
+    } else {
+        "aarch64"
+    };
+    unsafe { initialize_backend(target_prefix) }?;
+    let codegen_level = match optimization {
+        Optimization::O0 => LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
+        Optimization::O2 => LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
+    };
+
+    let mut llvm_target = ptr::null_mut();
+    let mut error_message = ptr::null_mut();
+    let target_error =
+        unsafe { LLVMGetTargetFromTriple(triple.as_ptr(), &mut llvm_target, &mut error_message) };
+    if target_error != 0 {
+        return Err(unsafe { take_llvm_message(error_message) });
+    }
+    let machine = unsafe {
+        LLVMCreateTargetMachine(
+            llvm_target,
+            triple.as_ptr(),
+            cpu.as_ptr(),
+            features.as_ptr(),
+            codegen_level,
+            LLVMRelocMode::LLVMRelocPIC,
+            LLVMCodeModel::LLVMCodeModelSmall,
+        )
+    };
+    if machine.is_null() {
+        return Err(format!(
+            "LLVM could not create TargetMachine for {target_name}"
+        ));
+    }
+    let context = unsafe { LLVMContextCreate() };
+    if context.is_null() {
+        unsafe { LLVMDisposeTargetMachine(machine) };
+        return Err("LLVMContextCreate returned null".to_owned());
+    }
+    let module_name = CString::new("gba_aot_program").expect("static name contains no NUL");
+    let module = unsafe { LLVMModuleCreateWithNameInContext(module_name.as_ptr(), context) };
+    if module.is_null() {
+        unsafe {
+            LLVMContextDispose(context);
+            LLVMDisposeTargetMachine(machine);
+        }
+        return Err("LLVMModuleCreateWithNameInContext returned null".to_owned());
+    }
+    let builder = unsafe { LLVMCreateBuilderInContext(context) };
+    if builder.is_null() {
+        unsafe {
+            LLVMDisposeModule(module);
+            LLVMContextDispose(context);
+            LLVMDisposeTargetMachine(machine);
+        }
+        return Err("LLVMCreateBuilderInContext returned null".to_owned());
+    }
+    let target_data = unsafe { LLVMCreateTargetDataLayout(machine) };
+    if target_data.is_null() {
+        unsafe {
+            LLVMDisposeBuilder(builder);
+            LLVMDisposeModule(module);
+            LLVMContextDispose(context);
+            LLVMDisposeTargetMachine(machine);
+        }
+        return Err("LLVMCreateTargetDataLayout returned null".to_owned());
+    }
+    let layout_raw = unsafe { LLVMCopyStringRepOfTargetData(target_data) };
+    if layout_raw.is_null() {
+        unsafe {
+            LLVMDisposeTargetData(target_data);
+            LLVMDisposeBuilder(builder);
+            LLVMDisposeModule(module);
+            LLVMContextDispose(context);
+            LLVMDisposeTargetMachine(machine);
+        }
+        return Err("LLVMCopyStringRepOfTargetData returned null".to_owned());
+    }
+    let data_layout = unsafe { CStr::from_ptr(layout_raw) }
+        .to_string_lossy()
+        .into_owned();
+    let layout = CString::new(data_layout.as_str()).expect("LLVM DataLayout contains no NUL");
+    unsafe {
+        LLVMSetTarget(module, triple.as_ptr());
+        LLVMSetDataLayout(module, layout.as_ptr());
+        LLVMDisposeMessage(layout_raw);
+    }
+
+    let i32_type = unsafe { LLVMInt32TypeInContext(context) };
+    let i64_type = unsafe { LLVMInt64TypeInContext(context) };
+    let regs_type = unsafe { LLVMArrayType2(i32_type, 16) };
+    let mut runtime_fields = [regs_type, i32_type, i32_type, i64_type];
+    let runtime_type =
+        unsafe { LLVMStructTypeInContext(context, runtime_fields.as_mut_ptr(), 4, 0) };
+    let mut exit_fields = [i32_type, i32_type];
+    let exit_type = unsafe { LLVMStructTypeInContext(context, exit_fields.as_mut_ptr(), 2, 0) };
+    let result = unsafe {
+        validate_abi_layout(target_data, runtime_type, exit_type)
+            .and_then(|()| {
+                build_arm_program_function(
+                    context,
+                    module,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    program,
+                )
+            })
+            .and_then(|()| verify_module(module, "before optimization"))
+            .and_then(|()| run_optimization(module, machine, optimization))
+            .and_then(|()| verify_module(module, "after optimization"))
+            .and_then(|()| emit_object(machine, module, output))
+    };
+    unsafe {
+        LLVMDisposeTargetData(target_data);
+        LLVMDisposeBuilder(builder);
+        LLVMDisposeModule(module);
+        LLVMContextDispose(context);
+        LLVMDisposeTargetMachine(machine);
+    }
+    result.map(|()| EmitInfo {
+        llvm_version: env!("GBA_LLVM_VERSION"),
+        triple: target.triple,
+        cpu: target.cpu,
+        object_format: target.object_format,
+        data_layout,
+        optimization,
+    })
+}
+
+unsafe fn build_arm_program_function(
+    context: LLVMContextRef,
+    module: LLVMModuleRef,
+    builder: LLVMBuilderRef,
+    runtime_type: LLVMTypeRef,
+    exit_type: LLVMTypeRef,
+    program: &ArmProgram,
+) -> Result<(), String> {
+    let i1_type = unsafe { LLVMInt1TypeInContext(context) };
+    let i32_type = unsafe { LLVMInt32TypeInContext(context) };
+    let i64_type = unsafe { LLVMInt64TypeInContext(context) };
+    let mut parameters = unsafe {
+        [
+            LLVMPointerType(runtime_type, 0),
+            LLVMPointerType(exit_type, 0),
+        ]
+    };
+    let function_type = unsafe { LLVMFunctionType(i32_type, parameters.as_mut_ptr(), 2, 0) };
+    let function_name = CString::new("gba_block_v1").expect("static name contains no NUL");
+    let function = unsafe { LLVMAddFunction(module, function_name.as_ptr(), function_type) };
+    if function.is_null() {
+        return Err("LLVMAddFunction returned null".to_owned());
+    }
+    let runtime = unsafe { LLVMGetParam(function, 0) };
+    let exit = unsafe { LLVMGetParam(function, 1) };
+    let entry = unsafe { append_block(context, function, "entry") };
+    let fault = unsafe { append_block(context, function, "fault") };
+    let dispatch = unsafe { append_block(context, function, "dispatch") };
+    let missing = unsafe { append_block(context, function, "missing_code") };
+    unsafe { LLVMPositionBuilderAtEnd(builder, entry) };
+
+    let cycles_ptr =
+        unsafe { LLVMBuildStructGEP2(builder, runtime_type, runtime, 3, c"cycles_ptr".as_ptr()) };
+    let cycles = unsafe { LLVMBuildLoad2(builder, i64_type, cycles_ptr, c"cycles".as_ptr()) };
+    let max_cycles = unsafe { LLVMConstInt(i64_type, u64::MAX, 0) };
+    let cycle_overflow = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntEQ,
+            cycles,
+            max_cycles,
+            c"cycle_overflow".as_ptr(),
+        )
+    };
+    let abi_version_ptr = unsafe {
+        LLVMBuildStructGEP2(
+            builder,
+            runtime_type,
+            runtime,
+            2,
+            c"abi_version_ptr".as_ptr(),
+        )
+    };
+    let abi_version =
+        unsafe { LLVMBuildLoad2(builder, i32_type, abi_version_ptr, c"abi_version".as_ptr()) };
+    let abi_mismatch = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntNE,
+            abi_version,
+            LLVMConstInt(i32_type, 1, 0),
+            c"abi_mismatch".as_ptr(),
+        )
+    };
+    let must_fault = unsafe {
+        LLVMBuildOr(
+            builder,
+            cycle_overflow,
+            abi_mismatch,
+            c"must_fault".as_ptr(),
+        )
+    };
+    unsafe { LLVMBuildCondBr(builder, must_fault, fault, dispatch) };
+
+    unsafe { LLVMPositionBuilderAtEnd(builder, fault) };
+    let pc_pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, 15) };
+    let pc = unsafe { LLVMBuildLoad2(builder, i32_type, pc_pointer, c"pc_on_fault".as_ptr()) };
+    unsafe {
+        store_exit(builder, exit_type, exit, i32_type, 4, pc);
+        LLVMBuildRet(builder, LLVMConstInt(i32_type, 4, 0));
+    }
+
+    unsafe { LLVMPositionBuilderAtEnd(builder, dispatch) };
+    let pc_pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, 15) };
+    let pc = unsafe { LLVMBuildLoad2(builder, i32_type, pc_pointer, c"pc_dispatch".as_ptr()) };
+    let switch =
+        unsafe { LLVMBuildSwitch(builder, pc, missing, program.instructions.len() as u32) };
+    let mut blocks = Vec::with_capacity(program.instructions.len());
+    for instruction in &program.instructions {
+        let name = format!("guest_{:08X}", instruction.guest_pc);
+        let block = unsafe { append_block(context, function, &name) };
+        unsafe {
+            LLVMAddCase(
+                switch,
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc), 0),
+                block,
+            )
+        };
+        blocks.push(block);
+    }
+
+    unsafe { LLVMPositionBuilderAtEnd(builder, missing) };
+    unsafe {
+        store_exit(builder, exit_type, exit, i32_type, 3, pc);
+        LLVMBuildRet(builder, LLVMConstInt(i32_type, 3, 0));
+    }
+
+    for (instruction, block) in program.instructions.iter().zip(blocks) {
+        unsafe { LLVMPositionBuilderAtEnd(builder, block) };
+        unsafe {
+            lower_arm_instruction(
+                context,
+                builder,
+                runtime_type,
+                exit_type,
+                runtime,
+                exit,
+                cycles,
+                instruction,
+            )
+        }?;
+    }
+    let _ = i1_type;
+    Ok(())
+}
+
+unsafe fn append_block(
+    context: LLVMContextRef,
+    function: LLVMValueRef,
+    name: &str,
+) -> LLVMBasicBlockRef {
+    let name = CString::new(name).expect("block name contains no NUL");
+    unsafe { LLVMAppendBasicBlockInContext(context, function, name.as_ptr()) }
+}
+
+unsafe fn lower_arm_instruction(
+    context: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    runtime_type: LLVMTypeRef,
+    exit_type: LLVMTypeRef,
+    runtime: LLVMValueRef,
+    exit: LLVMValueRef,
+    cycles: LLVMValueRef,
+    instruction: &ArmInstruction,
+) -> Result<(), String> {
+    let i32_type = unsafe { LLVMInt32TypeInContext(context) };
+    let cpsr_pointer =
+        unsafe { LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr()) };
+    let cpsr = unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+    let condition = unsafe { arm_condition_value(builder, context, cpsr, instruction.condition)? };
+    let pc_plus_four = instruction.guest_pc.wrapping_add(4);
+    let default_next_pc = unsafe { LLVMConstInt(i32_type, u64::from(pc_plus_four), 0) };
+    let next_pc = match instruction.operation {
+        ArmOperation::MovImmediate { rd, value } => {
+            let pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let old = unsafe { LLVMBuildLoad2(builder, i32_type, pointer, c"old_rd".as_ptr()) };
+            let new = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    LLVMConstInt(i32_type, u64::from(value), 0),
+                    old,
+                    c"mov_result".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, new, pointer) };
+            default_next_pc
+        }
+        ArmOperation::AddImmediate { rd, rn, value } => {
+            let source_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rn) };
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let source = unsafe {
+                LLVMBuildLoad2(builder, i32_type, source_pointer, c"add_source".as_ptr())
+            };
+            let old = unsafe {
+                LLVMBuildLoad2(builder, i32_type, destination_pointer, c"old_rd".as_ptr())
+            };
+            let sum = unsafe {
+                LLVMBuildAdd(
+                    builder,
+                    source,
+                    LLVMConstInt(i32_type, u64::from(value), 0),
+                    c"add_result".as_ptr(),
+                )
+            };
+            let new =
+                unsafe { LLVMBuildSelect(builder, condition, sum, old, c"add_commit".as_ptr()) };
+            unsafe { LLVMBuildStore(builder, new, destination_pointer) };
+            default_next_pc
+        }
+        ArmOperation::CompareImmediate { rn, value } => {
+            let source_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rn) };
+            let source = unsafe {
+                LLVMBuildLoad2(builder, i32_type, source_pointer, c"cmp_source".as_ptr())
+            };
+            let new_cpsr = unsafe { lower_cmp_flags(builder, i32_type, cpsr, source, value) };
+            let committed = unsafe {
+                LLVMBuildSelect(builder, condition, new_cpsr, cpsr, c"cmp_commit".as_ptr())
+            };
+            unsafe { LLVMBuildStore(builder, committed, cpsr_pointer) };
+            default_next_pc
+        }
+        ArmOperation::Branch { target, link } => {
+            if link {
+                let lr_pointer =
+                    unsafe { register_pointer(builder, context, runtime_type, runtime, 14) };
+                let old_lr =
+                    unsafe { LLVMBuildLoad2(builder, i32_type, lr_pointer, c"old_lr".as_ptr()) };
+                let new_lr = unsafe {
+                    LLVMBuildSelect(
+                        builder,
+                        condition,
+                        LLVMConstInt(i32_type, u64::from(pc_plus_four), 0),
+                        old_lr,
+                        c"link_commit".as_ptr(),
+                    )
+                };
+                unsafe { LLVMBuildStore(builder, new_lr, lr_pointer) };
+            }
+            unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    LLVMConstInt(i32_type, u64::from(target), 0),
+                    LLVMConstInt(i32_type, u64::from(pc_plus_four), 0),
+                    c"branch_target".as_ptr(),
+                )
+            }
+        }
+    };
+    let pc_pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, 15) };
+    unsafe { LLVMBuildStore(builder, next_pc, pc_pointer) };
+    let cycles_pointer =
+        unsafe { LLVMBuildStructGEP2(builder, runtime_type, runtime, 3, c"cycles_ptr".as_ptr()) };
+    let next_cycles = unsafe {
+        LLVMBuildAdd(
+            builder,
+            cycles,
+            LLVMConstInt(LLVMInt64TypeInContext(context), 1, 0),
+            c"next_cycle".as_ptr(),
+        )
+    };
+    unsafe { LLVMBuildStore(builder, next_cycles, cycles_pointer) };
+    unsafe {
+        store_exit(builder, exit_type, exit, i32_type, 0, next_pc);
+        LLVMBuildRet(builder, LLVMConstInt(i32_type, 0, 0));
+    }
+    Ok(())
+}
+
+unsafe fn arm_condition_value(
+    builder: LLVMBuilderRef,
+    context: LLVMContextRef,
+    cpsr: LLVMValueRef,
+    condition: u8,
+) -> Result<LLVMValueRef, String> {
+    let i32_type = unsafe { LLVMInt32TypeInContext(context) };
+    let i1_type = unsafe { LLVMInt1TypeInContext(context) };
+    if condition == 14 {
+        return Ok(unsafe { LLVMConstInt(i1_type, 1, 0) });
+    }
+    let flag = |bit: u32, name: &'static CStr| unsafe {
+        let masked = LLVMBuildAnd(
+            builder,
+            cpsr,
+            LLVMConstInt(i32_type, 1_u64 << bit, 0),
+            c"flag_mask".as_ptr(),
+        );
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntNE,
+            masked,
+            LLVMConstInt(i32_type, 0, 0),
+            name.as_ptr(),
+        )
+    };
+    let n = flag(31, c"flag_n");
+    let z = flag(30, c"flag_z");
+    let c = flag(29, c"flag_c");
+    let v = flag(28, c"flag_v");
+    let not = |value, name| unsafe { LLVMBuildNot(builder, value, name) };
+    let and = |left, right, name| unsafe { LLVMBuildAnd(builder, left, right, name) };
+    let or = |left, right, name| unsafe { LLVMBuildOr(builder, left, right, name) };
+    let equal = |left, right, name| unsafe {
+        LLVMBuildICmp(builder, LLVMIntPredicate::LLVMIntEQ, left, right, name)
+    };
+    let not_equal = |left, right, name| unsafe {
+        LLVMBuildICmp(builder, LLVMIntPredicate::LLVMIntNE, left, right, name)
+    };
+    let result = match condition {
+        0 => z,
+        1 => not(z, c"condition_ne".as_ptr()),
+        2 => c,
+        3 => not(c, c"condition_cc".as_ptr()),
+        4 => n,
+        5 => not(n, c"condition_pl".as_ptr()),
+        6 => v,
+        7 => not(v, c"condition_vc".as_ptr()),
+        8 => and(
+            c,
+            not(z, c"condition_hi_z".as_ptr()),
+            c"condition_hi".as_ptr(),
+        ),
+        9 => or(
+            not(c, c"condition_ls_c".as_ptr()),
+            z,
+            c"condition_ls".as_ptr(),
+        ),
+        10 => equal(n, v, c"condition_ge".as_ptr()),
+        11 => not_equal(n, v, c"condition_lt".as_ptr()),
+        12 => and(
+            not(z, c"condition_gt_z".as_ptr()),
+            equal(n, v, c"condition_gt_nv".as_ptr()),
+            c"condition_gt".as_ptr(),
+        ),
+        13 => or(
+            z,
+            not_equal(n, v, c"condition_le_nv".as_ptr()),
+            c"condition_le".as_ptr(),
+        ),
+        _ => return Err(format!("undefined ARM condition {condition}")),
+    };
+    Ok(result)
+}
+
+unsafe fn lower_cmp_flags(
+    builder: LLVMBuilderRef,
+    i32_type: LLVMTypeRef,
+    old_cpsr: LLVMValueRef,
+    lhs: LLVMValueRef,
+    immediate: u32,
+) -> LLVMValueRef {
+    let rhs = unsafe { LLVMConstInt(i32_type, u64::from(immediate), 0) };
+    let result = unsafe { LLVMBuildSub(builder, lhs, rhs, c"cmp_result".as_ptr()) };
+    let negative = unsafe {
+        LLVMBuildAnd(
+            builder,
+            result,
+            LLVMConstInt(i32_type, 0x8000_0000, 0),
+            c"cmp_negative".as_ptr(),
+        )
+    };
+    let zero = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntEQ,
+            result,
+            LLVMConstInt(i32_type, 0, 0),
+            c"cmp_zero".as_ptr(),
+        )
+    };
+    let carry = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntUGE,
+            lhs,
+            rhs,
+            c"cmp_carry".as_ptr(),
+        )
+    };
+    let lhs_xor_rhs = unsafe { LLVMBuildXor(builder, lhs, rhs, c"cmp_lhs_xor_rhs".as_ptr()) };
+    let lhs_xor_result =
+        unsafe { LLVMBuildXor(builder, lhs, result, c"cmp_lhs_xor_result".as_ptr()) };
+    let overflow_bits = unsafe {
+        LLVMBuildAnd(
+            builder,
+            lhs_xor_rhs,
+            lhs_xor_result,
+            c"cmp_overflow_bits".as_ptr(),
+        )
+    };
+    let overflow_set = unsafe {
+        LLVMBuildICmp(
+            builder,
+            LLVMIntPredicate::LLVMIntNE,
+            LLVMBuildAnd(
+                builder,
+                overflow_bits,
+                LLVMConstInt(i32_type, 0x8000_0000, 0),
+                c"cmp_overflow_sign".as_ptr(),
+            ),
+            LLVMConstInt(i32_type, 0, 0),
+            c"cmp_overflow".as_ptr(),
+        )
+    };
+    let z32 = unsafe { LLVMBuildZExt(builder, zero, i32_type, c"cmp_z32".as_ptr()) };
+    let c32 = unsafe { LLVMBuildZExt(builder, carry, i32_type, c"cmp_c32".as_ptr()) };
+    let v32 = unsafe { LLVMBuildZExt(builder, overflow_set, i32_type, c"cmp_v32".as_ptr()) };
+    let z_flag = unsafe {
+        LLVMBuildShl(
+            builder,
+            z32,
+            LLVMConstInt(i32_type, 30, 0),
+            c"cmp_z_flag".as_ptr(),
+        )
+    };
+    let c_flag = unsafe {
+        LLVMBuildShl(
+            builder,
+            c32,
+            LLVMConstInt(i32_type, 29, 0),
+            c"cmp_c_flag".as_ptr(),
+        )
+    };
+    let v_flag = unsafe {
+        LLVMBuildShl(
+            builder,
+            v32,
+            LLVMConstInt(i32_type, 28, 0),
+            c"cmp_v_flag".as_ptr(),
+        )
+    };
+    let low_cpsr = unsafe {
+        LLVMBuildAnd(
+            builder,
+            old_cpsr,
+            LLVMConstInt(i32_type, 0x0FFF_FFFF, 0),
+            c"cmp_preserved_cpsr".as_ptr(),
+        )
+    };
+    let flags = unsafe { LLVMBuildOr(builder, negative, z_flag, c"cmp_flags_nz".as_ptr()) };
+    let flags = unsafe { LLVMBuildOr(builder, flags, c_flag, c"cmp_flags_nzc".as_ptr()) };
+    let flags = unsafe { LLVMBuildOr(builder, flags, v_flag, c"cmp_flags_nzcv".as_ptr()) };
+    unsafe { LLVMBuildOr(builder, low_cpsr, flags, c"cmp_new_cpsr".as_ptr()) }
 }
 
 unsafe fn emit_block_llvm(

@@ -2,6 +2,8 @@
 
 use std::mem::{align_of, offset_of, size_of};
 
+pub const ABI_HEADER_V1: &str = include_str!("../include/gba_abi_v1.h");
+
 pub const GBA_ABI_VERSION: u32 = 1;
 
 pub const EXIT_CONTINUE: u32 = 0;
