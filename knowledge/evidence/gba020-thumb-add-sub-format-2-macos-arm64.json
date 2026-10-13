@@ -1,0 +1,126 @@
+{
+  "record_type": "local-build-and-static-discovery",
+  "date": "2026-10-13",
+  "source_commit": "cd4ad75bac9c0a2e65968372ab5c2ac4ea9d94ab",
+  "spec_commit": "cc0d73dc0fe5c3362f885f0f61a69da73f74ae69",
+  "environment": {
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "rust": "1.99.0",
+    "llvm_backend": "23.1.3",
+    "target": "aarch64-apple-darwin"
+  },
+  "parallelism": {
+    "cargo_jobs": 10,
+    "lld_threads": 10,
+    "sampled_linker_cpu_percent": 817,
+    "measurement": "Single process sample during the fixture gate; no sustained throughput benchmark or before/after comparison was made."
+  },
+  "rust_tests": {
+    "command": "cargo test --locked --workspace",
+    "result": "passed",
+    "gba_ir_tests": 32,
+    "gba_recomp_tests": 36,
+    "build_time_seconds": 76
+  },
+  "headless_gate": {
+    "script": "scripts/verify-gba020.sh",
+    "host": "Darwin/arm64",
+    "result": "passed",
+    "strict_aot": true,
+    "optimization_levels": ["O0", "O2"],
+    "thumb_add_sub_format_2_fixtures": [
+      "thumb-addsub-add-register",
+      "thumb-addsub-sub-register",
+      "thumb-addsub-add-imm-zero",
+      "thumb-addsub-add-imm-seven",
+      "thumb-addsub-sub-imm-zero",
+      "thumb-addsub-sub-imm-seven",
+      "thumb-addsub-add-imm-carry",
+      "thumb-addsub-sub-imm-overflow"
+    ],
+    "additional_fixture": {
+      "name": "thumb-addsub-literal-bx",
+      "instructions_aot": 7,
+      "rom_sha256": "f5e7f165cec18e1270e51261c1ce74d0a6a4cd110293b3179859b3879871f0e2",
+      "optimization_outputs_equal": true,
+      "state_stdout": "{\"status\":\"budget_exhausted\",\"steps\":6,\"r0\":134217928,\"r1\":0,\"pc\":\"0x080000C8\",\"cpsr\":\"0x0000001F\",\"guest_cycle\":6,\"ewram_word0\":0,\"iwram_word0\":0}",
+      "O0": {"game_sha256": "3c390fa5371e9eb539176a070c291e5a15e8e85667e9acdb96a4debfe5d16267", "manifest_sha256": "e3c69f53b2cb2137a0a3ac95a1277beb45169267d50eeab2f58bff85f484ade6"},
+      "O2": {"game_sha256": "b9499c616db1ea0f1bee26017d5dd19362a0dcf03c27b75847cc396ba0ba1088", "manifest_sha256": "4b709d28925312ff90f09a5343d07861aad34a787ac7b82e513dc6b7d8f63601"}
+    },
+    "out_of_family_case": {
+      "name": "thumb-addsub-out-of-family",
+      "rom_sha256": "3da4593bd03d697195b7e664d6a3c327aa3d8324577d77e9a22bb5bc35cae645",
+      "reported_pc": "0x08000084",
+      "package_directory_created": false
+    },
+    "build_hashes": {
+      "thumb-addsub-add-register": {
+        "rom_sha256": "378482d7778d2be5e7df712ba2c69fe7aa1c9481edf132bda036b28618686aa5",
+        "O0": {"game_sha256": "8da97b3d4457c32610644922c005b0605dd03607272fed4a2e3c2cdb353e3cd2", "manifest_sha256": "b2350498cb4c0571ea9dbc0b332f7b332236ea1f02d94e10bdbe3ec698f4d4c4"},
+        "O2": {"game_sha256": "3811c812d8f65ca0c05262a38571164ded9f10f6d4435a40fe76a9d52094164f", "manifest_sha256": "34f0f2456ea54598b61aea31f8728640a74562737179d15dc90253808cd60ac0"}
+      },
+      "thumb-addsub-sub-register": {
+        "rom_sha256": "98089022d217080ef9e62cf45912a9a2032a0c27ff650ea786e714c5feeff1a1",
+        "O0": {"game_sha256": "84a6f306e0d09baaa016cd407e317650646fd77505c61a40d922cbcc623df9c4", "manifest_sha256": "ddb901bffd256e8c6ef5bf25389467251bfaa1d65241b471255d70b944f05a4f"},
+        "O2": {"game_sha256": "07d88737f802bd354703a099b9da0234c599e3664979144c308b9c4e525a6516", "manifest_sha256": "1a8142be4caa3ef0c26f59636ca752c3ccab59c0b1a92b9aa93e9a7f1638d994"}
+      },
+      "thumb-addsub-add-imm-zero": {
+        "rom_sha256": "581f3c80062cb112198fb320b30aac0c9cd185a2cb7cc41d768ce795c9b0188f",
+        "O0": {"game_sha256": "744d7d974a3be2cfffbe215cad0b9928a6414cf23a00b1d525af54891c56d2a4", "manifest_sha256": "fa868565b97b7b4d0b9011b866f58d23201b185b9cfd3e8e20468dc49665772d"},
+        "O2": {"game_sha256": "3e01ed81597d681b72696be1f0e03ecd831f84a14429b3621069cd1d63842aa8", "manifest_sha256": "80be5bfb04c0d0de80b517c6fd415d728d98ec8f1eb1dc141ca53adaf9214319"}
+      },
+      "thumb-addsub-add-imm-seven": {
+        "rom_sha256": "2b10581d085e183e2122d433d2acd0d10d24188638f5ab6daa641fad26ba0402",
+        "O0": {"game_sha256": "6f08c6570fa0ab76deb345ed36ffa3c2c39d0000f52492cbe8e3a3aa4a212469", "manifest_sha256": "6b36e51c37a91e833624374ce670bc536ac5e6495a2fcdab659f08ed17f2dabc"},
+        "O2": {"game_sha256": "e3258feafbf874dd094f65a7b5be4c7f7d2dd479c11db6b307bbc60b9e09da47", "manifest_sha256": "3074c80794f8c952bf0fde092d055f6266c3700aa38f365e8245739d81de996f"}
+      },
+      "thumb-addsub-sub-imm-zero": {
+        "rom_sha256": "75809af5bc5b8030b0229ba377daa6793baca0afcfede5d9362418217bebf108",
+        "O0": {"game_sha256": "00265f8c92d77d8784bf13ae33be39b502c3606ec27fe03b94613b7d461b74d9", "manifest_sha256": "ee8adeee87ee82702af524c2bb72348fcab828d5202e671c8409e154bb69acac"},
+        "O2": {"game_sha256": "c01439a9a6c214536e1aa6533b0485c060c35787fa3f76711000f538a17abbe9", "manifest_sha256": "41222a629fe58be34c40d852a42152ae7fe6d48f6d4e88af3dc5b1d6a2afe805"}
+      },
+      "thumb-addsub-sub-imm-seven": {
+        "rom_sha256": "6be1f3090d6d4e0640f102b3ae1e43c4854cd5ff3c87749c3d51250ca2867526",
+        "O0": {"game_sha256": "ddb3009eb1eeb4ebb902c9418a8ba404d7e994aeeb3c6b95e7866c5582a26bad", "manifest_sha256": "a27e7ffa64c118c7cff40737aef22d74306acaa0dfd75e37a28dac1e2b8cbf47"},
+        "O2": {"game_sha256": "cc2f7fc2cadefc4d03a4ae98afbdf1eb418e3c2ba5f7ab6867f602cd5c982abc", "manifest_sha256": "4357e7538a8aa1ac4d9c87ef04919ed25d7d2d30d20ac9c3697ff02a9b73768d"}
+      },
+      "thumb-addsub-add-imm-carry": {
+        "rom_sha256": "63fec67f6eed35438ae60ab3482e00adb3a8897564466ec48f627cd56321d2f8",
+        "O0": {"game_sha256": "815ed04725861d1f82169cf46cf14ec668cbdd4b24de67eba2330672d74d6b9d", "manifest_sha256": "325e277b29b866667e79a9becf8429f9a343835d038e6e70537754762e70cd3b"},
+        "O2": {"game_sha256": "e0002ca38c9f7907aabe9f8c9347f9bbbbf6e0269dfb0f1aed2f30f330f1059f", "manifest_sha256": "738757470bb559970df02e23957f0ac9f183b920138fe5188d460a21bd490b27"}
+      },
+      "thumb-addsub-sub-imm-overflow": {
+        "rom_sha256": "31067a6b747c54c03c8123a2aa73e442a3bfa712798f0ff6cb2daabf9104359e",
+        "O0": {"game_sha256": "1e987dcc762577d45db4645bb86dc1c3c2881463515c9a7ca3c7ca51cf25ad67", "manifest_sha256": "4e469b78b227f4bb3c4c03db5dd7754abd10419d4992138079ad542c39c5b557"},
+        "O2": {"game_sha256": "5bdd6227ff139f6be0bdb838c770de5e63d1000e22dba38c697e27dae11ecdd7", "manifest_sha256": "b165698e9152a10fd23a46df6c163321b752091e50da76603d4d0df0c0b6b72e"}
+      }
+    }
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "observed_bytes_at_file_offset_0x3B4": "2c 4a 10 1c 08 80 00 f0",
+    "command": "cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-thumb-addsub-cd4ad75 --opt O2 --steps 100",
+    "result": "rejected before package creation",
+    "reported_pc": "0x080003B8",
+    "raw_halfword": "0x8008",
+    "diagnostic": "unsupported_thumb_instruction",
+    "classification": "Thumb Format 10 STRH r0,[r1,#0]; inferred from encoding and corroborated by SRC-28",
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea_decompilation": false
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  },
+  "limitations": [
+    "The fixtures validate only the contracted strict-AOT Thumb ADD/SUB Format 2 subset on macOS arm64.",
+    "The LeafGreen result records static discovery only. It does not show runtime register values, package generation, or game execution; the raw successor is not a runtime reachability claim.",
+    "The STRH classification is an inference from the encoding corroborated by pinned source; STRH is not implemented by this commit.",
+    "The prior REA attempt for the raw GBA image returned unsupported binary format; no decompilation was produced.",
+    "No differential run against hardware was performed.",
+    "Linux x86-64 qualification remains pending."
+  ]
+}
