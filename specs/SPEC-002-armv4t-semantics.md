@@ -9,6 +9,7 @@ Decodificar ARM de 32 bits e Thumb de 16 bits do ARM7TDMI e preservar resultado,
 ## Requisitos normativos
 
 - CPU-18: Thumb SWI #1 só é aceito com HLE versionada e efeitos descritos em [SPEC-023](SPEC-023-thumb-swi-register-ram-reset.md). Outros imediatos SWI e transições BIOS sem contrato continuam explicitamente recusados.
+- CPU-19: ADD/SUB Thumb Format 2, com `imm3` ou registrador, é suportado somente nos limites de [SPEC-026](SPEC-026-thumb-add-sub-format-2.md), incluindo atualização de NZCV e carry de SUB como ausência de borrow.
 
 - CPU-01: cada instrução MUST manter endereço, bytes de origem, modo ISA e tamanho. Decoder MUST distinguir instrução definida, encoding indefinido e família não implementada; nunca reinterpretar extensão moderna como instrução suportada.
 - CPU-02: estado MUST conter r0–r15, CPSR, bancos de registradores e SPSRs aplicáveis a User/System, IRQ, SVC, FIQ, Abort e Undefined. Não usar SPSR inexistente em User/System.

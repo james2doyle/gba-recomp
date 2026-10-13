@@ -4,7 +4,7 @@ Estado do documento: Draft. Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Problema, objetivos e escopo
 
-Após SPEC-024, a descoberta estática da ROM fixada em KNO-004 alcançou o halfword `0x4A2C` em `0x080003B4` e parou no decoder. Os campos classificam o encoding como Thumb Format 6 `LDR r2,[PC,#0xB0]`; `Align(0x080003B4+4,4)+0xB0` resulta em `0x08000468`. A classe e o endereço são inferências dos campos corroboradas por SRC-26. Esta observação não estabelece o conteúdo consultado em `0x08000468` nem execução da ROM.
+Após SPEC-024, a descoberta estática da ROM fixada em KNO-004 alcançou o halfword `0x4A2C` em `0x080003B4` e parou no decoder. Os campos classificam o encoding como Thumb Format 6 `LDR r2,[PC,#0xB0]`; `Align(0x080003B4+4,4)+0xB0` resulta em `0x08000468`. A classe e o endereço são inferências dos campos corroboradas por SRC-26. Esta observação não estabelece o conteúdo consultado em `0x08000468` nem execução da ROM. A implementação passou fixtures strict-AOT O0/O2; KNO-004 registra a tentativa estática seguinte.
 
 O objetivo é aceitar somente Thumb LDR literal cujo word esteja dentro da imagem ROM imutável, fixar seu valor na GBA IR e materializá-lo em código nativo strict-AOT.
 
@@ -58,7 +58,7 @@ Nenhuma para este subset. Mirrors e limites de cartuchos especiais precisam de c
 
 ## Referências e evidências
 
-- [KNO-004](../knowledge/KNO-004-rom-intake.md): ROM e tentativa estática que alcançou `0x4A2C` após SPEC-024.
+- [KNO-004](../knowledge/KNO-004-rom-intake.md): ROM, fixtures O0/O2 e tentativa estática seguinte após SPEC-025.
 - [KNO-001 / SRC-26](../knowledge/KNO-001-evidence.md): observações de decode e execução nas referências fixadas.
 - [SPEC-014](SPEC-014-rom-literal-loads.md): load literal ARM, contrato distinto.
 - [SPEC-024](SPEC-024-thumb-lsl-immediate.md): incremento Thumb anterior.

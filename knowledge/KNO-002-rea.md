@@ -25,3 +25,5 @@ A especificação cobre o processo. Cobertura AOT por título permanece explicit
 ## Continuação em 2026-10-13
 
 Na retomada para implementar GBA-020, a chamada `mcp__rea__binary_session({})` falhou no transporte com `Transport closed`. `command -v rea` não encontrou CLI instalada nesta shell. Não foi repetida a abertura da ROM raw, pois KNO-004 já registra `unsupported binary format`; não há Evidence ID novo nem observação de análise. A investigação do código fonte continua por leitura local. A captura REA por ROM segue pendente até reconexão ou suporte de formato.
+
+Na continuação da implementação SPEC-025, uma nova chamada `mcp__rea__binary_session({})` também retornou `Transport closed`; a CLI `rea` continuou ausente. Não foi repetida a mesma abertura da ROM raw recusada pelo provider. Esta tentativa não gerou Evidence ID, decompilação ou observação sobre o conteúdo da ROM; as referências de decoder foram consultadas diretamente nos repositórios locais fixados.
