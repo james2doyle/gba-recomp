@@ -8,7 +8,7 @@ Data: 2026-10-13. Tipo de evidência: leitura estática dos três repositórios 
 |---|---|---|
 | gba-recomp | `de4edf59b872d887046d6a3b005e2df551b6d44c` | `crates/armv4t/src/{arm.rs,thumb.rs,lib.rs}`, `crates/gba-core/src/exec.rs`, `crates/recomp-core/src/{analyze.rs,emit.rs}` |
 | mGBA | `143adf5aa2a60c6036810b0cd72445e13d74b0e6` | `src/arm/{decoder-arm.c,decoder-thumb.c,isa-arm.c,isa-thumb.c,arm.c}` |
-| gba-recomp local | commit `5e6a5bc` | `crates/gba-recomp/src/decoder.rs`, `crates/gba-ir/src/lib.rs`, `crates/gba-llvm/src/lib.rs`, `crates/gba-runtime-abi/src/` |
+| gba-recomp local | commit `fffdc2099a67e2fde58ee98ba7557ecc82cae2cb` | `crates/gba-recomp/src/{decoder.rs,discover.rs,rom.rs}`, `crates/gba-ir/src/lib.rs`, `crates/gba-llvm/src/lib.rs`, `crates/gba-runtime-abi/src/` |
 
 O inventário separa quatro etapas que não devem ser confundidas: reconhecimento do encoding, representação na IR, semântica guest no runtime e lowering AOT executável. Ler uma operação no decoder de referência não demonstra que o nosso runtime/LLVM a suporte. A tabela descreve código observado; não mede a cobertura alcançável de um jogo.
 
@@ -34,15 +34,20 @@ Os detalhes de suporte em `gba-recomp` são observações do código nesta revis
 | ALU imediata | `MOV`, `ADD`, `CMP`; caso específico `ADD Rd,PC,#imm` | Implementados para o subset; PC visível é `guest_pc+8` | Tiny Counter e fixture SPEC-015; outros opcodes e operand2 registrador rejeitados |
 | MOV ARM com operando registrador | Referências decodificam MOV pela família ALU e shifter | Forma `LSL #0`, sem flags e sem destino PC, implementada em SPEC-017 | Fixtures O0/O2 para `MOV LR,PC` e condição falsa; demais shifts seguem rejeitados |
 | Branch ARM direto | B/BL com alvo relativo assinado | Dispatcher estritamente AOT | Tiny Counter O0/O2; não cobre `BX`, Thumb ou destino dinâmico |
+| Branch exchange ARM/Thumb | `BX Rm` ARM/Thumb; propagação limitada a constantes e conjuntos finitos para fechar destinos | Atualiza CPSR.T/PC e despacha por `(modo, PC)` em switches AOT separados | Fixture ARM→Thumb→ARM O0/O2; BX ARM condicional falso, alinhamento ARM e rejeição de BX fora da ROM; não fecha alvos derivados de memória mutável |
 | PSR | `MSR CPSR` por registrador, subset de campos aceito pelo contrato bancado | Runtime ABI v2 com bancos limitados aos modos modelados | Fixture v2; não cobre MRS/SPSR nem toda combinação de campos |
 | LDR literal ARM de ROM | Palavra, imediato, pre-index, sem writeback, base PC; endereço e valor resolvidos na ROM imutável | Constante materializada em AOT | SPEC-014 O0/O2; não usa bus e não cobre memória dinâmica |
 | STR word ARM imediato | Apenas pre-indexed, sem writeback, base/dado r0–r14; `Rn ± imm12` | ABI v3 chama helper para EWRAM/IWRAM físicas; endereço/alinhamento/versões são validados e faults retornam PC/endereço/código | A fonte mGBA confirma que stores passam pelo mapa do GBA; este subset local não cobre seus efeitos gerais |
 | Outros loads/stores | Rejeitados | Nenhum | Loads dinâmicos, byte/halfword, offsets por registrador, pós-index, writeback e LDM/STM continuam fora do subset |
 | Multiplicação, block transfer, restante ALU ARM | Rejeitados | Nenhum | Sem fixtures locais |
-| ISA Thumb | Ainda sem decoder/IR | Nenhum | Sem fixtures locais |
+| ISA Thumb | `BX Rm` somente | Lowering AOT de BX e mudança de modo | Fixture de interworking O0/O2; demais instruções Thumb alcançáveis seguem rejeitadas |
 | SWI, BIOS, interrupções e demais regiões mapeadas | Fora do subset atual | Nenhum | Dependem dos contratos de runtime GBA-030/045; a implementação RAM v3 não cobre mirrors, ROM, BIOS, MMIO, VRAM/OAM ou timing |
 
-As fixtures O0/O2 provam somente suas instruções e estado inicial conhecidos. `scripts/verify-gba020.sh` executou a escrita word em EWRAM/IWRAM, o MOV com PC e a condição falsa nos dois níveis; também passou faults de endereço fora da faixa e desalinhado. Depois de SPEC-017, a compilação LeafGreen avançou de `0x0800022C` para `0x08000230`, raw `0xE12FFF11`, e parou no decoder. A leitura como `BX r1` é inferência pelos campos; não houve pacote nem execução do jogo. Isso aponta para branch exchange e despacho ARM/Thumb como próxima lacuna, não demonstra que o destino tenha sido alcançado em execução.
+As fixtures O0/O2 provam somente suas instruções e estado inicial conhecidos. `scripts/verify-gba020.sh` passou em macOS arm64, incluindo ARM→Thumb→ARM, BX ARM com condição falsa, alinhamento do destino ARM, rejeição de destino BX fora da ROM e ausência de fallback strict-AOT. Os testes unitários cobrem o fechamento dos destinos desconhecidos e fora da ROM. Após SPEC-018, uma compilação estática da LeafGreen avançou de `0x08000230` para `0x080003A4`, raw Thumb `0xB5F0`, e parou no decoder. A leitura como `PUSH {r4-r7,lr}` é inferência pelo formato Thumb e pelas referências SRC-20; não houve pacote nem execução do jogo. Isso aponta para transferência múltipla Thumb e memória de stack como próxima lacuna, sem extrapolar para outras instruções ou para o restante da biblioteca GBA.
+
+## Evidência da implementação local — SPEC-018
+
+Commit `fffdc2099a67e2fde58ee98ba7557ecc82cae2cb` contém decoder, IR, análise de constantes, lowering LLVM e despacho ARM/Thumb por CPSR.T. `cargo test --locked -p gba-ir -p gba-recomp` passou com 16 testes em `gba-ir` e 15 em `gba-recomp`; `scripts/verify-gba020.sh` passou em Darwin/arm64 nos pacotes O0/O2. A fixture cruza ARM→Thumb→ARM; outra prova o caminho falso de BX condicional; a fixture de destino fora da ROM confirma falha antes da criação do pacote. Isso valida somente esses programas sintéticos e o host macOS arm64.
 
 ## Método recomendado para expandir cobertura
 

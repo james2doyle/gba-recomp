@@ -34,6 +34,41 @@ def generate(mode: str = "valid") -> bytes:
             0xE129F000,  # MSR CPSR_fc, r0 (x/s fields clear)
             branch(0xC8, 0xC8),  # B finished
         )
+    elif mode == "thumb-push":
+        image[0x84:0x88] = struct.pack("<2H", 0xB5F0, 0x4710)  # PUSH {r4-r7,lr}; BX r2.
+        image[0xC0:0xF0] = struct.pack(
+            "<12I",
+            0xE3A04044,  # MOV r4, #0x44
+            0xE3A05055,  # MOV r5, #0x55
+            0xE3A06066,  # MOV r6, #0x66
+            0xE3A07077,  # MOV r7, #0x77
+            0xE3A0E088,  # MOV lr, #0x88
+            0xE59F0014,  # LDR r0, [pc, #0x14] -> IWRAM stack top
+            0xE1A0D000,  # MOV sp, r0
+            0xE59F1010,  # LDR r1, [pc, #0x10] -> Thumb entry | 1
+            0xE59F2010,  # LDR r2, [pc, #0x10] -> ARM return
+            0xE12FFF11,  # BX r1
+            0xE1A0000D,  # MOV r0, sp, to observe push writeback
+            0xEAFFFFFE,  # B finished
+        )
+        image[0xF0:0xFC] = struct.pack(
+            "<3I", 0x03000014, 0x08000085, 0x080000E8
+        )
+    elif mode == "thumb-mov":
+        image[0x84:0x8A] = struct.pack(
+            "<3H", 0x4647, 0x467B, 0x4710
+        )  # MOV r7,r8; MOV r3,pc; BX r2.
+        image[0xC0:0xDC] = struct.pack(
+            "<7I",
+            0xE3A08077,  # MOV r8, #0x77
+            0xE59F1014,  # LDR r1, [pc, #0x14] -> Thumb entry | 1
+            0xE59F2014,  # LDR r2, [pc, #0x14] -> ARM return
+            0xE12FFF11,  # BX r1
+            0xE1A00007,  # MOV r0, r7, to observe Thumb MOV
+            0xE1A01003,  # MOV r1, r3, to observe Thumb PC+4
+            0xEAFFFFFE,  # B finished
+        )
+        image[0xE0:0xE8] = struct.pack("<2I", 0x08000085, 0x080000D0)
     elif mode == "bx-interwork":
         image[0x84:0x86] = struct.pack("<H", 0x4708)  # Thumb BX r1 -> ARM code.
         image[0xC0:0xD0] = struct.pack(
@@ -149,6 +184,8 @@ def main() -> None:
         "--mode",
         choices=(
             "valid",
+            "thumb-mov",
+            "thumb-push",
             "bx-interwork",
             "bx-out-of-range",
             "bx-condition-false",

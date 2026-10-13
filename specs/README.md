@@ -1,6 +1,6 @@
 # Especificações
 
-Contratos em Draft ou Review documental. MUST indica obrigação verificável, SHOULD recomendação justificada e MAY opção explícita. O progresso de implementação está no [ROADMAP](../ROADMAP.md).
+O estado Draft/Review/Accepted descreve revisão documental, não progresso de implementação. MUST indica obrigação verificável, SHOULD recomendação justificada e MAY opção explícita. O progresso de implementação está no [ROADMAP](../ROADMAP.md).
 
 - [SPEC-001 — Intake, identidade e manifesto](SPEC-001-image-intake.md)
 - [SPEC-002 — CPU ARMv4T e estado arquitetural](SPEC-002-armv4t-semantics.md)
@@ -20,3 +20,5 @@ Contratos em Draft ou Review documental. MUST indica obrigação verificável, S
 - [SPEC-016 — STR ARM de palavra para RAM física](SPEC-016-ram-word-stores.md)
 - [SPEC-017 — MOV ARM entre registradores sem shift](SPEC-017-arm-mov-register.md)
 - [SPEC-018 — Branch exchange ARM/Thumb em AOT estrito](SPEC-018-arm-thumb-branch-exchange.md)
+- [SPEC-019 — PUSH Thumb para RAM física em AOT estrito](SPEC-019-thumb-push.md)
+- [SPEC-020 — MOV Thumb entre registradores high em AOT estrito](SPEC-020-thumb-high-mov.md)

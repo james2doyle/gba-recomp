@@ -50,6 +50,10 @@ Em 2026-10-13, depois de `scripts/verify-gba020.sh` passar as fixtures ABI v3, u
 
 Em 2026-10-13, as fixtures do MOV `LSL #0` passaram em O0/O2. A compilação estática local avançou até `0x08000230`, raw `0xE12FFF11`, e parou com `instruction family is not implemented`. A leitura como `BX r1` é inferência pelos campos ARM. Nenhum pacote foi criado, a ROM não foi executada e o destino de `r1` não foi observado por trace; esta evidência apenas fixa o próximo limite de decode para o SHA-256 registrado acima.
 
+## Tentativa após SPEC-018 — branch exchange ARM/Thumb
+
+No commit local `fffdc2099a67e2fde58ee98ba7557ecc82cae2cb`, as fixtures sintéticas de BX e despacho por modo passaram em O0/O2. Uma nova compilação estática da ROM com o mesmo SHA-256 acima avançou até `0x080003A4`, halfword `0xB5F0`, e falhou com `unsupported_thumb_instruction`. A classificação como `PUSH {r4-r7,lr}` é inferência do formato Thumb, corroborada como observação de fonte em SRC-20. Nenhum pacote foi criado; LeafGreen não foi executada. Este resultado aponta apenas para a próxima lacuna alcançável observada pelo descobridor atual; não é um trace de execução nem inventário completo do jogo.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

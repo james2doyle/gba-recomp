@@ -13,7 +13,8 @@ typedef enum GbaMemoryFaultV3 {
     GBA_MEMORY_FAULT_ABI_V3 = 2,
     GBA_MEMORY_FAULT_NULL_MEMORY_V3 = 3,
     GBA_MEMORY_FAULT_ALIGNMENT_V3 = 4,
-    GBA_MEMORY_FAULT_REGION_V3 = 5
+    GBA_MEMORY_FAULT_REGION_V3 = 5,
+    GBA_MEMORY_FAULT_REGISTER_LIST_V3 = 6
 } GbaMemoryFaultV3;
 
 typedef struct GbaMemoryV1 {
@@ -37,6 +38,8 @@ typedef struct GbaExitV3 {
 uint32_t gba_block_v3(GbaRuntimeV3 *rt, GbaExitV3 *out);
 uint32_t gba_store32_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                         uint32_t guest_address, uint32_t value);
+uint32_t gba_push_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                           uint32_t register_list);
 
 _Static_assert(sizeof(GbaMemoryV1) == 0x48000, "GbaMemoryV1 size changed");
 _Static_assert(_Alignof(GbaMemoryV1) == 1, "GbaMemoryV1 alignment changed");

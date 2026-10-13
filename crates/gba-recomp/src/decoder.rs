@@ -167,6 +167,41 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xFE00 == 0xB400 {
+        let register_list = encoding & 0x01FF;
+        if register_list == 0 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (empty PUSH register list)"
+            ));
+        }
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::Push { register_list },
+        });
+    }
+    if encoding & 0xFC00 == 0x4400 {
+        let opcode = (encoding >> 8) & 0x3;
+        if opcode != 0x2 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (only high-register MOV is implemented)"
+            ));
+        }
+        let rd = ((encoding & 0x7) | ((encoding >> 4) & 0x8)) as u8;
+        if rd == 15 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (MOV destination PC is not implemented)"
+            ));
+        }
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::MovRegister {
+                rd,
+                rm: ((encoding >> 3) & 0xF) as u8,
+            },
+        });
+    }
     Err(format!(
         "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X}"
     ))
@@ -295,6 +330,41 @@ mod tests {
         );
         assert!(decode_thumb(0x0800_0084, 0x2007).is_err());
         assert!(decode_thumb(0x0800_0085, 0x4708).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_push_register_list_and_rejects_empty_list() {
+        assert_eq!(
+            decode_thumb(0x0800_03A4, 0xB5F0).unwrap().operation,
+            ThumbOperation::Push {
+                register_list: 0x01F0
+            }
+        );
+        assert!(
+            decode_thumb(0x0800_03A4, 0xB400)
+                .unwrap_err()
+                .contains("empty PUSH register list")
+        );
+        assert!(decode_thumb(0x0800_03A4, 0xB600).is_err());
+    }
+
+    #[test]
+    fn decodes_only_thumb_high_register_mov_without_pc_destination() {
+        assert_eq!(
+            decode_thumb(0x0800_03A6, 0x4647).unwrap().operation,
+            ThumbOperation::MovRegister { rd: 7, rm: 8 }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03A6, 0x4678).unwrap().operation,
+            ThumbOperation::MovRegister { rd: 0, rm: 15 }
+        );
+        assert!(
+            decode_thumb(0x0800_03A6, 0x468F)
+                .unwrap_err()
+                .contains("destination PC")
+        );
+        assert!(decode_thumb(0x0800_03A6, 0x44C7).is_err()); // ADD high-register.
+        assert!(decode_thumb(0x0800_03A6, 0x45C7).is_err()); // CMP high-register.
     }
 
     #[test]

@@ -340,6 +340,27 @@ unsafe fn build_arm_program_function(
     if store_helper.is_null() {
         return Err("LLVMAddFunction for gba_store32_v3 returned null".to_owned());
     }
+    let mut push_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(exit_type, 0),
+            i32_type,
+        ]
+    };
+    let push_helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            push_parameters.as_mut_ptr(),
+            push_parameters.len() as u32,
+            0,
+        )
+    };
+    let push_helper_name = CString::new("gba_push_thumb_v3").expect("static name contains no NUL");
+    let push_helper =
+        unsafe { LLVMAddFunction(module, push_helper_name.as_ptr(), push_helper_type) };
+    if push_helper.is_null() {
+        return Err("LLVMAddFunction for gba_push_thumb_v3 returned null".to_owned());
+    }
     let entry = unsafe { append_block(context, function, "entry") };
     let fault = unsafe { append_block(context, function, "fault") };
     let dispatch = unsafe { append_block(context, function, "dispatch") };
@@ -544,12 +565,15 @@ unsafe fn build_arm_program_function(
             lower_thumb_instruction(
                 context,
                 builder,
+                function,
                 runtime_cpu_type,
                 exit_type,
                 runtime,
                 exit,
                 cycles,
                 instruction,
+                push_helper_type,
+                push_helper,
             )
         }?;
     }
@@ -1019,15 +1043,18 @@ unsafe fn lower_arm_instruction(
 unsafe fn lower_thumb_instruction(
     context: LLVMContextRef,
     builder: LLVMBuilderRef,
+    function: LLVMValueRef,
     runtime_type: LLVMTypeRef,
     exit_type: LLVMTypeRef,
     runtime: LLVMValueRef,
     exit: LLVMValueRef,
     cycles: LLVMValueRef,
     instruction: &ThumbInstruction,
+    push_helper_type: LLVMTypeRef,
+    push_helper: LLVMValueRef,
 ) -> Result<(), String> {
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
-    let target = match instruction.operation {
+    match instruction.operation {
         ThumbOperation::BranchExchange { rm } => {
             let target = if rm == 15 {
                 unsafe {
@@ -1045,84 +1072,206 @@ unsafe fn lower_thumb_instruction(
                     )
                 }
             };
-            target
+            let bit_zero = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    target,
+                    LLVMConstInt(i32_type, 1, 0),
+                    c"thumb_bx_target_bit_zero".as_ptr(),
+                )
+            };
+            let enters_thumb = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntNE,
+                    bit_zero,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_bx_enters_thumb".as_ptr(),
+                )
+            };
+            let thumb_pc = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    target,
+                    LLVMConstInt(i32_type, u64::from(!1_u32), 0),
+                    c"thumb_bx_thumb_pc".as_ptr(),
+                )
+            };
+            let arm_pc = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    target,
+                    LLVMConstInt(i32_type, u64::from(!3_u32), 0),
+                    c"thumb_bx_arm_pc".as_ptr(),
+                )
+            };
+            let next_pc = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    enters_thumb,
+                    thumb_pc,
+                    arm_pc,
+                    c"thumb_bx_next_pc".as_ptr(),
+                )
+            };
+            let cpsr_pointer = unsafe {
+                LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr())
+            };
+            let cpsr = unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+            let t_bit = unsafe {
+                LLVMBuildShl(
+                    builder,
+                    LLVMBuildZExt(
+                        builder,
+                        enters_thumb,
+                        i32_type,
+                        c"thumb_bx_t_bit_value".as_ptr(),
+                    ),
+                    LLVMConstInt(i32_type, 5, 0),
+                    c"thumb_bx_t_bit".as_ptr(),
+                )
+            };
+            let cpsr_without_t = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    cpsr,
+                    LLVMConstInt(i32_type, u64::from(!0x20_u32), 0),
+                    c"thumb_bx_cpsr_without_t".as_ptr(),
+                )
+            };
+            let switched_cpsr = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    cpsr_without_t,
+                    t_bit,
+                    c"thumb_bx_cpsr_result".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, switched_cpsr, cpsr_pointer) };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
         }
-    };
-    let bit_zero = unsafe {
-        LLVMBuildAnd(
-            builder,
-            target,
-            LLVMConstInt(i32_type, 1, 0),
-            c"thumb_bx_target_bit_zero".as_ptr(),
-        )
-    };
-    let enters_thumb = unsafe {
-        LLVMBuildICmp(
-            builder,
-            LLVMIntPredicate::LLVMIntNE,
-            bit_zero,
-            LLVMConstInt(i32_type, 0, 0),
-            c"thumb_bx_enters_thumb".as_ptr(),
-        )
-    };
-    let thumb_pc = unsafe {
-        LLVMBuildAnd(
-            builder,
-            target,
-            LLVMConstInt(i32_type, u64::from(!1_u32), 0),
-            c"thumb_bx_thumb_pc".as_ptr(),
-        )
-    };
-    let arm_pc = unsafe {
-        LLVMBuildAnd(
-            builder,
-            target,
-            LLVMConstInt(i32_type, u64::from(!3_u32), 0),
-            c"thumb_bx_arm_pc".as_ptr(),
-        )
-    };
-    let next_pc = unsafe {
-        LLVMBuildSelect(
-            builder,
-            enters_thumb,
-            thumb_pc,
-            arm_pc,
-            c"thumb_bx_next_pc".as_ptr(),
-        )
-    };
-    let cpsr_pointer =
-        unsafe { LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr()) };
-    let cpsr = unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
-    let t_bit = unsafe {
-        LLVMBuildShl(
-            builder,
-            LLVMBuildZExt(
-                builder,
-                enters_thumb,
-                i32_type,
-                c"thumb_bx_t_bit_value".as_ptr(),
-            ),
-            LLVMConstInt(i32_type, 5, 0),
-            c"thumb_bx_t_bit".as_ptr(),
-        )
-    };
-    let cpsr_without_t = unsafe {
-        LLVMBuildAnd(
-            builder,
-            cpsr,
-            LLVMConstInt(i32_type, u64::from(!0x20_u32), 0),
-            c"thumb_bx_cpsr_without_t".as_ptr(),
-        )
-    };
-    let switched_cpsr = unsafe {
-        LLVMBuildOr(
-            builder,
-            cpsr_without_t,
-            t_bit,
-            c"thumb_bx_cpsr_result".as_ptr(),
-        )
-    };
-    unsafe { LLVMBuildStore(builder, switched_cpsr, cpsr_pointer) };
+        ThumbOperation::Push { register_list } => {
+            let mut arguments = [runtime, exit, unsafe {
+                LLVMConstInt(i32_type, u64::from(register_list), 0)
+            }];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    push_helper_type,
+                    push_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"thumb_push_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_push_succeeded".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_push_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_push_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
+            unsafe { LLVMBuildRet(builder, status) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::MovRegister { rd, rm } => {
+            let source = if rm == 15 {
+                unsafe {
+                    LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(4)), 0)
+                }
+            } else {
+                let source_pointer =
+                    unsafe { register_pointer(builder, context, runtime_type, runtime, rm) };
+                unsafe {
+                    LLVMBuildLoad2(
+                        builder,
+                        i32_type,
+                        source_pointer,
+                        c"thumb_mov_source".as_ptr(),
+                    )
+                }
+            };
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            unsafe { LLVMBuildStore(builder, source, destination_pointer) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+    }
+    Ok(())
+}
+
+unsafe fn commit_thumb_instruction(
+    context: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    runtime_type: LLVMTypeRef,
+    exit_type: LLVMTypeRef,
+    runtime: LLVMValueRef,
+    exit: LLVMValueRef,
+    cycles: LLVMValueRef,
+    i32_type: LLVMTypeRef,
+    next_pc: LLVMValueRef,
+) {
     let pc_pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, 15) };
     unsafe { LLVMBuildStore(builder, next_pc, pc_pointer) };
     let cycles_pointer =
@@ -1132,7 +1281,7 @@ unsafe fn lower_thumb_instruction(
             builder,
             cycles,
             LLVMConstInt(LLVMInt64TypeInContext(context), 1, 0),
-            c"thumb_bx_next_cycle".as_ptr(),
+            c"thumb_next_cycle".as_ptr(),
         )
     };
     unsafe { LLVMBuildStore(builder, next_cycles, cycles_pointer) };
@@ -1140,7 +1289,6 @@ unsafe fn lower_thumb_instruction(
         store_exit(builder, exit_type, exit, i32_type, 0, next_pc);
         LLVMBuildRet(builder, LLVMConstInt(i32_type, 0, 0));
     }
-    Ok(())
 }
 
 unsafe fn arm_condition_value(

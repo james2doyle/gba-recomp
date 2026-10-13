@@ -84,6 +84,8 @@ pub enum ArmOperation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThumbOperation {
     BranchExchange { rm: u8 },
+    Push { register_list: u16 },
+    MovRegister { rd: u8, rm: u8 },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -172,6 +174,7 @@ pub enum VerifyError {
     UnsupportedVersion(u16),
     MisalignedArmPc(u32),
     MisalignedThumbPc(u32),
+    InvalidThumbPushRegisterList(u16),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -196,6 +199,9 @@ impl fmt::Display for VerifyError {
             Self::MisalignedArmPc(pc) => write!(f, "ARM guest PC 0x{pc:08X} is not 4-byte aligned"),
             Self::MisalignedThumbPc(pc) => {
                 write!(f, "Thumb guest PC 0x{pc:08X} is not halfword aligned")
+            }
+            Self::InvalidThumbPushRegisterList(list) => {
+                write!(f, "invalid Thumb PUSH register list 0x{list:04X}")
             }
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
@@ -322,6 +328,16 @@ impl ArmProgram {
             }
             match instruction.operation {
                 ThumbOperation::BranchExchange { rm } => verify_operand_register(rm)?,
+                ThumbOperation::MovRegister { rd, rm } => {
+                    verify_general_register(rd)?;
+                    verify_operand_register(rm)?;
+                }
+                ThumbOperation::Push { register_list }
+                    if register_list == 0 || register_list & !0x01FF != 0 =>
+                {
+                    return Err(VerifyError::InvalidThumbPushRegisterList(register_list));
+                }
+                ThumbOperation::Push { .. } => {}
             }
         }
         for target in &self.branch_targets {
@@ -422,6 +438,24 @@ impl ArmProgram {
                     });
                 }
                 ThumbOperation::BranchExchange { .. } => {}
+                ThumbOperation::Push { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::MovRegister { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
             }
         }
         Ok(())
@@ -600,6 +634,16 @@ pub fn execute_thumb_instruction(
                 state.cpsr &= !0x20;
                 state.r[REG_PC as usize] = target & !3;
             }
+        }
+        ThumbOperation::Push { .. } => return Err(StepFault::MemoryRuntimeRequired),
+        ThumbOperation::MovRegister { rd, rm } => {
+            let value = if rm == REG_PC {
+                instruction.guest_pc.wrapping_add(4)
+            } else {
+                state.r[rm as usize]
+            };
+            state.r[rd as usize] = value;
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
     }
     state.guest_cycle += 1;
@@ -837,6 +881,58 @@ mod tests {
         assert_eq!(cpu.r[15], 0x0800_0200);
         assert_eq!(cpu.cpsr & 0x20, 0);
         assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn thumb_push_requires_memory_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0xB5F0,
+            operation: ThumbOperation::Push {
+                register_list: 0x01F0,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[13] = 0x0300_0020;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn thumb_high_mov_copies_registers_and_preserves_cpsr() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0x4647,
+            operation: ThumbOperation::MovRegister { rd: 7, rm: 8 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[8] = 0x1234_5678;
+        let cpsr = cpu.cpsr;
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[7], 0x1234_5678);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 2);
+        assert_eq!(cpu.cpsr, cpsr);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn thumb_high_mov_reads_pc_as_instruction_address_plus_four() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0x4678,
+            operation: ThumbOperation::MovRegister { rd: 0, rm: REG_PC },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[0], instruction.guest_pc + 4);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 2);
     }
 
     #[test]

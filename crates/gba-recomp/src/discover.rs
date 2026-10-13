@@ -372,6 +372,30 @@ fn process_thumb_instruction(
                 enqueue_state(target_mode, target_pc, target_state, pending, incoming);
             }
         }
+        ThumbOperation::Push { register_list } => {
+            let bytes = register_list.count_ones().wrapping_mul(4);
+            let mut next_state = state.clone();
+            next_state.registers[13] = state.registers[13].wrapping_add(0_u32.wrapping_sub(bytes));
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
+        ThumbOperation::MovRegister { rd, rm } => {
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] =
+                read_operand(state, rm, instruction.guest_pc.wrapping_add(4));
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
     }
     Ok(())
 }
@@ -556,5 +580,47 @@ mod tests {
         let error = discover_arm_program(&image).unwrap_err();
         assert!(error.contains("branch_target_out_of_rom at 0x080000C8"));
         assert!(error.contains("Thumb target 0x09000000"));
+    }
+
+    #[test]
+    fn discovers_thumb_push_fallthrough_and_preserves_bx_target_registers() {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        bytes[0x84..0x86].copy_from_slice(&0xB5F0_u16.to_le_bytes());
+        bytes[0x86..0x88].copy_from_slice(&0x4708_u16.to_le_bytes()); // BX r1.
+        bytes[0xBD] = header_checksum(&bytes);
+        let image = RomImage::from_bytes(bytes).unwrap();
+        let program = discover_arm_program(&image).unwrap();
+        assert_eq!(program.thumb_instructions.len(), 2);
+        assert_eq!(
+            program.thumb_instructions[0].operation,
+            ThumbOperation::Push {
+                register_list: 0x01F0
+            }
+        );
+        assert_eq!(program.thumb_instructions[0].guest_pc, ROM_BASE + 0x84);
+        assert_eq!(program.thumb_instructions[1].guest_pc, ROM_BASE + 0x86);
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn tracks_thumb_high_mov_constants_into_an_indirect_branch() {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        bytes[0x84..0x86].copy_from_slice(&0x460A_u16.to_le_bytes()); // MOV r2, r1.
+        bytes[0x86..0x88].copy_from_slice(&0x4710_u16.to_le_bytes()); // BX r2.
+        bytes[0xBD] = header_checksum(&bytes);
+        let image = RomImage::from_bytes(bytes).unwrap();
+        let program = discover_arm_program(&image).unwrap();
+        assert_eq!(program.thumb_instructions.len(), 2);
+        assert_eq!(
+            program.thumb_instructions[0].operation,
+            ThumbOperation::MovRegister { rd: 2, rm: 1 }
+        );
+        assert!(program.branch_targets.contains(&StaticBranchTarget {
+            source_mode: IsaMode::Thumb,
+            source_pc: ROM_BASE + 0x86,
+            target_mode: IsaMode::Arm,
+            target_pc: ROM_BASE + 0xCC,
+        }));
+        assert!(program.verify().is_ok());
     }
 }

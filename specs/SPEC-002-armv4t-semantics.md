@@ -21,6 +21,8 @@ Decodificar ARM de 32 bits e Thumb de 16 bits do ARM7TDMI e preservar resultado,
 - CPU-11: escrita ARM `STR` de palavra com offset imediato só é suportada nos limites da [SPEC-016](SPEC-016-ram-word-stores.md). Ela passa pela ABI GBA de memória; aceitação desse formato não implica suporte aos demais loads/stores nem ao bus completo.
 - CPU-12: `MOV Rd,Rm` ARM com shifter `LSL #0`, sem flags e sem destino PC, só é suportado nos limites da [SPEC-017](SPEC-017-arm-mov-register.md). A leitura de `Rm=PC` usa `guest_pc+8`; isso não autoriza outros shifts nem escrita de PC.
 - CPU-13: `BX Rm` e o despacho por modo são suportados somente nos limites da [SPEC-018](SPEC-018-arm-thumb-branch-exchange.md). O modo de destino vem do bit 0 de `Rm`, e destinos sem fechamento AOT estático são recusados.
+- CPU-14: Thumb `PUSH {rlist}` com r0–r7 e LR é suportado somente nos limites da [SPEC-019](SPEC-019-thumb-push.md). Efeitos de stack passam pela ABI GBA v3 e são limitados às regiões físicas aceitas por esse contrato.
+- CPU-15: Thumb `MOV Rd,Rm` high-register é suportado somente nos limites da [SPEC-020](SPEC-020-thumb-high-mov.md). `Rm=PC` usa `guest_pc+4`; escrita em PC e outras operações high-register continuam recusadas.
 
 ## Interface
 

@@ -11,3 +11,5 @@
 - [ADR-009-versioned-bus-context](ADR-009-versioned-bus-context.md)
 - [ADR-010-arm-mov-register](ADR-010-arm-mov-register.md)
 - [ADR-011-arm-thumb-branch-exchange](ADR-011-arm-thumb-branch-exchange.md)
+- [ADR-012-thumb-push-runtime-helper](ADR-012-thumb-push-runtime-helper.md)
+- [ADR-013-thumb-high-register-mov](ADR-013-thumb-high-register-mov.md)

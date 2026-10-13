@@ -353,6 +353,54 @@ for mode in store-out-of-range store-unaligned; do
     fi
 done
 
+push_rom="$root/target/gba020/thumb-push.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$push_rom" --mode thumb-push
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-push-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$push_rom" --out "$package" --opt "$optimization" --steps 15
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":15,"r0":50331648,"r1":134217861,"pc":"0x080000EC","cpsr":"0x0000001F","guest_cycle":15,"ewram_word0":0,"iwram_word0":68}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb PUSH fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["instructions_aot"] == 15
+PY
+done
+
+thumb_mov_rom="$root/target/gba020/thumb-mov.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$thumb_mov_rom" --mode thumb-mov
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-mov-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$thumb_mov_rom" --out "$package" --opt "$optimization" --steps 11
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":11,"r0":119,"r1":134217866,"pc":"0x080000D8","cpsr":"0x0000001F","guest_cycle":11,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb high-register MOV fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["instructions_aot"] == 11
+PY
+done
+
 bx_rom="$root/target/gba020/bx-interwork.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$bx_rom" --mode bx-interwork
 for optimization in O0 O2; do
