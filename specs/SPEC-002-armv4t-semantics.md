@@ -15,6 +15,7 @@ Decodificar ARM de 32 bits e Thumb de 16 bits do ARM7TDMI e preservar resultado,
 - CPU-05: shifter MUST cobrir imediato versus registrador, 0, 1, 31, 32, >32, bits baixos do registrador, RRX e carry preservado/atualizado. Multiplicação e multiply-long MUST preservar signedness e custos relevantes.
 - CPU-06: loads/stores MUST passar pelo modelo guest para desalinhamento, rotação, extensão de sinal, open bus e writeback. LDM/STM, lista vazia e base na lista exigem casos próprios; não herdar comportamento do host.
 - CPU-07: transições SWI/IRQ/Undefined e retorno MUST preservar bancos, endereço de retorno, masks e CPSR/SPSR conforme contrato. Famílias sem semântica validada MUST falhar com `unsupported_instruction` antes de gerar código silenciosamente incorreto.
+- CPU-08: estado ARM bancado e `MSR CPSR` seguem o contrato incremental da [SPEC-013](SPEC-013-banked-cpu-and-psr.md); não alterar layout do ABI v1 para acomodá-los.
 
 ## Interface
 

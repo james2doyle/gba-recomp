@@ -28,6 +28,7 @@ mGBA clonado nesta entrega por `git clone https://github.com/mgba-emu/mgba.git v
 | SRC-08 | confirmed | mGBA `src/gba/bios.c`, `savedata.c`, `overrides.c`, `sio.c`, `include/mgba/internal/gba/cart/` | BIOS, backups, RTC, sensores e serial têm contratos próprios |
 | SRC-09 | confirmed | mGBA `include/mgba/internal/arm/arm.h:29`: modos CPU, bancos e vetores | Modelar estado arquitetural completo, sem omitir modos por suposição |
 | SRC-10 | confirmed | gba-recomp `docs/architecture.md`, `docs/launcher.md`, `crates/input-config/`, `crates/screen/` | Referência de UX e apresentação; afirmações de compatibilidade do texto não foram reproduzidas |
+| SRC-11 | confirmed | mGBA commit `143adf5aa2a60c6036810b0cd72445e13d74b0e6`, `src/arm/decoder-arm.c` e `src/arm/isa-arm.c`: classifica MSR CPSR por campos c/f e troca bancos na mudança de modo | Observação da fonte de referência; não é validação em hardware nem código transplantado |
 
 ## Detalhamento da referência GBA
 

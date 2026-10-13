@@ -4,11 +4,11 @@ Fonte única de andamento. Data: 2026-10-13. `DONE` exige evidência; `BACKLOG` 
 
 | ID | Prioridade | Entrega | Estado | Dependências | Contrato/evidência |
 |---|---|---|---|---|---|
-| GBA-001 | P0 | Especificação SDD inicial, referência e inventário | DONE | — | README, 12 specs, ADR-001–003, KNO-001/002/004, clone mGBA fixado por commit; revisão documental local |
+| GBA-001 | P0 | Especificação SDD inicial, referência e inventário | DONE | — | README, 13 specs, ADR-001–003, KNO-001/002/004, clone mGBA fixado por commit; revisão documental local |
 | GBA-005 | P0 | Revisar contratos e fechar versões/toolchains | DONE | GBA-001 | ADR-004, `toolchain.lock.toml`, SPEC-004/010 em Review, KNO-001/003; hashes upstream registrados |
 | GBA-010 | P0 | Scaffold, ABI, GBA IR mínima e LLVM objeto/link | IN_PROGRESS | GBA-005 | Fixture O0/O2 emitida como Mach-O, linkada e executada em macOS arm64; validação Linux x86-64 ainda pendente |
 | GBA-020 | P0 | Intake, decoder e primeiro homebrew headless | IN_PROGRESS | GBA-010 (gate Linux x86-64 ainda pendente) | SPEC-012; Tiny Counter, 6 instruções estritamente AOT, O0/O2 executados em macOS arm64; LeafGreen bloqueada por opcode ainda não suportado |
-| GBA-025 | P0 | CFG, ARM/Thumb, dispatcher, guards e overlays | BACKLOG | GBA-020 | SPEC-003; miss estrito e fallback mensurado |
+| GBA-025 | P0 | CFG, ARM/Thumb, dispatcher, guards e overlays | IN_PROGRESS | GBA-020 (LeafGreen ainda falha no decoder) | SPEC-003/013; primeira extensão de CPU para bancos ARM e MSR CPSR |
 | GBA-030 | P0 | Bus, timing, DMA, timers e IRQ | BACKLOG | GBA-020 | SPEC-005; conformance temporal |
 | GBA-040 | P0 | PPU software e APU canônica | BACKLOG | GBA-030 | SPEC-006; gráfico e áudio homebrew |
 | GBA-045 | P0 | HLE mínimo, backups e estado | BACKLOG | GBA-030 | SPEC-007; save/restore e SWIs da fixture |
