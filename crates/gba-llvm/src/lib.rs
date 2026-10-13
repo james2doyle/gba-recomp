@@ -562,6 +562,38 @@ unsafe fn lower_arm_instruction(
             unsafe { LLVMBuildStore(builder, new, pointer) };
             default_next_pc
         }
+        ArmOperation::MovRegister { rd, rm } => {
+            let source = if rm == 15 {
+                unsafe {
+                    LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(8)), 0)
+                }
+            } else {
+                let source_pointer =
+                    unsafe { register_pointer(builder, context, runtime_type, runtime, rm) };
+                unsafe { LLVMBuildLoad2(builder, i32_type, source_pointer, c"mov_source".as_ptr()) }
+            };
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let old = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    destination_pointer,
+                    c"old_mov_rd".as_ptr(),
+                )
+            };
+            let new = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    source,
+                    old,
+                    c"mov_register_result".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, new, destination_pointer) };
+            default_next_pc
+        }
         ArmOperation::LoadRomLiteral { rd, value, .. } => {
             let pointer = unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
             let old =

@@ -226,6 +226,66 @@ if [ "$actual" != "$expected" ]; then
     exit 1
 fi
 
+mov_rom="$root/target/gba020/mov-register-pc.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$mov_rom" --mode mov-register-pc
+for optimization in O0 O2; do
+    package="$root/target/gba020/mov-register-pc-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$mov_rom" --out "$package" --opt "$optimization" --steps 4
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":4,"r0":134217928,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization MOV PC fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["instructions_aot"] == 4
+assert manifest["execution_mode"] == "strict-aot"
+PY
+done
+
+mov_false_rom="$root/target/gba020/mov-register-condition-false.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$mov_false_rom" --mode mov-register-condition-false
+for optimization in O0 O2; do
+    package="$root/target/gba020/mov-register-condition-false-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$mov_false_rom" --out "$package" --opt "$optimization" --steps 4
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":4,"r0":165,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization false-predicate MOV fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+done
+
+mov_shift_rom="$root/target/gba020/mov-register-shift.gba"
+mov_shift_package="$root/target/gba020/mov-register-shift-package"
+mov_shift_output="$root/target/gba020/mov-register-shift.txt"
+python3 fixtures/tiny-counter/make_rom.py --out "$mov_shift_rom" --mode mov-register-shift
+rm -rf "$mov_shift_package"
+if cargo run --locked --quiet -p gba-recomp -- compile \
+    --rom "$mov_shift_rom" --out "$mov_shift_package" --opt O0 --steps 4 \
+    >"$mov_shift_output" 2>&1; then
+    echo "shifted MOV unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -q 'only MOV Rd,Rm with LSL #0' "$mov_shift_output"; then
+    cat "$mov_shift_output" >&2
+    echo "shifted MOV did not report the narrow decoder restriction" >&2
+    exit 1
+fi
+if [ -e "$mov_shift_package" ]; then
+    echo "failed shifted MOV compile left a partial package" >&2
+    exit 1
+fi
+
 for mode in store-ewram store-iwram; do
     store_rom="$root/target/gba020/$mode.gba"
     python3 fixtures/tiny-counter/make_rom.py --out "$store_rom" --mode "$mode"

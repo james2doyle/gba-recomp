@@ -46,6 +46,10 @@ Após a fixture de `ADD` PC-relativo passar em O0/O2, uma nova compilação loca
 
 Em 2026-10-13, depois de `scripts/verify-gba020.sh` passar as fixtures ABI v3, uma nova compilação local falhou antes de publicar pacote em `0x0800022C`, palavra `0xE1A0E00F`, com `instruction family is not implemented`. A interpretação `MOV LR,PC` é inferência pelos campos ARM. O PC+8 para operando ARM está registrado como comportamento da referência no SRC-17, mas não demonstra o uso do resultado por LeafGreen. A ROM não foi executada nem decompilada; o relatório mede apenas o limite da descoberta AOT local para o SHA-256 fixado acima.
 
+## Tentativa após SPEC-017 — MOV entre registradores
+
+Em 2026-10-13, as fixtures do MOV `LSL #0` passaram em O0/O2. A compilação estática local avançou até `0x08000230`, raw `0xE12FFF11`, e parou com `instruction family is not implemented`. A leitura como `BX r1` é inferência pelos campos ARM. Nenhum pacote foi criado, a ROM não foi executada e o destino de `r1` não foi observado por trace; esta evidência apenas fixa o próximo limite de decode para o SHA-256 registrado acima.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

@@ -33,6 +33,10 @@ pub enum ArmOperation {
         rd: u8,
         value: u32,
     },
+    MovRegister {
+        rd: u8,
+        rm: u8,
+    },
     AddImmediate {
         rd: u8,
         rn: u8,
@@ -218,6 +222,10 @@ impl ArmProgram {
             }
             match instruction.operation {
                 ArmOperation::MovImmediate { rd, .. } => verify_general_register(rd)?,
+                ArmOperation::MovRegister { rd, rm } => {
+                    verify_general_register(rd)?;
+                    verify_operand_register(rm)?;
+                }
                 ArmOperation::AddImmediate { rd, rn, .. } => {
                     verify_general_register(rd)?;
                     verify_general_register(rn)?;
@@ -293,6 +301,13 @@ fn verify_general_register(register: u8) -> Result<(), VerifyError> {
     Ok(())
 }
 
+fn verify_operand_register(register: u8) -> Result<(), VerifyError> {
+    if register > REG_PC {
+        return Err(VerifyError::InvalidRegister(register));
+    }
+    Ok(())
+}
+
 pub fn condition_passes(condition: u8, cpsr: u32) -> bool {
     let n = cpsr & (1 << 31) != 0;
     let z = cpsr & (1 << 30) != 0;
@@ -340,6 +355,14 @@ pub fn execute_instruction(
     if executes {
         match instruction.operation {
             ArmOperation::MovImmediate { rd, value } => state.r[rd as usize] = value,
+            ArmOperation::MovRegister { rd, rm } => {
+                let value = if rm == REG_PC {
+                    instruction.guest_pc.wrapping_add(8)
+                } else {
+                    state.r[rm as usize]
+                };
+                state.r[rd as usize] = value;
+            }
             ArmOperation::AddImmediate { rd, rn, value } => {
                 state.r[rd as usize] = state.r[rn as usize].wrapping_add(value);
             }
@@ -512,6 +535,42 @@ mod tests {
         let flags = cpu.cpsr;
         execute_instruction(&mut cpu, instruction).unwrap();
         assert_eq!(cpu.r[0], 0x0800_0028);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 4);
+        assert_eq!(cpu.cpsr, flags);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn mov_register_reads_pipeline_pc_and_preserves_flags() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0xE1A0_E00F,
+            condition: 14,
+            operation: ArmOperation::MovRegister { rd: 14, rm: REG_PC },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        let flags = cpu.cpsr;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[14], instruction.guest_pc + 8);
+        assert_eq!(cpu.r[15], instruction.guest_pc + 4);
+        assert_eq!(cpu.cpsr, flags);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn false_predicate_preserves_mov_register_destination_and_flags() {
+        let instruction = ArmInstruction {
+            guest_pc: 0x0800_0000,
+            encoding: 0x01A0_0001,
+            condition: 0,
+            operation: ArmOperation::MovRegister { rd: 0, rm: 1 },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.r[0] = 0xA5;
+        cpu.r[1] = 0x1234_5678;
+        let flags = cpu.cpsr;
+        execute_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[0], 0xA5);
         assert_eq!(cpu.r[15], instruction.guest_pc + 4);
         assert_eq!(cpu.cpsr, flags);
         assert_eq!(cpu.guest_cycle, 6);

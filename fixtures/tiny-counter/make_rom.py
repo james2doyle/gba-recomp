@@ -64,6 +64,22 @@ def generate(mode: str = "valid") -> bytes:
             0x028F0020,  # ADDEQ r0, pc, #0x20, false with initial Z=0
             branch(0xC8, 0xC8),  # B finished
         )
+    elif mode == "mov-register-pc":
+        image[0xC0:0xCC] = struct.pack(
+            "<3I",
+            0xE1A0E00F,  # MOV lr, pc -> visible PC is 0x080000C8
+            0xE1A0000E,  # MOV r0, lr
+            branch(0xC8, 0xC8),  # B finished
+        )
+    elif mode == "mov-register-condition-false":
+        image[0xC0:0xCC] = struct.pack(
+            "<3I",
+            0xE3A000A5,  # MOV r0, #0xA5
+            0x01A0000F,  # MOVEQ r0, pc; false with initial Z=0
+            branch(0xC8, 0xC8),  # B finished
+        )
+    elif mode == "mov-register-shift":
+        image[0xC0:0xC4] = struct.pack("<I", 0xE1A00081)  # MOV r0, r1, LSL #1
     elif mode.startswith("store-"):
         guest_address = {
             "store-ewram": 0x02000000,
@@ -111,6 +127,9 @@ def main() -> None:
             "literal-out-of-range",
             "add-pc",
             "add-pc-condition-false",
+            "mov-register-pc",
+            "mov-register-condition-false",
+            "mov-register-shift",
             "store-ewram",
             "store-iwram",
             "store-out-of-range",

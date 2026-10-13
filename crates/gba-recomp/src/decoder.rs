@@ -81,6 +81,19 @@ pub fn decode_arm(guest_pc: u32, encoding: u32) -> Result<ArmInstruction, String
             return unsupported(guest_pc, encoding, "MSR source r15 is not implemented");
         }
         ArmOperation::MsrCpsrRegister { rm, field_mask }
+    } else if encoding & 0x0E00_0000 == 0 && (encoding >> 21) & 0xF == 13 {
+        let set_flags = encoding & (1 << 20) != 0;
+        let rn = ((encoding >> 16) & 0xF) as u8;
+        let rd = ((encoding >> 12) & 0xF) as u8;
+        let rm = (encoding & 0xF) as u8;
+        if set_flags || rn != 0 || rd == 15 || encoding & 0xFF0 != 0 {
+            return unsupported(
+                guest_pc,
+                encoding,
+                "only MOV Rd,Rm with LSL #0, no flags, and a non-PC destination is implemented",
+            );
+        }
+        ArmOperation::MovRegister { rd, rm }
     } else if encoding & 0x0E00_0000 == 0x0A00_0000 {
         let immediate = (encoding & 0x00FF_FFFF) as i32;
         let signed_immediate = (immediate << 8) >> 8;
@@ -195,6 +208,14 @@ mod tests {
             decode_arm(0x0800_0220, 0xE28F_0F01).unwrap().operation,
             ArmOperation::AddPcRelativeImmediate { rd: 0, value: 4 }
         );
+        assert_eq!(
+            decode_arm(0x0800_022C, 0xE1A0_E00F).unwrap().operation,
+            ArmOperation::MovRegister { rd: 14, rm: 15 }
+        );
+        assert_eq!(
+            decode_arm(0x0800_0230, 0xE1A0_0001).unwrap().operation,
+            ArmOperation::MovRegister { rd: 0, rm: 1 }
+        );
     }
 
     #[test]
@@ -231,6 +252,11 @@ mod tests {
         );
         assert!(decode_arm(0x0800_0138, 0xE29F_0020).is_err());
         assert!(decode_arm(0x0800_013C, 0xE28F_F020).is_err());
+        assert!(decode_arm(0x0800_0140, 0xE1B0_0001).is_err()); // MOVS
+        assert!(decode_arm(0x0800_0144, 0xE1A0_0081).is_err()); // LSL #1
+        assert!(decode_arm(0x0800_0148, 0xE1A0_F001).is_err()); // destination PC
+        assert!(decode_arm(0x0800_014C, 0xE1A0_0031).is_err()); // register-specified shift
+        assert!(decode_arm(0x0800_0150, 0xE1A1_0001).is_err()); // nonzero ignored Rn
     }
 
     #[test]

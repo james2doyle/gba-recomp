@@ -8,7 +8,7 @@ Data: 2026-10-13. Tipo de evidência: leitura estática dos três repositórios 
 |---|---|---|
 | gba-recomp | `de4edf59b872d887046d6a3b005e2df551b6d44c` | `crates/armv4t/src/{arm.rs,thumb.rs,lib.rs}`, `crates/gba-core/src/exec.rs`, `crates/recomp-core/src/{analyze.rs,emit.rs}` |
 | mGBA | `143adf5aa2a60c6036810b0cd72445e13d74b0e6` | `src/arm/{decoder-arm.c,decoder-thumb.c,isa-arm.c,isa-thumb.c,arm.c}` |
-| gba-recomp local | commit-base `a099c32`; alterações locais não commitadas | `crates/gba-recomp/src/decoder.rs`, `crates/gba-ir/src/lib.rs`, `crates/gba-llvm/src/lib.rs`, `crates/gba-runtime-abi/src/` |
+| gba-recomp local | baseline commit `d5716f6`; SPEC-017 changes pending commit | `crates/gba-recomp/src/decoder.rs`, `crates/gba-ir/src/lib.rs`, `crates/gba-llvm/src/lib.rs`, `crates/gba-runtime-abi/src/` |
 
 O inventário separa quatro etapas que não devem ser confundidas: reconhecimento do encoding, representação na IR, semântica guest no runtime e lowering AOT executável. Ler uma operação no decoder de referência não demonstra que o nosso runtime/LLVM a suporte. A tabela descreve código observado; não mede a cobertura alcançável de um jogo.
 
@@ -32,6 +32,7 @@ Os detalhes de suporte em `gba-recomp` são observações do código nesta revis
 |---|---|---|---|
 | Predicação ARM e avanço de PC | Condições ARM 0–14 em cada instrução aceita | Predicado condicional no dispatcher | Fixture Tiny Counter e fixtures de condição falsa |
 | ALU imediata | `MOV`, `ADD`, `CMP`; caso específico `ADD Rd,PC,#imm` | Implementados para o subset; PC visível é `guest_pc+8` | Tiny Counter e fixture SPEC-015; outros opcodes e operand2 registrador rejeitados |
+| MOV ARM com operando registrador | Referências decodificam MOV pela família ALU e shifter | Forma `LSL #0`, sem flags e sem destino PC, implementada em SPEC-017 | Fixtures O0/O2 para `MOV LR,PC` e condição falsa; demais shifts seguem rejeitados |
 | Branch ARM direto | B/BL com alvo relativo assinado | Dispatcher estritamente AOT | Tiny Counter O0/O2; não cobre `BX`, Thumb ou destino dinâmico |
 | PSR | `MSR CPSR` por registrador, subset de campos aceito pelo contrato bancado | Runtime ABI v2 com bancos limitados aos modos modelados | Fixture v2; não cobre MRS/SPSR nem toda combinação de campos |
 | LDR literal ARM de ROM | Palavra, imediato, pre-index, sem writeback, base PC; endereço e valor resolvidos na ROM imutável | Constante materializada em AOT | SPEC-014 O0/O2; não usa bus e não cobre memória dinâmica |
@@ -41,7 +42,7 @@ Os detalhes de suporte em `gba-recomp` são observações do código nesta revis
 | ISA Thumb | Ainda sem decoder/IR | Nenhum | Sem fixtures locais |
 | SWI, BIOS, interrupções e demais regiões mapeadas | Fora do subset atual | Nenhum | Dependem dos contratos de runtime GBA-030/045; a implementação RAM v3 não cobre mirrors, ROM, BIOS, MMIO, VRAM/OAM ou timing |
 
-As fixtures O0/O2 provam somente suas instruções e estado inicial conhecidos. `scripts/verify-gba020.sh` executou a escrita word em EWRAM e IWRAM nos dois níveis; também passou condição falsa sem escrita/fault e faults de endereço fora da faixa e desalinhado. A última descoberta LeafGreen após ABI v3 parou em `0x0800022C`, raw `0xE1A0E00F`; a leitura como `MOV LR,PC` é inferência dos campos. Isso aponta para operand2 registrador e ainda não tem decode/IR/LLVM local. A compilação prova apenas que a descoberta alcançou esse encoding antes da recusa; não é execução do jogo nem cobertura de todo o título.
+As fixtures O0/O2 provam somente suas instruções e estado inicial conhecidos. `scripts/verify-gba020.sh` executou a escrita word em EWRAM/IWRAM, o MOV com PC e a condição falsa nos dois níveis; também passou faults de endereço fora da faixa e desalinhado. Depois de SPEC-017, a compilação LeafGreen avançou de `0x0800022C` para `0x08000230`, raw `0xE12FFF11`, e parou no decoder. A leitura como `BX r1` é inferência pelos campos; não houve pacote nem execução do jogo. Isso aponta para branch exchange e despacho ARM/Thumb como próxima lacuna, não demonstra que o destino tenha sido alcançado em execução.
 
 ## Método recomendado para expandir cobertura
 

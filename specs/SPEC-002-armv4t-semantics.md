@@ -19,6 +19,7 @@ Decodificar ARM de 32 bits e Thumb de 16 bits do ARM7TDMI e preservar resultado,
 - CPU-09: carga literal ARM por PC pode ser fixada em constante AOT somente nos limites imutáveis da [SPEC-014](SPEC-014-rom-literal-loads.md); outras cargas passam pelo bus ou são recusadas.
 - CPU-10: `ADD Rd, PC, #imm` ARM sem flags é suportado somente nos limites da [SPEC-015](SPEC-015-arm-pc-relative-add.md), com valor PC visível de `guest_pc+8`; nenhuma outra forma de uso de PC é inferida desse caso.
 - CPU-11: escrita ARM `STR` de palavra com offset imediato só é suportada nos limites da [SPEC-016](SPEC-016-ram-word-stores.md). Ela passa pela ABI GBA de memória; aceitação desse formato não implica suporte aos demais loads/stores nem ao bus completo.
+- CPU-12: `MOV Rd,Rm` ARM com shifter `LSL #0`, sem flags e sem destino PC, só é suportado nos limites da [SPEC-017](SPEC-017-arm-mov-register.md). A leitura de `Rm=PC` usa `guest_pc+8`; isso não autoriza outros shifts nem escrita de PC.
 
 ## Interface
 
