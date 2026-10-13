@@ -83,10 +83,32 @@ pub enum ArmOperation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThumbOperation {
-    BranchExchange { rm: u8 },
-    Push { register_list: u16 },
-    MovImmediate { rd: u8, value: u8 },
-    MovRegister { rd: u8, rm: u8 },
+    BranchExchange {
+        rm: u8,
+    },
+    Push {
+        register_list: u16,
+    },
+    MovImmediate {
+        rd: u8,
+        value: u8,
+    },
+    MovRegister {
+        rd: u8,
+        rm: u8,
+    },
+    BlPrefix {
+        lr_partial: u32,
+    },
+    /// Decoder-only form; discovery resolves it to a statically closed BL call.
+    BlSuffix {
+        immediate: u16,
+    },
+    BlCall {
+        target: u32,
+        expected_lr: u32,
+        return_address: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -138,6 +160,8 @@ pub enum StepFault {
     BankedRuntimeRequired,
     RomLiteralUnresolved,
     MemoryRuntimeRequired,
+    UnresolvedThumbBlSuffix,
+    ThumbBlStateMismatch { expected: u32, actual: u32 },
 }
 
 impl fmt::Display for StepFault {
@@ -164,6 +188,13 @@ impl fmt::Display for StepFault {
             Self::MemoryRuntimeRequired => {
                 f.write_str("guest memory access requires the GBA runtime ABI v3")
             }
+            Self::UnresolvedThumbBlSuffix => {
+                f.write_str("Thumb BL suffix was not resolved during discovery")
+            }
+            Self::ThumbBlStateMismatch { expected, actual } => write!(
+                f,
+                "Thumb BL suffix expected LR 0x{expected:08X}, got 0x{actual:08X}"
+            ),
         }
     }
 }
@@ -188,6 +219,8 @@ pub enum VerifyError {
     DuplicateInstructionPc(u32),
     BranchExchangeWithoutTargets { mode: IsaMode, pc: u32 },
     BranchTargetSourceInvalid { mode: IsaMode, pc: u32 },
+    UnresolvedThumbBlSuffix(u32),
+    InvalidThumbBlPair(u32),
     UnsupportedInstructionEncoding(u32),
     MissingSuccessor { pc: u32, target: u32 },
 }
@@ -249,6 +282,13 @@ impl fmt::Display for VerifyError {
                 f,
                 "static branch target at 0x{pc:08X} does not originate at a {mode:?} BX"
             ),
+            Self::UnresolvedThumbBlSuffix(pc) => write!(
+                f,
+                "Thumb BL suffix at 0x{pc:08X} was not resolved during discovery"
+            ),
+            Self::InvalidThumbBlPair(pc) => {
+                write!(f, "invalid Thumb BL pair at 0x{pc:08X}")
+            }
             Self::UnsupportedInstructionEncoding(encoding) => {
                 write!(f, "unsupported ARM encoding 0x{encoding:08X}")
             }
@@ -325,6 +365,11 @@ impl ArmProgram {
             }
         }
         let mut thumb_pcs = std::collections::HashSet::with_capacity(self.thumb_instructions.len());
+        let thumb_by_pc = self
+            .thumb_instructions
+            .iter()
+            .map(|instruction| (instruction.guest_pc, instruction))
+            .collect::<std::collections::HashMap<_, _>>();
         for instruction in &self.thumb_instructions {
             if instruction.guest_pc & 1 != 0 {
                 return Err(VerifyError::MisalignedThumbPc(instruction.guest_pc));
@@ -348,6 +393,40 @@ impl ArmProgram {
                     return Err(VerifyError::InvalidThumbPushRegisterList(register_list));
                 }
                 ThumbOperation::Push { .. } => {}
+                ThumbOperation::BlPrefix { lr_partial }
+                    if instruction.encoding & 0xF800 != 0xF000
+                        || lr_partial
+                            != thumb_bl_lr_partial(instruction.guest_pc, instruction.encoding) =>
+                {
+                    return Err(VerifyError::InvalidThumbBlPair(instruction.guest_pc));
+                }
+                ThumbOperation::BlPrefix { .. } => {}
+                ThumbOperation::BlSuffix { .. } => {
+                    return Err(VerifyError::UnresolvedThumbBlSuffix(instruction.guest_pc));
+                }
+                ThumbOperation::BlCall {
+                    target,
+                    expected_lr,
+                    return_address,
+                } => {
+                    if instruction.encoding & 0xF800 != 0xF800
+                        || target & 1 != 0
+                        || return_address != (instruction.guest_pc.wrapping_add(2) | 1)
+                    {
+                        return Err(VerifyError::InvalidThumbBlPair(instruction.guest_pc));
+                    }
+                    let prefix_pc = instruction.guest_pc.wrapping_sub(2);
+                    let Some(prefix) = thumb_by_pc.get(&prefix_pc) else {
+                        return Err(VerifyError::InvalidThumbBlPair(instruction.guest_pc));
+                    };
+                    let ThumbOperation::BlPrefix { lr_partial } = prefix.operation else {
+                        return Err(VerifyError::InvalidThumbBlPair(instruction.guest_pc));
+                    };
+                    let immediate = u32::from(instruction.encoding & 0x07FF) << 1;
+                    if expected_lr != lr_partial || target != lr_partial.wrapping_add(immediate) {
+                        return Err(VerifyError::InvalidThumbBlPair(instruction.guest_pc));
+                    }
+                }
             }
         }
         for target in &self.branch_targets {
@@ -475,10 +554,42 @@ impl ArmProgram {
                         });
                     }
                 }
+                ThumbOperation::BlPrefix { .. } => {
+                    let suffix = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&suffix) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: suffix,
+                        });
+                    }
+                    let is_call_suffix = thumb_by_pc.get(&suffix).is_some_and(|candidate| {
+                        matches!(candidate.operation, ThumbOperation::BlCall { .. })
+                    });
+                    if !is_call_suffix {
+                        return Err(VerifyError::InvalidThumbBlPair(instruction.guest_pc));
+                    }
+                }
+                ThumbOperation::BlCall { target, .. } => {
+                    if !thumb_pcs.contains(&target) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target,
+                        });
+                    }
+                }
+                ThumbOperation::BlSuffix { .. } => {
+                    return Err(VerifyError::UnresolvedThumbBlSuffix(instruction.guest_pc));
+                }
             }
         }
         Ok(())
     }
+}
+
+fn thumb_bl_lr_partial(guest_pc: u32, prefix_encoding: u16) -> u32 {
+    let immediate = i32::from(prefix_encoding & 0x07FF);
+    let signed = (immediate << 21) >> 21;
+    guest_pc.wrapping_add(4).wrapping_add((signed << 12) as u32)
 }
 
 fn verify_general_register(register: u8) -> Result<(), VerifyError> {
@@ -668,6 +779,26 @@ pub fn execute_thumb_instruction(
             };
             state.r[rd as usize] = value;
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
+        ThumbOperation::BlPrefix { lr_partial } => {
+            state.r[14] = lr_partial;
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
+        ThumbOperation::BlSuffix { .. } => return Err(StepFault::UnresolvedThumbBlSuffix),
+        ThumbOperation::BlCall {
+            target,
+            expected_lr,
+            return_address,
+        } => {
+            let actual = state.r[14];
+            if actual != expected_lr {
+                return Err(StepFault::ThumbBlStateMismatch {
+                    expected: expected_lr,
+                    actual,
+                });
+            }
+            state.r[14] = return_address;
+            state.r[REG_PC as usize] = target;
         }
     }
     state.guest_cycle += 1;
@@ -978,6 +1109,63 @@ mod tests {
     }
 
     #[test]
+    fn thumb_bl_halves_set_and_validate_link_register_before_static_dispatch() {
+        let prefix = ThumbInstruction {
+            guest_pc: 0x0800_0084,
+            encoding: 0xF000,
+            operation: ThumbOperation::BlPrefix {
+                lr_partial: 0x0800_0088,
+            },
+        };
+        let call = ThumbInstruction {
+            guest_pc: 0x0800_0086,
+            encoding: 0xF804,
+            operation: ThumbOperation::BlCall {
+                target: 0x0800_0090,
+                expected_lr: 0x0800_0088,
+                return_address: 0x0800_0089,
+            },
+        };
+        let mut cpu = state(prefix.guest_pc);
+        cpu.cpsr |= 0x20;
+        let flags = cpu.cpsr;
+        execute_thumb_instruction(&mut cpu, prefix).unwrap();
+        assert_eq!(cpu.r[14], 0x0800_0088);
+        assert_eq!(cpu.r[15], 0x0800_0086);
+        assert_eq!(cpu.cpsr, flags);
+        execute_thumb_instruction(&mut cpu, call).unwrap();
+        assert_eq!(cpu.r[14], 0x0800_0089);
+        assert_eq!(cpu.r[15], 0x0800_0090);
+        assert_eq!(cpu.cpsr, flags);
+        assert_eq!(cpu.guest_cycle, 7);
+    }
+
+    #[test]
+    fn thumb_bl_suffix_rejects_a_different_incoming_lr() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0086,
+            encoding: 0xF804,
+            operation: ThumbOperation::BlCall {
+                target: 0x0800_0090,
+                expected_lr: 0x0800_0088,
+                return_address: 0x0800_0089,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[14] = 0x0800_1234;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::ThumbBlStateMismatch {
+                expected: 0x0800_0088,
+                actual: 0x0800_1234,
+            })
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
     fn arm_program_verifier_rejects_high_destination_for_thumb_immediate_mov() {
         let program = ArmProgram {
             version: GBA_IR_VERSION,
@@ -992,6 +1180,24 @@ mod tests {
         assert_eq!(
             program.verify(),
             Err(VerifyError::InvalidThumbImmediateRegister(8))
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_rejects_unresolved_thumb_bl_suffix() {
+        let program = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![ThumbInstruction {
+                guest_pc: 0x0800_0100,
+                encoding: 0xF800,
+                operation: ThumbOperation::BlSuffix { immediate: 0 },
+            }],
+            branch_targets: vec![],
+        };
+        assert_eq!(
+            program.verify(),
+            Err(VerifyError::UnresolvedThumbBlSuffix(0x0800_0100))
         );
     }
 

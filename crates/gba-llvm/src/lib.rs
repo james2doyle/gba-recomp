@@ -1307,6 +1307,68 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::BlPrefix { lr_partial } => {
+            let lr_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, 14) };
+            unsafe {
+                LLVMBuildStore(
+                    builder,
+                    LLVMConstInt(i32_type, u64::from(lr_partial), 0),
+                    lr_pointer,
+                )
+            };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::BlSuffix { .. } => {
+            return Err(format!(
+                "unresolved Thumb BL suffix at 0x{:08X} reached LLVM lowering",
+                instruction.guest_pc
+            ));
+        }
+        ThumbOperation::BlCall {
+            target,
+            expected_lr: _,
+            return_address,
+        } => {
+            let lr_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, 14) };
+            unsafe {
+                LLVMBuildStore(
+                    builder,
+                    LLVMConstInt(i32_type, u64::from(return_address), 0),
+                    lr_pointer,
+                )
+            };
+            let target_pc = unsafe { LLVMConstInt(i32_type, u64::from(target), 0) };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    target_pc,
+                )
+            };
+        }
     }
     Ok(())
 }

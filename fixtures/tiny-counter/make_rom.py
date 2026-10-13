@@ -86,6 +86,44 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xE4:0xE8] = struct.pack("<I", 0x80000000)
         image[0xF0:0xF8] = struct.pack("<2I", 0x08000085, 0x080000D4)
+    elif mode in (
+        "thumb-bl",
+        "thumb-bl-broken-pair",
+        "thumb-bl-suffix-without-prefix",
+        "thumb-bl-out-of-range",
+    ):
+        if mode == "thumb-bl":
+            image[0x84:0x94] = struct.pack(
+                "<8H",
+                0xF000,  # BL prefix at 0x08000084; partial LR = 0x08000088.
+                0xF804,  # BL suffix at 0x08000086; target = 0x08000090.
+                0x4610,  # MOV r0,r2 after return.
+                0x4708,  # BX r1 -> ARM return block.
+                0x46C0,  # Unreachable padding: MOV r8,r8.
+                0x46C0,
+                0x2242,  # Callee: MOVS r2,#0x42.
+                0x4770,  # BX LR -> 0x08000088.
+            )
+            image[0xC0:0xCC] = struct.pack(
+                "<3I",
+                0xE59F0010,  # LDR r0, [pc,#0x10] -> Thumb entry | 1 at 0xD8.
+                0xE59F1010,  # LDR r1, [pc,#0x10] -> ARM return at 0xDC.
+                0xE12FFF10,  # BX r0.
+            )
+            image[0xD0:0xD4] = struct.pack("<I", 0xEAFFFFFE)
+            image[0xD8:0xE0] = struct.pack("<2I", 0x08000085, 0x080000D0)
+        elif mode == "thumb-bl-broken-pair":
+            image[0x84:0x88] = struct.pack("<2H", 0xF000, 0x2001)
+            image[0xC0:0xC8] = struct.pack("<2I", 0xE59F0008, 0xE12FFF10)
+            image[0xD0:0xD4] = struct.pack("<I", 0x08000085)
+        elif mode == "thumb-bl-suffix-without-prefix":
+            image[0x84:0x86] = struct.pack("<H", 0xF800)
+            image[0xC0:0xC8] = struct.pack("<2I", 0xE59F0008, 0xE12FFF10)
+            image[0xD0:0xD4] = struct.pack("<I", 0x08000085)
+        else:
+            image[0x84:0x88] = struct.pack("<2H", 0xF000, 0xF87F)
+            image[0xC0:0xC8] = struct.pack("<2I", 0xE59F0008, 0xE12FFF10)
+            image[0xD0:0xD4] = struct.pack("<I", 0x08000085)
     elif mode == "bx-interwork":
         image[0x84:0x86] = struct.pack("<H", 0x4708)  # Thumb BX r1 -> ARM code.
         image[0xC0:0xD0] = struct.pack(
@@ -204,6 +242,10 @@ def main() -> None:
             "thumb-mov",
             "thumb-movs-immediate",
             "thumb-movs-zero",
+            "thumb-bl",
+            "thumb-bl-broken-pair",
+            "thumb-bl-suffix-without-prefix",
+            "thumb-bl-out-of-range",
             "thumb-push",
             "bx-interwork",
             "bx-out-of-range",

@@ -78,7 +78,49 @@ pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
                     let encoding = image
                         .read_thumb_halfword(pc)
                         .map_err(|error| format!("discovery failed at 0x{pc:08X}: {error}"))?;
-                    let instruction = crate::decoder::decode_thumb(pc, encoding)?;
+                    let mut instruction = crate::decoder::decode_thumb(pc, encoding)?;
+                    match instruction.operation {
+                        ThumbOperation::BlPrefix { .. } => {
+                            let suffix_pc = pc.wrapping_add(2);
+                            let suffix_encoding = image.read_thumb_halfword(suffix_pc).map_err(|error| {
+                                format!(
+                                    "thumb_bl_pair_broken at 0x{pc:08X}: expected suffix at 0x{suffix_pc:08X}: {error}"
+                                )
+                            })?;
+                            if !matches!(
+                                crate::decoder::decode_thumb(suffix_pc, suffix_encoding)?.operation,
+                                ThumbOperation::BlSuffix { .. }
+                            ) {
+                                return Err(format!(
+                                    "thumb_bl_pair_broken at 0x{pc:08X}: 0x{suffix_encoding:04X} is not an adjacent BL suffix"
+                                ));
+                            }
+                        }
+                        ThumbOperation::BlSuffix { immediate } => {
+                            let prefix_pc = pc.checked_sub(2).ok_or_else(|| {
+                                format!("thumb_bl_suffix_without_prefix at 0x{pc:08X}")
+                            })?;
+                            let prefix_encoding =
+                                image.read_thumb_halfword(prefix_pc).map_err(|_| {
+                                    format!("thumb_bl_suffix_without_prefix at 0x{pc:08X}")
+                                })?;
+                            let prefix = crate::decoder::decode_thumb(prefix_pc, prefix_encoding)
+                                .map_err(|_| {
+                                format!("thumb_bl_suffix_without_prefix at 0x{pc:08X}")
+                            })?;
+                            let ThumbOperation::BlPrefix { lr_partial } = prefix.operation else {
+                                return Err(format!(
+                                    "thumb_bl_suffix_without_prefix at 0x{pc:08X}: previous halfword is 0x{prefix_encoding:04X}"
+                                ));
+                            };
+                            instruction.operation = ThumbOperation::BlCall {
+                                target: lr_partial.wrapping_add(u32::from(immediate) << 1),
+                                expected_lr: lr_partial,
+                                return_address: pc.wrapping_add(2) | 1,
+                            };
+                        }
+                        _ => {}
+                    }
                     decoded_thumb.insert(pc, instruction);
                     instruction
                 };
@@ -311,12 +353,7 @@ fn process_arm_instruction(
                     target_mode,
                     target_pc,
                 });
-                let mut target_state = state.clone();
-                if rm == 14 {
-                    // Treat BX LR as a return boundary until call summaries exist.
-                    target_state.invalidate_all();
-                }
-                enqueue_state(target_mode, target_pc, target_state, pending, incoming);
+                enqueue_state(target_mode, target_pc, state.clone(), pending, incoming);
             }
             if instruction.condition != 14 {
                 enqueue_state(IsaMode::Arm, next_pc, state.clone(), pending, incoming);
@@ -365,12 +402,51 @@ fn process_thumb_instruction(
                     target_mode,
                     target_pc,
                 });
-                let mut target_state = state.clone();
-                if rm == 14 {
-                    target_state.invalidate_all();
-                }
-                enqueue_state(target_mode, target_pc, target_state, pending, incoming);
+                enqueue_state(target_mode, target_pc, state.clone(), pending, incoming);
             }
+        }
+        ThumbOperation::BlPrefix { lr_partial } => {
+            let suffix_pc = instruction.guest_pc.wrapping_add(2);
+            let suffix_encoding = image.read_thumb_halfword(suffix_pc).map_err(|error| {
+                format!(
+                    "thumb_bl_pair_broken at 0x{:08X}: expected suffix at 0x{suffix_pc:08X}: {error}",
+                    instruction.guest_pc
+                )
+            })?;
+            if !matches!(
+                crate::decoder::decode_thumb(suffix_pc, suffix_encoding)?.operation,
+                ThumbOperation::BlSuffix { .. }
+            ) {
+                return Err(format!(
+                    "thumb_bl_pair_broken at 0x{:08X}: 0x{suffix_encoding:04X} is not an adjacent BL suffix",
+                    instruction.guest_pc
+                ));
+            }
+            let mut next_state = state.clone();
+            next_state.registers[14] = AbstractValue::constant(lr_partial);
+            enqueue_state(IsaMode::Thumb, suffix_pc, next_state, pending, incoming);
+        }
+        ThumbOperation::BlSuffix { .. } => {
+            return Err(format!(
+                "thumb_bl_suffix_unresolved at 0x{:08X}",
+                instruction.guest_pc
+            ));
+        }
+        ThumbOperation::BlCall {
+            target,
+            expected_lr,
+            return_address,
+        } => {
+            if state.registers[14] != AbstractValue::constant(expected_lr) {
+                return Err(format!(
+                    "thumb_bl_lr_mismatch at 0x{:08X}: expected 0x{expected_lr:08X} from adjacent prefix",
+                    instruction.guest_pc
+                ));
+            }
+            ensure_target_in_image(image, instruction.guest_pc, IsaMode::Thumb, target)?;
+            let mut target_state = state.clone();
+            target_state.registers[14] = AbstractValue::constant(return_address);
+            enqueue_state(IsaMode::Thumb, target, target_state, pending, incoming);
         }
         ThumbOperation::Push { register_list } => {
             let bytes = register_list.count_ones().wrapping_mul(4);
@@ -490,6 +566,31 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn thumb_bl_rom() -> RomImage {
+        let mut bytes = counter_rom().bytes().to_vec();
+        let thumb = [
+            0xF000_u16, 0xF804, 0x4610, 0x4708, 0x46C0, 0x46C0, 0x2242, 0x4770,
+        ];
+        for (index, halfword) in thumb.into_iter().enumerate() {
+            let offset = 0x84 + index * 2;
+            bytes[offset..offset + 2].copy_from_slice(&halfword.to_le_bytes());
+        }
+        let arm = [
+            0xE59F_0010_u32, // LDR r0, [pc,#0x10] -> Thumb entry | 1.
+            0xE59F_1010,     // LDR r1, [pc,#0x10] -> ARM return.
+            0xE12F_FF10,     // BX r0.
+            0xEAFF_FFFE,     // B self.
+        ];
+        for (index, word) in arm.into_iter().enumerate() {
+            let offset = 0xC0 + index * 4;
+            bytes[offset..offset + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        bytes[0xD8..0xDC].copy_from_slice(&0x0800_0085_u32.to_le_bytes());
+        bytes[0xDC..0xE0].copy_from_slice(&0x0800_00D0_u32.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     #[test]
     fn discovers_entry_branch_loop_and_fallthrough() {
         let program = discover_arm_program(&counter_rom()).unwrap();
@@ -567,6 +668,91 @@ mod tests {
             target_pc: ROM_BASE + 0xCC,
         }));
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn discovers_thumb_bl_call_and_bx_lr_return_without_host_abi_clobbers() {
+        let program = discover_arm_program(&thumb_bl_rom()).unwrap();
+        let prefix = program
+            .thumb_instructions
+            .iter()
+            .find(|instruction| instruction.guest_pc == ROM_BASE + 0x84)
+            .unwrap();
+        let call = program
+            .thumb_instructions
+            .iter()
+            .find(|instruction| instruction.guest_pc == ROM_BASE + 0x86)
+            .unwrap();
+        assert_eq!(
+            prefix.operation,
+            ThumbOperation::BlPrefix {
+                lr_partial: ROM_BASE + 0x88,
+            }
+        );
+        assert_eq!(
+            call.operation,
+            ThumbOperation::BlCall {
+                target: ROM_BASE + 0x90,
+                expected_lr: ROM_BASE + 0x88,
+                return_address: ROM_BASE + 0x89,
+            }
+        );
+        assert_eq!(program.instructions.len(), 5);
+        assert_eq!(program.thumb_instructions.len(), 6);
+        assert!(program.branch_targets.contains(&StaticBranchTarget {
+            source_mode: IsaMode::Thumb,
+            source_pc: ROM_BASE + 0x92,
+            target_mode: IsaMode::Thumb,
+            target_pc: ROM_BASE + 0x88,
+        }));
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn rejects_broken_unpaired_and_out_of_rom_thumb_bl_pairs() {
+        let base = thumb_bl_rom().bytes().to_vec();
+        for (encoding, expected) in [
+            (0x2001_u16, "thumb_bl_pair_broken at 0x08000084"),
+            (0xF87F_u16, "branch_target_out_of_rom at 0x08000086"),
+        ] {
+            let mut bytes = base.clone();
+            bytes[0x84..0x86].copy_from_slice(&0xF000_u16.to_le_bytes());
+            bytes[0x86..0x88].copy_from_slice(&encoding.to_le_bytes());
+            bytes[0xBD] = header_checksum(&bytes);
+            let error = discover_arm_program(&RomImage::from_bytes(bytes).unwrap()).unwrap_err();
+            assert!(error.contains(expected), "unexpected error: {error}");
+        }
+
+        let mut bytes = base;
+        bytes[0x84..0x86].copy_from_slice(&0xF800_u16.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        let error = discover_arm_program(&RomImage::from_bytes(bytes).unwrap()).unwrap_err();
+        assert!(error.contains("thumb_bl_suffix_without_prefix at 0x08000084"));
+    }
+
+    #[test]
+    fn rejects_thumb_bl_suffix_when_incoming_lr_does_not_match_its_prefix() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x86,
+            encoding: 0xF804,
+            operation: ThumbOperation::BlCall {
+                target: ROM_BASE + 0x90,
+                expected_lr: ROM_BASE + 0x88,
+                return_address: ROM_BASE + 0x89,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[14] = AbstractValue::constant(ROM_BASE + 0xA0);
+        let error = process_thumb_instruction(
+            &thumb_bl_rom(),
+            instruction,
+            &state,
+            &mut VecDeque::new(),
+            &mut BTreeMap::new(),
+            &mut BTreeSet::new(),
+        )
+        .unwrap_err();
+        assert!(error.contains("thumb_bl_lr_mismatch at 0x08000086"));
     }
 
     #[test]

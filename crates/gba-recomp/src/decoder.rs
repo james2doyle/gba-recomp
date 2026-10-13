@@ -158,6 +158,24 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             "Thumb address 0x{guest_pc:08X} is not halfword aligned"
         ));
     }
+    if encoding & 0xF800 == 0xF000 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::BlPrefix {
+                lr_partial: thumb_bl_lr_partial(guest_pc, encoding),
+            },
+        });
+    }
+    if encoding & 0xF800 == 0xF800 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::BlSuffix {
+                immediate: encoding & 0x07FF,
+            },
+        });
+    }
     if encoding & 0xFF87 == 0x4700 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -215,6 +233,12 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
     Err(format!(
         "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X}"
     ))
+}
+
+fn thumb_bl_lr_partial(guest_pc: u32, prefix_encoding: u16) -> u32 {
+    let immediate = i32::from(prefix_encoding & 0x07FF);
+    let signed = (immediate << 21) >> 21;
+    guest_pc.wrapping_add(4).wrapping_add((signed << 12) as u32)
 }
 
 fn unsupported<T>(guest_pc: u32, encoding: u32, reason: &str) -> Result<T, String> {
@@ -343,6 +367,26 @@ mod tests {
             ThumbOperation::MovImmediate { rd: 0, value: 7 }
         );
         assert!(decode_thumb(0x0800_0085, 0x4708).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_bl_halves_and_sign_extends_the_prefix_offset() {
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0xF000).unwrap().operation,
+            ThumbOperation::BlPrefix {
+                lr_partial: 0x0800_0088,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0086, 0xF804).unwrap().operation,
+            ThumbOperation::BlSuffix { immediate: 4 }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0xF7FF).unwrap().operation,
+            ThumbOperation::BlPrefix {
+                lr_partial: 0x07FF_F088,
+            }
+        );
     }
 
     #[test]

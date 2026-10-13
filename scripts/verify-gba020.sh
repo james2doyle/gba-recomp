@@ -425,6 +425,63 @@ verify_thumb_movs() {
 verify_thumb_movs thumb-movs-immediate '{"status":"budget_exhausted","steps":9,"r0":255,"r1":255,"pc":"0x080000D8","cpsr":"0x3000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_movs thumb-movs-zero '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000D8","cpsr":"0x7000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 
+thumb_bl_rom="$root/target/gba020/thumb-bl.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$thumb_bl_rom" --mode thumb-bl
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-bl-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$thumb_bl_rom" --out "$package" --opt "$optimization" --steps 10
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":10,"r0":66,"r1":134217936,"pc":"0x080000D0","cpsr":"0x0000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb BL call/return fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["instructions_aot"] == 11
+PY
+done
+
+for mode in thumb-bl-broken-pair thumb-bl-suffix-without-prefix thumb-bl-out-of-range; do
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package"
+    output="$root/target/gba020/$mode.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    rm -rf "$package"
+    if cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$rom" --out "$package" --opt O0 --steps 10 >"$output" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        exit 1
+    fi
+    case "$mode" in
+        thumb-bl-broken-pair)
+            expected_error='thumb_bl_pair_broken at 0x08000084'
+            ;;
+        thumb-bl-suffix-without-prefix)
+            expected_error='thumb_bl_suffix_without_prefix at 0x08000084'
+            ;;
+        thumb-bl-out-of-range)
+            expected_error='branch_target_out_of_rom at 0x08000086'
+            ;;
+    esac
+    if ! grep -q "$expected_error" "$output"; then
+        cat "$output" >&2
+        echo "$mode did not report the expected static BL rejection" >&2
+        exit 1
+    fi
+    if [ -e "$package" ]; then
+        echo "$mode failure left a partial package" >&2
+        exit 1
+    fi
+done
+
 bx_rom="$root/target/gba020/bx-interwork.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$bx_rom" --mode bx-interwork
 for optimization in O0 O2; do
