@@ -1299,6 +1299,45 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::LoadPcRelativeWord { .. } => {
+            return Err(format!(
+                "unresolved Thumb ROM literal at 0x{:08X}",
+                instruction.guest_pc
+            ));
+        }
+        ThumbOperation::LoadRomLiteral { rd, value, .. } => {
+            if rd > 7 {
+                return Err(format!(
+                    "invalid Thumb ROM literal destination r{rd} at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            unsafe {
+                LLVMBuildStore(
+                    builder,
+                    LLVMConstInt(i32_type, u64::from(value), 0),
+                    destination_pointer,
+                )
+            };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::Swi { immediate } => {
             let mut arguments = unsafe {
                 [

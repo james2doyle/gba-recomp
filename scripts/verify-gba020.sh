@@ -509,6 +509,52 @@ for mode in thumb-lsr-unsupported thumb-asr-unsupported thumb-lsl-register-unsup
     fi
 done
 
+thumb_ldr_rom="$root/target/gba020/thumb-ldr-literal-bx.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$thumb_ldr_rom" --mode thumb-ldr-literal-bx
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-ldr-literal-bx-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$thumb_ldr_rom" --out "$package" --opt "$optimization" --steps 6
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":6,"r0":0,"r1":134217940,"pc":"0x080000D4","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb LDR literal/BX fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["instructions_aot"] == 6
+PY
+done
+
+thumb_ldr_bad_rom="$root/target/gba020/thumb-ldr-literal-out-of-rom.gba"
+thumb_ldr_bad_package="$root/target/gba020/thumb-ldr-literal-out-of-rom-package"
+thumb_ldr_bad_output="$root/target/gba020/thumb-ldr-literal-out-of-rom.txt"
+python3 fixtures/tiny-counter/make_rom.py --out "$thumb_ldr_bad_rom" --mode thumb-ldr-literal-out-of-rom
+rm -rf "$thumb_ldr_bad_package"
+if cargo run --locked --quiet -p gba-recomp -- compile \
+    --rom "$thumb_ldr_bad_rom" --out "$thumb_ldr_bad_package" --opt O0 --steps 6 \
+    >"$thumb_ldr_bad_output" 2>&1; then
+    echo "out-of-ROM Thumb LDR literal unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -q 'thumb_rom_literal_out_of_rom at 0x08000086: address 0x08000484' "$thumb_ldr_bad_output"; then
+    cat "$thumb_ldr_bad_output" >&2
+    echo "out-of-ROM Thumb LDR literal did not report its PC and address" >&2
+    exit 1
+fi
+if [ -e "$thumb_ldr_bad_package" ]; then
+    echo "out-of-ROM Thumb LDR literal failure left a partial package" >&2
+    exit 1
+fi
+
 thumb_bl_rom="$root/target/gba020/thumb-bl.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_bl_rom" --mode thumb-bl
 for optimization in O0 O2; do

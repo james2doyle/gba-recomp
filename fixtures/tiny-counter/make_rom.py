@@ -160,6 +160,21 @@ def generate(mode: str = "valid") -> bytes:
             "<4I", 0x08000085, 0x080000E8, source, compare
         )
         image[0xE8:0xEC] = struct.pack("<I", 0xEAFFFFFE)  # B self.
+    elif mode in ("thumb-ldr-literal-bx", "thumb-ldr-literal-out-of-rom"):
+        literal_load = 0x4916 if mode == "thumb-ldr-literal-bx" else 0x49FF
+        image[0x86:0x8A] = struct.pack(
+            "<2H", literal_load, 0x4708
+        )  # LDR r1,[PC,#imm]; BX r1.
+        image[0xC0:0xC8] = struct.pack(
+            "<2I",
+            0xE59F2008,  # LDR r2,[pc,#8] -> Thumb entry | 1 at 0xD0.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD0:0xD8] = struct.pack(
+            "<2I", 0x08000087, 0xEAFFFFFE
+        )  # Thumb entry pointer; ARM B self at 0xD4.
+        if mode == "thumb-ldr-literal-bx":
+            image[0xE0:0xE4] = struct.pack("<I", 0x080000D4)
     elif mode in (
         "thumb-bl",
         "thumb-bl-broken-pair",
@@ -326,6 +341,8 @@ def main() -> None:
             "thumb-lsr-unsupported",
             "thumb-asr-unsupported",
             "thumb-lsl-register-unsupported",
+            "thumb-ldr-literal-bx",
+            "thumb-ldr-literal-out-of-rom",
             "thumb-bl",
             "thumb-bl-broken-pair",
             "thumb-bl-suffix-without-prefix",

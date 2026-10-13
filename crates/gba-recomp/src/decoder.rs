@@ -169,6 +169,24 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0x4800 {
+        let pipeline_pc = guest_pc
+            .checked_add(4)
+            .ok_or_else(|| format!("Thumb literal PC overflow at 0x{guest_pc:08X}"))?;
+        let aligned_pc = pipeline_pc & !3;
+        let offset = u32::from(encoding & 0x00FF) * 4;
+        let guest_address = aligned_pc
+            .checked_add(offset)
+            .ok_or_else(|| format!("Thumb literal address overflow at 0x{guest_pc:08X}"))?;
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::LoadPcRelativeWord {
+                rd: ((encoding >> 8) & 0x7) as u8,
+                guest_address,
+            },
+        });
+    }
     if encoding & 0xFF00 == 0xDF00 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -415,6 +433,37 @@ mod tests {
         for encoding in [0x0849, 0x1049, 0x4089] {
             assert!(decode_thumb(0x0800_0084, encoding).is_err());
         }
+    }
+
+    #[test]
+    fn decodes_thumb_ldr_literal_with_aligned_pipeline_pc_and_checked_address() {
+        assert_eq!(
+            decode_thumb(0x0800_03B4, 0x4A2C).unwrap().operation,
+            ThumbOperation::LoadPcRelativeWord {
+                rd: 2,
+                guest_address: 0x0800_0468,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0086, 0x4901).unwrap().operation,
+            ThumbOperation::LoadPcRelativeWord {
+                rd: 1,
+                guest_address: 0x0800_008C,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0086, 0x4800).unwrap().operation,
+            ThumbOperation::LoadPcRelativeWord {
+                rd: 0,
+                guest_address: 0x0800_0088,
+            }
+        );
+        assert!(
+            decode_thumb(0xFFFF_FFFE, 0x4800)
+                .unwrap_err()
+                .contains("Thumb literal PC overflow at 0xFFFFFFFE")
+        );
+        assert!(decode_thumb(0x0800_0086, 0x6800).is_err());
     }
 
     #[test]

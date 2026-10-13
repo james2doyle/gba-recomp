@@ -83,6 +83,17 @@ pub enum ArmOperation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThumbOperation {
+    /// Decoder result awaiting resolution against the immutable source ROM.
+    LoadPcRelativeWord {
+        rd: u8,
+        guest_address: u32,
+    },
+    /// A word read from the source ROM and fixed into the AOT program.
+    LoadRomLiteral {
+        rd: u8,
+        guest_address: u32,
+        value: u32,
+    },
     LslImmediate {
         rd: u8,
         rs: u8,
@@ -220,6 +231,7 @@ pub enum VerifyError {
     MisalignedThumbPc(u32),
     InvalidThumbPushRegisterList(u16),
     InvalidThumbImmediateRegister(u8),
+    InvalidThumbRomLiteralRegister(u8),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -228,6 +240,8 @@ pub enum VerifyError {
     MisalignedBranchTarget(u32),
     MisalignedRomLiteral(u32),
     UnresolvedRomLiteral(u32),
+    MisalignedThumbRomLiteral(u32),
+    UnresolvedThumbRomLiteral(u32),
     DuplicateInstructionPc(u32),
     BranchExchangeWithoutTargets { mode: IsaMode, pc: u32 },
     BranchTargetSourceInvalid { mode: IsaMode, pc: u32 },
@@ -253,6 +267,10 @@ impl fmt::Display for VerifyError {
             Self::InvalidThumbImmediateRegister(register) => write!(
                 f,
                 "Thumb immediate MOV destination r{register} is not a low register"
+            ),
+            Self::InvalidThumbRomLiteralRegister(register) => write!(
+                f,
+                "Thumb ROM literal destination r{register} is not a low register"
             ),
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
@@ -282,6 +300,14 @@ impl fmt::Display for VerifyError {
             Self::UnresolvedRomLiteral(pc) => write!(
                 f,
                 "PC-relative ROM literal at 0x{pc:08X} was not resolved during discovery"
+            ),
+            Self::MisalignedThumbRomLiteral(address) => write!(
+                f,
+                "Thumb ROM literal address 0x{address:08X} is not word aligned"
+            ),
+            Self::UnresolvedThumbRomLiteral(pc) => write!(
+                f,
+                "Thumb PC-relative ROM literal at 0x{pc:08X} was not resolved during discovery"
             ),
             Self::DuplicateInstructionPc(pc) => {
                 write!(f, "multiple guest instructions have PC 0x{pc:08X}")
@@ -390,6 +416,30 @@ impl ArmProgram {
                 return Err(VerifyError::DuplicateInstructionPc(instruction.guest_pc));
             }
             match instruction.operation {
+                ThumbOperation::LoadPcRelativeWord { .. } => {
+                    return Err(VerifyError::UnresolvedThumbRomLiteral(instruction.guest_pc));
+                }
+                ThumbOperation::LoadRomLiteral {
+                    rd, guest_address, ..
+                } => {
+                    if rd > 7 {
+                        return Err(VerifyError::InvalidThumbRomLiteralRegister(rd));
+                    }
+                    if guest_address & 3 != 0 {
+                        return Err(VerifyError::MisalignedThumbRomLiteral(guest_address));
+                    }
+                    let encoded_rd = ((instruction.encoding >> 8) & 0x7) as u8;
+                    let expected_address =
+                        thumb_rom_literal_address(instruction.guest_pc, instruction.encoding);
+                    if instruction.encoding & 0xF800 != 0x4800
+                        || rd != encoded_rd
+                        || expected_address != Some(guest_address)
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            instruction.encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::LslImmediate { rd, rs, amount } => {
                     let encoded_rd = (instruction.encoding & 0x7) as u8;
                     let encoded_rs = ((instruction.encoding >> 3) & 0x7) as u8;
@@ -551,6 +601,18 @@ impl ArmProgram {
         }
         for instruction in &self.thumb_instructions {
             match instruction.operation {
+                ThumbOperation::LoadRomLiteral { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::LoadPcRelativeWord { .. } => {
+                    return Err(VerifyError::UnresolvedThumbRomLiteral(instruction.guest_pc));
+                }
                 ThumbOperation::LslImmediate { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
@@ -644,6 +706,13 @@ fn thumb_bl_lr_partial(guest_pc: u32, prefix_encoding: u16) -> u32 {
     let immediate = i32::from(prefix_encoding & 0x07FF);
     let signed = (immediate << 21) >> 21;
     guest_pc.wrapping_add(4).wrapping_add((signed << 12) as u32)
+}
+
+fn thumb_rom_literal_address(guest_pc: u32, encoding: u16) -> Option<u32> {
+    let pipeline_pc = guest_pc.checked_add(4)?;
+    let aligned_pc = pipeline_pc & !3;
+    let offset = u32::from(encoding & 0x00FF).checked_mul(4)?;
+    aligned_pc.checked_add(offset)
 }
 
 fn verify_general_register(register: u8) -> Result<(), VerifyError> {
@@ -805,6 +874,13 @@ pub fn execute_thumb_instruction(
         });
     }
     match instruction.operation {
+        ThumbOperation::LoadPcRelativeWord { .. } => {
+            return Err(StepFault::RomLiteralUnresolved);
+        }
+        ThumbOperation::LoadRomLiteral { rd, value, .. } => {
+            state.r[rd as usize] = value;
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
         ThumbOperation::LslImmediate { rd, rs, amount } => {
             let old_source = state.r[rs as usize];
             let result = old_source.wrapping_shl(u32::from(amount));
@@ -1232,6 +1308,52 @@ mod tests {
     }
 
     #[test]
+    fn thumb_rom_literal_loads_constant_without_changing_flags() {
+        let guest_pc = 0x0800_0086;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4916,
+            operation: ThumbOperation::LoadRomLiteral {
+                rd: 1,
+                guest_address: 0x0800_00E0,
+                value: 0x0800_00D4,
+            },
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr = 0xB000_003F;
+        cpu.r[1] = 0xDEAD_BEEF;
+        cpu.r[2] = 0x1234_5678;
+        let flags_and_control = cpu.cpsr;
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[1], 0x0800_00D4);
+        assert_eq!(cpu.r[2], 0x1234_5678);
+        assert_eq!(cpu.cpsr, flags_and_control);
+        assert_eq!(cpu.r[15], guest_pc + 2);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn unresolved_thumb_rom_literal_fails_without_mutating_cpu_state() {
+        let guest_pc = 0x0800_0086;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4916,
+            operation: ThumbOperation::LoadPcRelativeWord {
+                rd: 1,
+                guest_address: 0x0800_00E0,
+            },
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr |= 0x20;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::RomLiteralUnresolved)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
     fn thumb_bl_halves_set_and_validate_link_register_before_static_dispatch() {
         let prefix = ThumbInstruction {
             guest_pc: 0x0800_0084,
@@ -1335,6 +1457,153 @@ mod tests {
             Err(VerifyError::MissingSuccessor {
                 pc: 0x0800_0100,
                 target: 0x0800_0102,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_rom_literal_resolution_and_fields() {
+        let make_program = |operation: ThumbOperation, encoding: u16, thumb_pc: u32| {
+            let bx_pc = thumb_pc.wrapping_add(2);
+            ArmProgram {
+                version: GBA_IR_VERSION,
+                instructions: vec![ArmInstruction {
+                    guest_pc: 0x0800_0090,
+                    encoding: 0xEAFF_FFFE,
+                    condition: 14,
+                    operation: ArmOperation::Branch {
+                        target: 0x0800_0090,
+                        link: false,
+                    },
+                }],
+                thumb_instructions: vec![
+                    ThumbInstruction {
+                        guest_pc: thumb_pc,
+                        encoding,
+                        operation,
+                    },
+                    ThumbInstruction {
+                        guest_pc: bx_pc,
+                        encoding: 0x4708,
+                        operation: ThumbOperation::BranchExchange { rm: 1 },
+                    },
+                ],
+                branch_targets: vec![StaticBranchTarget {
+                    source_mode: IsaMode::Thumb,
+                    source_pc: bx_pc,
+                    target_mode: IsaMode::Arm,
+                    target_pc: 0x0800_0090,
+                }],
+            }
+        };
+        let resolved = make_program(
+            ThumbOperation::LoadRomLiteral {
+                rd: 1,
+                guest_address: 0x0800_008C,
+                value: 0x0800_0090,
+            },
+            0x4901,
+            0x0800_0086,
+        );
+        assert!(resolved.verify().is_ok());
+        assert_eq!(
+            make_program(
+                ThumbOperation::LoadPcRelativeWord {
+                    rd: 1,
+                    guest_address: 0x0800_008C,
+                },
+                0x4901,
+                0x0800_0086,
+            )
+            .verify(),
+            Err(VerifyError::UnresolvedThumbRomLiteral(0x0800_0086))
+        );
+        assert_eq!(
+            make_program(
+                ThumbOperation::LoadRomLiteral {
+                    rd: 2,
+                    guest_address: 0x0800_008C,
+                    value: 0,
+                },
+                0x4901,
+                0x0800_0086,
+            )
+            .verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x4901))
+        );
+        assert_eq!(
+            make_program(
+                ThumbOperation::LoadRomLiteral {
+                    rd: 1,
+                    guest_address: 0x0800_008D,
+                    value: 0,
+                },
+                0x4901,
+                0x0800_0086,
+            )
+            .verify(),
+            Err(VerifyError::MisalignedThumbRomLiteral(0x0800_008D))
+        );
+        assert_eq!(
+            make_program(
+                ThumbOperation::LoadRomLiteral {
+                    rd: 1,
+                    guest_address: 0x0800_008C,
+                    value: 0,
+                },
+                0x6801,
+                0x0800_0086,
+            )
+            .verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x6801))
+        );
+        assert_eq!(
+            make_program(
+                ThumbOperation::LoadRomLiteral {
+                    rd: 8,
+                    guest_address: 0x0800_008C,
+                    value: 0,
+                },
+                0x4901,
+                0x0800_0086,
+            )
+            .verify(),
+            Err(VerifyError::InvalidThumbRomLiteralRegister(8))
+        );
+        assert_eq!(
+            make_program(
+                ThumbOperation::LoadRomLiteral {
+                    rd: 1,
+                    guest_address: 0x0800_0090,
+                    value: 0,
+                },
+                0x4901,
+                0x0800_0086,
+            )
+            .verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x4901))
+        );
+        assert_eq!(
+            make_program(
+                ThumbOperation::LoadRomLiteral {
+                    rd: 1,
+                    guest_address: 0x0800_008C,
+                    value: 0,
+                },
+                0x4901,
+                0x0800_0087,
+            )
+            .verify(),
+            Err(VerifyError::MisalignedThumbPc(0x0800_0087))
+        );
+        let mut missing_successor = resolved;
+        missing_successor.thumb_instructions.pop();
+        missing_successor.branch_targets.clear();
+        assert_eq!(
+            missing_successor.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: 0x0800_0086,
+                target: 0x0800_0088,
             })
         );
     }

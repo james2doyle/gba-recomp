@@ -79,6 +79,20 @@ pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
                         .read_thumb_halfword(pc)
                         .map_err(|error| format!("discovery failed at 0x{pc:08X}: {error}"))?;
                     let mut instruction = crate::decoder::decode_thumb(pc, encoding)?;
+                    if let ThumbOperation::LoadPcRelativeWord { rd, guest_address } =
+                        instruction.operation
+                    {
+                        let value = image.read_arm_word(guest_address).map_err(|error| {
+                            format!(
+                                "thumb_rom_literal_out_of_rom at 0x{pc:08X}: address 0x{guest_address:08X}: {error}"
+                            )
+                        })?;
+                        instruction.operation = ThumbOperation::LoadRomLiteral {
+                            rd,
+                            guest_address,
+                            value,
+                        };
+                    }
                     match instruction.operation {
                         ThumbOperation::BlPrefix { .. } => {
                             let suffix_pc = pc.wrapping_add(2);
@@ -377,6 +391,23 @@ fn process_thumb_instruction(
     branch_targets: &mut BTreeSet<StaticBranchTarget>,
 ) -> Result<(), String> {
     match instruction.operation {
+        ThumbOperation::LoadPcRelativeWord { rd, guest_address } => {
+            return Err(format!(
+                "thumb_rom_literal_unresolved at 0x{:08X}: r{rd} address 0x{guest_address:08X}",
+                instruction.guest_pc
+            ));
+        }
+        ThumbOperation::LoadRomLiteral { rd, value, .. } => {
+            let mut next_state = state.clone();
+            next_state.set_constant(rd, value);
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::LslImmediate { rd, rs, amount } => {
             let shifted_source = match &state.registers[rs as usize] {
                 AbstractValue::Unknown => AbstractValue::Unknown,
@@ -626,6 +657,19 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn thumb_ldr_literal_rom() -> RomImage {
+        let mut bytes = counter_rom().bytes().to_vec();
+        // Thumb starts at 0x86 (PC+4 aligns to 0x88); +0x58 reaches the pool at 0xE0.
+        bytes[0x86..0x8A].copy_from_slice(&0x4708_4916_u32.to_le_bytes());
+        bytes[0xC0..0xC4].copy_from_slice(&0xE59F_2008_u32.to_le_bytes());
+        bytes[0xC4..0xC8].copy_from_slice(&0xE12F_FF12_u32.to_le_bytes());
+        bytes[0xD0..0xD4].copy_from_slice(&0x0800_0087_u32.to_le_bytes());
+        bytes[0xD4..0xD8].copy_from_slice(&0xEAFF_FFFE_u32.to_le_bytes());
+        bytes[0xE0..0xE4].copy_from_slice(&0x0800_00D4_u32.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     #[test]
     fn discovers_entry_branch_loop_and_fallthrough() {
         let program = discover_arm_program(&counter_rom()).unwrap();
@@ -670,6 +714,43 @@ mod tests {
         );
         assert_eq!(program.instructions.len(), 3);
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn resolves_thumb_literal_and_closes_bx_target_from_immutable_rom() {
+        let program = discover_arm_program(&thumb_ldr_literal_rom()).unwrap();
+        let literal = program
+            .thumb_instructions
+            .iter()
+            .find(|instruction| instruction.guest_pc == ROM_BASE + 0x86)
+            .unwrap();
+        assert_eq!(
+            literal.operation,
+            ThumbOperation::LoadRomLiteral {
+                rd: 1,
+                guest_address: ROM_BASE + 0xE0,
+                value: ROM_BASE + 0xD4,
+            }
+        );
+        assert!(program.branch_targets.contains(&StaticBranchTarget {
+            source_mode: IsaMode::Thumb,
+            source_pc: ROM_BASE + 0x88,
+            target_mode: IsaMode::Arm,
+            target_pc: ROM_BASE + 0xD4,
+        }));
+        assert_eq!(program.thumb_instructions.len(), 2);
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn out_of_rom_thumb_literal_is_rejected_during_discovery() {
+        let mut bytes = thumb_ldr_literal_rom().bytes().to_vec();
+        bytes[0x86..0x88].copy_from_slice(&0x49FF_u16.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        let image = RomImage::from_bytes(bytes).unwrap();
+        let error = discover_arm_program(&image).unwrap_err();
+        assert!(error.contains("thumb_rom_literal_out_of_rom at 0x08000086"));
+        assert!(error.contains("address 0x08000484"));
     }
 
     #[test]

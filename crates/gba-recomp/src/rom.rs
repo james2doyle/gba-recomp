@@ -202,8 +202,11 @@ mod tests {
 
     #[test]
     fn guest_address_mapping_checks_bounds_and_alignment() {
-        let image = RomImage::from_bytes(valid_image()).unwrap();
+        let mut bytes = valid_image();
+        bytes[0xFC..0x100].copy_from_slice(&0x1234_5678_u32.to_le_bytes());
+        let image = RomImage::from_bytes(bytes).unwrap();
         assert_eq!(image.read_arm_word(ROM_BASE).unwrap(), 0);
+        assert_eq!(image.read_arm_word(ROM_BASE + 0xFC).unwrap(), 0x1234_5678);
         assert!(image.read_arm_word(ROM_BASE + 1).is_err());
         assert!(image.read_arm_word(ROM_BASE + 256).is_err());
     }
