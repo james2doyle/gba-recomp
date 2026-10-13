@@ -85,6 +85,7 @@ pub enum ArmOperation {
 pub enum ThumbOperation {
     BranchExchange { rm: u8 },
     Push { register_list: u16 },
+    MovImmediate { rd: u8, value: u8 },
     MovRegister { rd: u8, rm: u8 },
 }
 
@@ -175,6 +176,7 @@ pub enum VerifyError {
     MisalignedArmPc(u32),
     MisalignedThumbPc(u32),
     InvalidThumbPushRegisterList(u16),
+    InvalidThumbImmediateRegister(u8),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -203,6 +205,10 @@ impl fmt::Display for VerifyError {
             Self::InvalidThumbPushRegisterList(list) => {
                 write!(f, "invalid Thumb PUSH register list 0x{list:04X}")
             }
+            Self::InvalidThumbImmediateRegister(register) => write!(
+                f,
+                "Thumb immediate MOV destination r{register} is not a low register"
+            ),
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
                 write!(f, "GBA-010 ALU slice accepts one instruction, got {count}")
@@ -328,6 +334,10 @@ impl ArmProgram {
             }
             match instruction.operation {
                 ThumbOperation::BranchExchange { rm } => verify_operand_register(rm)?,
+                ThumbOperation::MovImmediate { rd, .. } if rd > 7 => {
+                    return Err(VerifyError::InvalidThumbImmediateRegister(rd));
+                }
+                ThumbOperation::MovImmediate { .. } => {}
                 ThumbOperation::MovRegister { rd, rm } => {
                     verify_general_register(rd)?;
                     verify_operand_register(rm)?;
@@ -439,6 +449,15 @@ impl ArmProgram {
                 }
                 ThumbOperation::BranchExchange { .. } => {}
                 ThumbOperation::Push { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::MovImmediate { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
                         return Err(VerifyError::MissingSuccessor {
@@ -636,6 +655,11 @@ pub fn execute_thumb_instruction(
             }
         }
         ThumbOperation::Push { .. } => return Err(StepFault::MemoryRuntimeRequired),
+        ThumbOperation::MovImmediate { rd, value } => {
+            state.r[rd as usize] = u32::from(value);
+            state.cpsr = (state.cpsr & !0xC000_0000) | (u32::from(value == 0) << 30);
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
         ThumbOperation::MovRegister { rd, rm } => {
             let value = if rm == REG_PC {
                 instruction.guest_pc.wrapping_add(4)
@@ -933,6 +957,42 @@ mod tests {
         execute_thumb_instruction(&mut cpu, instruction).unwrap();
         assert_eq!(cpu.r[0], instruction.guest_pc + 4);
         assert_eq!(cpu.r[15], instruction.guest_pc + 2);
+    }
+
+    #[test]
+    fn thumb_mov_immediate_updates_nz_and_preserves_cv_and_mode() {
+        for (value, expected_cpsr) in [(0xFF, 0x3000_003F), (0, 0x7000_003F)] {
+            let instruction = ThumbInstruction {
+                guest_pc: 0x0800_0100,
+                encoding: 0x2000 | value as u16,
+                operation: ThumbOperation::MovImmediate { rd: 2, value },
+            };
+            let mut cpu = state(instruction.guest_pc);
+            cpu.cpsr = 0xF000_003F;
+            execute_thumb_instruction(&mut cpu, instruction).unwrap();
+            assert_eq!(cpu.r[2], u32::from(value));
+            assert_eq!(cpu.r[15], instruction.guest_pc + 2);
+            assert_eq!(cpu.cpsr, expected_cpsr);
+            assert_eq!(cpu.guest_cycle, 6);
+        }
+    }
+
+    #[test]
+    fn arm_program_verifier_rejects_high_destination_for_thumb_immediate_mov() {
+        let program = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![ThumbInstruction {
+                guest_pc: 0x0800_0100,
+                encoding: 0x2000,
+                operation: ThumbOperation::MovImmediate { rd: 8, value: 0 },
+            }],
+            branch_targets: vec![],
+        };
+        assert_eq!(
+            program.verify(),
+            Err(VerifyError::InvalidThumbImmediateRegister(8))
+        );
     }
 
     #[test]

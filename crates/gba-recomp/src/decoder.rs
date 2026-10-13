@@ -180,6 +180,16 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             operation: ThumbOperation::Push { register_list },
         });
     }
+    if encoding & 0xF800 == 0x2000 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::MovImmediate {
+                rd: ((encoding >> 8) & 0x7) as u8,
+                value: (encoding & 0xFF) as u8,
+            },
+        });
+    }
     if encoding & 0xFC00 == 0x4400 {
         let opcode = (encoding >> 8) & 0x3;
         if opcode != 0x2 {
@@ -323,12 +333,15 @@ mod tests {
     }
 
     #[test]
-    fn decodes_only_thumb_branch_exchange_in_this_increment() {
+    fn decodes_thumb_branch_exchange_and_movs_immediate() {
         assert_eq!(
             decode_thumb(0x0800_0084, 0x4708).unwrap().operation,
             ThumbOperation::BranchExchange { rm: 1 }
         );
-        assert!(decode_thumb(0x0800_0084, 0x2007).is_err());
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x2007).unwrap().operation,
+            ThumbOperation::MovImmediate { rd: 0, value: 7 }
+        );
         assert!(decode_thumb(0x0800_0085, 0x4708).is_err());
     }
 
@@ -365,6 +378,21 @@ mod tests {
         );
         assert!(decode_thumb(0x0800_03A6, 0x44C7).is_err()); // ADD high-register.
         assert!(decode_thumb(0x0800_03A6, 0x45C7).is_err()); // CMP high-register.
+    }
+
+    #[test]
+    fn decodes_thumb_movs_immediate_and_rejects_other_format_three_ops() {
+        assert_eq!(
+            decode_thumb(0x0800_03AA, 0x2000).unwrap().operation,
+            ThumbOperation::MovImmediate { rd: 0, value: 0 }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03AA, 0x27FF).unwrap().operation,
+            ThumbOperation::MovImmediate { rd: 7, value: 0xFF }
+        );
+        for encoding in [0x28FF, 0x30FF, 0x38FF] {
+            assert!(decode_thumb(0x0800_03AA, encoding).is_err());
+        }
     }
 
     #[test]

@@ -401,6 +401,30 @@ assert manifest["instructions_aot"] == 11
 PY
 done
 
+verify_thumb_movs() {
+    mode=$1
+    expected=$2
+    thumb_movs_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_movs_rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        cargo run --locked --quiet -p gba-recomp -- compile \
+            --rom "$thumb_movs_rom" --out "$package" --opt "$optimization" --steps 9
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        if ! grep -Eq '"execution_mode"[[:space:]]*:[[:space:]]*"strict-aot"' "$package/manifest.json"; then
+            echo "$optimization $mode package is not strict AOT" >&2
+            exit 1
+        fi
+    done
+}
+verify_thumb_movs thumb-movs-immediate '{"status":"budget_exhausted","steps":9,"r0":255,"r1":255,"pc":"0x080000D8","cpsr":"0x3000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_movs thumb-movs-zero '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000D8","cpsr":"0x7000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+
 bx_rom="$root/target/gba020/bx-interwork.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$bx_rom" --mode bx-interwork
 for optimization in O0 O2; do

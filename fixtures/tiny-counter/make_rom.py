@@ -69,6 +69,23 @@ def generate(mode: str = "valid") -> bytes:
             0xEAFFFFFE,  # B finished
         )
         image[0xE0:0xE8] = struct.pack("<2I", 0x08000085, 0x080000D0)
+    elif mode in ("thumb-movs-immediate", "thumb-movs-zero"):
+        immediate = 0 if mode == "thumb-movs-zero" else 0xFF
+        image[0x84:0x88] = struct.pack(
+            "<2H", 0x2100 | immediate, 0x4718
+        )  # MOVS r1,#imm8; BX r3.
+        image[0xC0:0xDC] = struct.pack(
+            "<7I",
+            0xE59F001C,  # LDR r0, [pc, #0x1C] -> 0x80000000
+            0xE3500001,  # CMP r0, #1 -> C=1, V=1
+            0xE59F2020,  # LDR r2, [pc, #0x20] -> Thumb entry | 1
+            0xE59F3020,  # LDR r3, [pc, #0x20] -> ARM return
+            0xE12FFF12,  # BX r2
+            0xE1A00001,  # MOV r0, r1 to observe the immediate
+            0xEAFFFFFE,  # B finished
+        )
+        image[0xE4:0xE8] = struct.pack("<I", 0x80000000)
+        image[0xF0:0xF8] = struct.pack("<2I", 0x08000085, 0x080000D4)
     elif mode == "bx-interwork":
         image[0x84:0x86] = struct.pack("<H", 0x4708)  # Thumb BX r1 -> ARM code.
         image[0xC0:0xD0] = struct.pack(
@@ -185,6 +202,8 @@ def main() -> None:
         choices=(
             "valid",
             "thumb-mov",
+            "thumb-movs-immediate",
+            "thumb-movs-zero",
             "thumb-push",
             "bx-interwork",
             "bx-out-of-range",

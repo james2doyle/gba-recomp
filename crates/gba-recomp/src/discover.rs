@@ -384,6 +384,17 @@ fn process_thumb_instruction(
                 incoming,
             );
         }
+        ThumbOperation::MovImmediate { rd, value } => {
+            let mut next_state = state.clone();
+            next_state.set_constant(rd, u32::from(value));
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::MovRegister { rd, rm } => {
             let mut next_state = state.clone();
             next_state.registers[rd as usize] =
@@ -622,5 +633,32 @@ mod tests {
             target_pc: ROM_BASE + 0xCC,
         }));
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn propagates_thumb_movs_immediate_to_the_next_guest_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x20FF,
+            operation: ThumbOperation::MovImmediate { rd: 0, value: 0xFF },
+        };
+        let image = bx_interwork_rom();
+        let state = AbstractState::unknown();
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(pending, VecDeque::from([(IsaMode::Thumb, ROM_BASE + 0x86)]));
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
+            AbstractValue::constant(0xFF)
+        );
     }
 }

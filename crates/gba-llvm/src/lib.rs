@@ -1220,6 +1220,56 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::MovImmediate { rd, value } => {
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let immediate = unsafe { LLVMConstInt(i32_type, u64::from(value), 0) };
+            unsafe { LLVMBuildStore(builder, immediate, destination_pointer) };
+
+            let cpsr_pointer = unsafe {
+                LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr())
+            };
+            let old_cpsr =
+                unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+            let cpsr_without_nz = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    old_cpsr,
+                    LLVMConstInt(i32_type, 0x3FFF_FFFF, 0),
+                    c"thumb_mov_imm_cpsr_without_nz".as_ptr(),
+                )
+            };
+            let cpsr = if value == 0 {
+                unsafe {
+                    LLVMBuildOr(
+                        builder,
+                        cpsr_without_nz,
+                        LLVMConstInt(i32_type, 0x4000_0000, 0),
+                        c"thumb_mov_imm_cpsr_zero".as_ptr(),
+                    )
+                }
+            } else {
+                cpsr_without_nz
+            };
+            unsafe { LLVMBuildStore(builder, cpsr, cpsr_pointer) };
+
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::MovRegister { rd, rm } => {
             let source = if rm == 15 {
                 unsafe {
