@@ -27,7 +27,8 @@ Na ROM fixada por KNO-004, a compilação estática do commit local `aab31ae` pa
 | `imm5=1`, `r1=0x40000000` | `r1=0x80000000`; N=1, Z=0, C=0 |
 | `imm5=19`, `r1=0x00001000` | `r1=0x80000000`; N=1, Z=0, C=0; V preservado; PC+2 e CPSR.T ativo |
 | `imm5=19`, `r1=0x00002000` | `r1=0`; N=0, Z=1, C=1 |
-| `imm5=31`, `r1=2` e `r1=1` | Ambos produzem zero; C=1 para 2 e C=0 para 1; Z=1 |
+| `imm5=31`, `r1=2` | Produz zero; N=0, Z=1, C=1 |
+| `imm5=31`, `r1=1` | Produz `0x80000000`; N=1, Z=0, C=0 |
 | `Rd!=Rs` | Destino recebe o shift e registrador fonte mantém o valor antigo |
 | IR com amount/Rs/Rd divergente do encoding | Verificador rejeita a operação com erro de encoding |
 | Descoberta com Rs constante/desconhecido | Propaga o resultado constante ou invalida Rd, respectivamente |
