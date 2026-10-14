@@ -911,6 +911,90 @@ if [ -e "$thumb_addsub_bad_package" ]; then
     exit 1
 fi
 
+verify_thumb_orr() {
+    mode=$1
+    expected=$2
+    thumb_orr_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_orr_rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        cargo run --locked --quiet -p gba-recomp -- compile \
+            --rom "$thumb_orr_rom" --out "$package" --opt "$optimization" --steps 8
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["abi_version"] == 4
+PY
+    done
+}
+
+verify_thumb_orr thumb-orr-zero '{"status":"budget_exhausted","steps":8,"r0":0,"r1":0,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_orr thumb-orr-positive-c0v0 '{"status":"budget_exhausted","steps":8,"r0":3,"r1":2,"pc":"0x08000086","cpsr":"0x0000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_orr thumb-orr-negative-c1v1 '{"status":"budget_exhausted","steps":8,"r0":2147483649,"r1":1,"pc":"0x08000086","cpsr":"0xB000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_orr thumb-orr-positive-c0v1 '{"status":"budget_exhausted","steps":8,"r0":2147483647,"r1":0,"pc":"0x08000086","cpsr":"0x1000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_orr thumb-orr-positive-c1v0 '{"status":"budget_exhausted","steps":8,"r0":3,"r1":1,"pc":"0x08000086","cpsr":"0x2000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_orr thumb-orr-alias '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":305419896,"pc":"0x08000086","cpsr":"0xB000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+
+thumb_orr_bx_rom="$root/target/gba020/thumb-orr-bx.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$thumb_orr_bx_rom" --mode thumb-orr-bx
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-orr-bx-package-$optimization"
+    rm -rf "$package"
+    cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$thumb_orr_bx_rom" --out "$package" --opt "$optimization" --steps 8
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":8,"r0":0,"r1":134217976,"pc":"0x080000F8","cpsr":"0x0000001F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb ORR -> BX fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["abi_version"] == 4
+assert manifest["instructions_aot"] == 9
+PY
+done
+
+for mode in thumb-and-unsupported thumb-eor-unsupported thumb-mvn-unsupported; do
+    thumb_orr_bad_rom="$root/target/gba020/$mode.gba"
+    thumb_orr_bad_package="$root/target/gba020/$mode-package"
+    thumb_orr_bad_output="$root/target/gba020/$mode.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_orr_bad_rom" --mode "$mode"
+    rm -rf "$thumb_orr_bad_package"
+    if cargo run --locked --quiet -p gba-recomp -- compile \
+        --rom "$thumb_orr_bad_rom" --out "$thumb_orr_bad_package" --opt O0 --steps 8 \
+        >"$thumb_orr_bad_output" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        exit 1
+    fi
+    if ! grep -q 'unsupported_thumb_instruction at 0x08000084' "$thumb_orr_bad_output"; then
+        cat "$thumb_orr_bad_output" >&2
+        echo "$mode did not report its source PC" >&2
+        exit 1
+    fi
+    if [ -e "$thumb_orr_bad_package" ]; then
+        echo "$mode failure left a partial package" >&2
+        exit 1
+    fi
+done
+
 thumb_ldr_rom="$root/target/gba020/thumb-ldr-literal-bx.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_ldr_rom" --mode thumb-ldr-literal-bx
 for optimization in O0 O2; do

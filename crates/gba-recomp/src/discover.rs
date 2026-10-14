@@ -218,6 +218,22 @@ impl AbstractValue {
         Self::Constants(values)
     }
 
+    fn bitwise_or(&self, other: &Self) -> Self {
+        let (Self::Constants(left), Self::Constants(right)) = (self, other) else {
+            return Self::Unknown;
+        };
+        let mut values = BTreeSet::new();
+        for lhs in left {
+            for rhs in right {
+                values.insert(*lhs | *rhs);
+                if values.len() > MAX_CONSTANT_TARGETS {
+                    return Self::Unknown;
+                }
+            }
+        }
+        Self::Constants(values)
+    }
+
     fn values(&self) -> Option<&BTreeSet<u32>> {
         match self {
             Self::Unknown => None,
@@ -452,6 +468,22 @@ fn process_thumb_instruction(
                 state.registers[operand as usize].clone()
             };
             let result = state.registers[rn as usize].wrapping_add_subtract(&rhs, subtract);
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = result;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
+        ThumbOperation::OrrRegister { rd, rs } => {
+            let result = if rd == rs {
+                state.registers[rd as usize].clone()
+            } else {
+                state.registers[rd as usize].bitwise_or(&state.registers[rs as usize])
+            };
             let mut next_state = state.clone();
             next_state.registers[rd as usize] = result;
             enqueue_state(
@@ -1264,6 +1296,115 @@ mod tests {
             incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
             AbstractValue::Unknown
         );
+    }
+
+    #[test]
+    fn propagates_thumb_orr_constants_with_deduplication_alias_and_limit() {
+        let image = counter_rom();
+        let guest_pc = ROM_BASE + 0x84;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4318,
+            operation: ThumbOperation::OrrRegister { rd: 0, rs: 3 },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[0] = AbstractValue::Constants(BTreeSet::from([1, 0x10]));
+        state.registers[3] = AbstractValue::Constants(BTreeSet::from([2, 0x20]));
+        state.set_constant(1, 0x0200_0000);
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = (IsaMode::Thumb, guest_pc + 2);
+        assert_eq!(pending, VecDeque::from([successor]));
+        assert_eq!(
+            incoming[&successor].registers[0],
+            AbstractValue::Constants(BTreeSet::from([3, 0x12, 0x21, 0x30]))
+        );
+        assert_eq!(incoming[&successor].registers[1], state.registers[1]);
+        assert_eq!(incoming[&successor].registers[3], state.registers[3]);
+
+        let mut deduplicated_state = AbstractState::unknown();
+        let small_constants: BTreeSet<_> = (0..16).collect();
+        deduplicated_state.registers[0] = AbstractValue::Constants(small_constants.clone());
+        deduplicated_state.registers[3] = AbstractValue::Constants(small_constants);
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &deduplicated_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&successor].registers[0],
+            AbstractValue::Constants((0..16).collect())
+        );
+
+        let alias_instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4312,
+            operation: ThumbOperation::OrrRegister { rd: 2, rs: 2 },
+        };
+        let mut alias_state = AbstractState::unknown();
+        let one_hot_constants: BTreeSet<_> = (0..16).map(|bit| 1_u32 << bit).collect();
+        alias_state.registers[2] = AbstractValue::Constants(one_hot_constants.clone());
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            alias_instruction,
+            &alias_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&successor].registers[2],
+            AbstractValue::Constants(one_hot_constants)
+        );
+
+        let mut unknown_state = AbstractState::unknown();
+        unknown_state.registers[0] = AbstractValue::constant(1);
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &unknown_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(incoming[&successor].registers[0], AbstractValue::Unknown);
+
+        let mut overflow_state = AbstractState::unknown();
+        overflow_state.registers[0] = AbstractValue::Constants((0..16).collect());
+        overflow_state.registers[3] = AbstractValue::Constants(BTreeSet::from([0, 0x10]));
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &overflow_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(incoming[&successor].registers[0], AbstractValue::Unknown);
     }
 
     #[test]

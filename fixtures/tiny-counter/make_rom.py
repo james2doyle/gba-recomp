@@ -211,6 +211,62 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xD0:0xD4] = struct.pack("<I", 0x08000085)
         image[0xD8:0xDC] = struct.pack("<I", 0x080000C8)
+    elif mode in (
+        "thumb-orr-zero",
+        "thumb-orr-positive-c0v0",
+        "thumb-orr-negative-c1v1",
+        "thumb-orr-positive-c0v1",
+        "thumb-orr-positive-c1v0",
+        "thumb-orr-alias",
+        "thumb-and-unsupported",
+        "thumb-eor-unsupported",
+        "thumb-mvn-unsupported",
+    ):
+        cases = {
+            "thumb-orr-zero": (0x4308, 0, 0, 0xE3500000),
+            "thumb-orr-positive-c0v0": (0x4308, 2, 1, 0xE3500002),
+            "thumb-orr-negative-c1v1": (0x4308, 1, 0x80000000, 0xE3500001),
+            "thumb-orr-positive-c0v1": (0x4308, 0, 0x7FFFFFFF, 0xE3500102),
+            "thumb-orr-positive-c1v0": (0x4308, 1, 2, 0xE3500001),
+            "thumb-orr-alias": (0x4300, 0x12345678, 0x80000000, 0xE3500001),
+            # Format 4 encodings outside the accepted ORR suboperation.
+            "thumb-and-unsupported": (0x4018, 2, 1, 0xE3500001),
+            "thumb-eor-unsupported": (0x4058, 2, 1, 0xE3500001),
+            "thumb-mvn-unsupported": (0x43D8, 2, 1, 0xE3500001),
+        }
+        encoding, source, compare, compare_instruction = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # ORR/negative format; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE59F1018,  # LDR r1,[pc,#0x18] -> ORR source at 0xE0.
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> ORR destination at 0xE4.
+            compare_instruction,  # CMP r0,#imm seeds all four C/V combinations.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE59F3004,  # LDR r3,[pc,#4] -> ARM loop at 0xDC.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xE0] = struct.pack(
+            "<2I", 0x08000085, 0x080000E8
+        )
+        image[0xE0:0xE8] = struct.pack("<2I", source, compare)
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+    elif mode == "thumb-orr-bx":
+        image[0x84:0x88] = struct.pack(
+            "<2H", 0x4319, 0x4708
+        )  # ORR r1,r3; BX r1 follows the computed target.
+        image[0xC0:0xD4] = struct.pack(
+            "<5I",
+            0xE59F101C,  # LDR r1,[pc,#0x1C] -> ARM loop at 0xE4.
+            0xE59F301C,  # LDR r3,[pc,#0x1C] -> zero at 0xE8.
+            0xE3500001,  # CMP r0,#1 seeds C=0,V=0.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xDC] = struct.pack("<I", 0x08000085)
+        image[0xE4:0xEC] = struct.pack("<2I", 0x080000F8, 0)
+        image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
     elif mode in ("thumb-ldr-literal-bx", "thumb-ldr-literal-out-of-rom"):
         literal_load = 0x4916 if mode == "thumb-ldr-literal-bx" else 0x49FF
         image[0x86:0x8A] = struct.pack(
@@ -619,6 +675,16 @@ def main() -> None:
             "thumb-addsub-sub-imm-overflow",
             "thumb-addsub-out-of-family",
             "thumb-addsub-literal-bx",
+            "thumb-orr-zero",
+            "thumb-orr-positive-c0v0",
+            "thumb-orr-negative-c1v1",
+            "thumb-orr-positive-c0v1",
+            "thumb-orr-positive-c1v0",
+            "thumb-orr-alias",
+            "thumb-orr-bx",
+            "thumb-and-unsupported",
+            "thumb-eor-unsupported",
+            "thumb-mvn-unsupported",
             "thumb-ldr-literal-bx",
             "thumb-ldr-literal-out-of-rom",
             "thumb-bl",

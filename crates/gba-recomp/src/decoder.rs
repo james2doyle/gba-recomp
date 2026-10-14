@@ -171,6 +171,16 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xFFC0 == 0x4300 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::OrrRegister {
+                rd: (encoding & 0x7) as u8,
+                rs: ((encoding >> 3) & 0x7) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0x7000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -479,6 +489,38 @@ mod tests {
         for encoding in [0x0849, 0x1049, 0x4089] {
             assert!(decode_thumb(0x0800_0084, encoding).is_err());
         }
+    }
+
+    #[test]
+    fn decodes_only_thumb_orr_register_format_4() {
+        assert_eq!(
+            decode_thumb(0x0800_099E, 0x4318).unwrap().operation,
+            ThumbOperation::OrrRegister { rd: 0, rs: 3 }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x433F).unwrap().operation,
+            ThumbOperation::OrrRegister { rd: 7, rs: 7 }
+        );
+
+        for rs in 0..8_u16 {
+            for rd in 0..8_u16 {
+                let encoding = 0x4300 | (rs << 3) | rd;
+                assert_eq!(
+                    decode_thumb(0x0800_0084, encoding).unwrap().operation,
+                    ThumbOperation::OrrRegister {
+                        rd: rd as u8,
+                        rs: rs as u8,
+                    }
+                );
+            }
+        }
+
+        for encoding in (0x4000..0x4400_u16).step_by(0x40) {
+            if encoding != 0x4300 {
+                assert!(decode_thumb(0x0800_0084, encoding).is_err());
+            }
+        }
+        assert!(decode_thumb(0x0800_0085, 0x4318).is_err());
     }
 
     #[test]
