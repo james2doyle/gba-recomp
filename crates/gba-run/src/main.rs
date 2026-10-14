@@ -73,7 +73,9 @@ fn parse() -> Result<Options, String> {
                 o.backup = Some(BackupKind::parse(&v).ok_or(format!("unknown backup `{v}`"))?);
             }
             "--frames" => {
-                o.frames = value()?.parse().map_err(|_| "--frames must be an integer")?
+                o.frames = value()?
+                    .parse()
+                    .map_err(|_| "--frames must be an integer")?
             }
             "--input" => {
                 let v = value()?;
@@ -185,7 +187,9 @@ fn run() -> Result<(), String> {
         gba.bus.backup.kind().as_str(),
         swis.join(","),
         unsupported.join(","),
-        fault.as_ref().map_or("null".to_owned(), |f| format!("\"{f:?}\"")),
+        fault
+            .as_ref()
+            .map_or("null".to_owned(), |f| format!("\"{f:?}\"")),
         elapsed,
         frame as f64 / elapsed.max(1e-9),
     );

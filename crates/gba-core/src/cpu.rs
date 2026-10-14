@@ -84,6 +84,8 @@ pub struct Cpu {
     pub stats: CpuStats,
     /// Address of the instruction currently executing.
     pub current_pc: u32,
+    /// ISA state of the instruction currently executing.
+    pub current_thumb: bool,
 }
 
 impl Default for Cpu {
@@ -123,6 +125,7 @@ impl Cpu {
             next_seq: false,
             stats: CpuStats::default(),
             current_pc: 0,
+            current_thumb: false,
         }
     }
 
@@ -151,6 +154,15 @@ impl Cpu {
     /// Address of the next instruction to execute (outside of `step`).
     pub fn pc(&self) -> u32 {
         self.r[15]
+    }
+
+    /// Whether the next code fetch is sequential (native exits, SPEC-062).
+    pub fn next_seq(&self) -> bool {
+        self.next_seq
+    }
+
+    pub fn set_next_seq(&mut self, seq: bool) {
+        self.next_seq = seq;
     }
 
     pub fn set_pc(&mut self, pc: u32) {
@@ -208,9 +220,7 @@ impl Cpu {
         let mode = self.mode();
         match n {
             8..=12 if mode == MODE_FIQ => self.bank_r8_12[0][n - 8] = value,
-            13 | 14 if !matches!(mode, MODE_USR | MODE_SYS) => {
-                self.bank_r13_14[0][n - 13] = value
-            }
+            13 | 14 if !matches!(mode, MODE_USR | MODE_SYS) => self.bank_r13_14[0][n - 13] = value,
             _ => self.r[n] = value,
         }
     }
@@ -306,7 +316,9 @@ impl Cpu {
         true
     }
 
-    fn refill<B: CpuBus>(&mut self, bus: &mut B) {
+    /// Pipeline refill after a branch (also used after native branch exits,
+    /// SPEC-062 NB-62-04).
+    pub fn refill<B: CpuBus>(&mut self, bus: &mut B) {
         // Pipeline refill after a branch: N + S fetch (CPU-56-09).
         let pc = self.r[15];
         if self.thumb() {
@@ -338,6 +350,7 @@ impl Cpu {
         let result = if self.thumb() {
             let pc = self.r[15] & !1;
             self.current_pc = pc;
+            self.current_thumb = true;
             let op = bus.fetch16(pc, seq);
             self.r[15] = pc.wrapping_add(4);
             self.stats.thumb += 1;
@@ -349,6 +362,7 @@ impl Cpu {
         } else {
             let pc = self.r[15] & !3;
             self.current_pc = pc;
+            self.current_thumb = false;
             let op = bus.fetch32(pc, seq);
             self.r[15] = pc.wrapping_add(8);
             self.stats.arm += 1;
@@ -799,15 +813,15 @@ impl Cpu {
     }
 
     /// Load a word with ARM7TDMI misalignment rotation (CPU-56-05).
-    fn load32_rotated<B: CpuBus>(bus: &mut B, addr: u32) -> u32 {
+    pub fn load32_rotated<B: CpuBus>(bus: &mut B, addr: u32) -> u32 {
         bus.read32(addr & !3, false).rotate_right((addr & 3) * 8)
     }
 
-    fn load16_rotated<B: CpuBus>(bus: &mut B, addr: u32) -> u32 {
+    pub fn load16_rotated<B: CpuBus>(bus: &mut B, addr: u32) -> u32 {
         u32::from(bus.read16(addr & !1, false)).rotate_right((addr & 1) * 8)
     }
 
-    fn load_signed16<B: CpuBus>(bus: &mut B, addr: u32) -> u32 {
+    pub fn load_signed16<B: CpuBus>(bus: &mut B, addr: u32) -> u32 {
         if addr & 1 != 0 {
             bus.read8(addr, false) as i8 as i32 as u32
         } else {

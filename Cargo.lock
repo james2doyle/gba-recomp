@@ -93,9 +93,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gba-native-rt"
+version = "0.1.0"
+dependencies = [
+ "gba-core",
+ "sha2",
+]
+
+[[package]]
 name = "gba-recomp"
 version = "0.1.0"
 dependencies = [
+ "gba-core",
  "gba-ir",
  "gba-llvm",
  "gba-runtime-abi",

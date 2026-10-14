@@ -18,6 +18,8 @@ use llvm_sys::target::*;
 use llvm_sys::target_machine::*;
 use llvm_sys::transforms::pass_builder::*;
 
+pub mod native;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Optimization {
     O0,

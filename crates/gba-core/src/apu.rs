@@ -146,20 +146,22 @@ struct Noise {
 
 impl Noise {
     fn period(&self) -> i64 {
-        let r = if self.divisor == 0 { 16 } else { 32 * i64::from(self.divisor) };
+        let r = if self.divisor == 0 {
+            16
+        } else {
+            32 * i64::from(self.divisor)
+        };
         r << (u32::from(self.shift) + 1)
     }
 }
 
-#[derive(Clone)]
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Fifo {
     data: [i8; 32],
     read: usize,
     len: usize,
     current: i8,
 }
-
 
 impl Fifo {
     fn push(&mut self, v: i8) {
@@ -412,17 +414,16 @@ impl Apu {
                 }
                 self.regs[o] &= 0x77;
             }
-            0x084
-                if value & 0x80 == 0 => {
-                    // Master off clears PSG registers and channels.
-                    for r in &mut self.regs[0x00..0x24] {
-                        *r = 0;
-                    }
-                    self.ch1 = Square::default();
-                    self.ch2 = Square::default();
-                    self.ch3 = Wave::default();
-                    self.ch4 = Noise::default();
+            0x084 if value & 0x80 == 0 => {
+                // Master off clears PSG registers and channels.
+                for r in &mut self.regs[0x00..0x24] {
+                    *r = 0;
                 }
+                self.ch1 = Square::default();
+                self.ch2 = Square::default();
+                self.ch3 = Wave::default();
+                self.ch4 = Noise::default();
+            }
             _ => {}
         }
     }

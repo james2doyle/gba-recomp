@@ -83,7 +83,11 @@ enum FlashState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum EepromState {
     Idle,
-    Reading { bits_left: u32, value: u64, dummy: u32 },
+    Reading {
+        bits_left: u32,
+        value: u64,
+        dummy: u32,
+    },
 }
 
 pub struct Backup {
@@ -242,7 +246,11 @@ impl Backup {
     // ---------------------------------------------------------------- EEPROM
 
     fn eeprom_addr_bits(&self) -> usize {
-        if self.kind == BackupKind::Eeprom512 { 6 } else { 14 }
+        if self.kind == BackupKind::Eeprom512 {
+            6
+        } else {
+            14
+        }
     }
 
     pub fn eeprom_write(&mut self, value: u16) {

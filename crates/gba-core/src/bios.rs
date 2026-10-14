@@ -10,8 +10,8 @@ use crate::cpu::{Cpu, MODE_IRQ, MODE_SVC, MODE_SYS};
 pub const HLE_VERSION: u32 = 1;
 
 pub const IMPLEMENTED_SWIS: &[u8] = &[
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
-    0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1F, 0x25, 0x27,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1F, 0x25, 0x27,
 ];
 
 #[derive(Clone, Debug, Default)]
@@ -26,10 +26,10 @@ pub struct HleState {
 /// `SUBS pc, lr, #4`, matching the documented BIOS dispatcher contract.
 pub fn install_stub(bios: &mut [u8]) {
     let words: &[(usize, u32)] = &[
-        (0x00, 0xEA00_001E), // b 0x80 (reset → idle loop)
-        (0x08, 0xEA00_001C), // b 0x80 (SWI vector unused with HLE)
-        (0x18, 0xEA00_0042), // b 0x128
-        (0x80, 0xEAFF_FFFE), // b . (parked)
+        (0x00, 0xEA00_001E),  // b 0x80 (reset → idle loop)
+        (0x08, 0xEA00_001C),  // b 0x80 (SWI vector unused with HLE)
+        (0x18, 0xEA00_0042),  // b 0x128
+        (0x80, 0xEAFF_FFFE),  // b . (parked)
         (0x128, 0xE92D_500F), // stmfd sp!, {r0-r3, r12, lr}
         (0x12C, 0xE3A0_0301), // mov r0, #0x04000000
         (0x130, 0xE28F_E000), // add lr, pc, #0
@@ -47,8 +47,10 @@ fn sine_table() -> &'static [i32; 256] {
     TABLE.get_or_init(|| {
         let mut t = [0i32; 256];
         for (i, v) in t.iter_mut().enumerate() {
-            *v = (f64::from(i as u32) * std::f64::consts::TAU / 256.0).sin().mul_add(16384.0, 0.0).round()
-                as i32;
+            *v = (f64::from(i as u32) * std::f64::consts::TAU / 256.0)
+                .sin()
+                .mul_add(16384.0, 0.0)
+                .round() as i32;
         }
         t
     })
@@ -256,7 +258,11 @@ fn arctan2(x: i32, y: i32) -> u32 {
             0x4000 - at(x, y)
         }
     } else if x <= 0 {
-        if -x > -y { 0x8000 + at(y, x) } else { 0xC000 - at(x, y) }
+        if -x > -y {
+            0x8000 + at(y, x)
+        } else {
+            0xC000 - at(x, y)
+        }
     } else if x >= -y {
         0x10000 + at(y, x)
     } else {
@@ -384,8 +390,12 @@ fn bit_unpack(bus: &mut Bus, src: u32, dst: u32, info: u32) {
             if v != 0 || zero_flag {
                 v = v.wrapping_add(offset);
             }
-            out |= (v & (if dst_width == 32 { u32::MAX } else { (1 << dst_width) - 1 }))
-                << out_bits;
+            out |=
+                (v & (if dst_width == 32 {
+                    u32::MAX
+                } else {
+                    (1 << dst_width) - 1
+                })) << out_bits;
             out_bits += dst_width;
             if out_bits >= 32 {
                 bus.poke32(d, out);
@@ -440,7 +450,11 @@ fn lz77(bus: &mut Bus, src: u32, dst: u32, vram: bool) {
                     if out.len() >= size {
                         break;
                     }
-                    let v = if disp <= out.len() { out[out.len() - disp] } else { 0 };
+                    let v = if disp <= out.len() {
+                        out[out.len() - disp]
+                    } else {
+                        0
+                    };
                     out.push(v);
                 }
             }
@@ -496,7 +510,10 @@ fn huffman(bus: &mut Bus, src: u32, dst: u32) {
         out.push(0);
     }
     for (i, w) in out.chunks(4).enumerate() {
-        bus.poke32(dst + i as u32 * 4, u32::from_le_bytes([w[0], w[1], w[2], w[3]]));
+        bus.poke32(
+            dst + i as u32 * 4,
+            u32::from_le_bytes([w[0], w[1], w[2], w[3]]),
+        );
     }
     bus.add_cycles(size as u64 * 8);
 }

@@ -202,9 +202,18 @@ impl Bus {
         let w = self.waitcnt;
         let sram = N[(w & 3) as usize] + 1;
         let ws = [
-            (N[((w >> 2) & 3) as usize], if w & (1 << 4) != 0 { 1 } else { 2 }),
-            (N[((w >> 5) & 3) as usize], if w & (1 << 7) != 0 { 1 } else { 4 }),
-            (N[((w >> 8) & 3) as usize], if w & (1 << 10) != 0 { 1 } else { 8 }),
+            (
+                N[((w >> 2) & 3) as usize],
+                if w & (1 << 4) != 0 { 1 } else { 2 },
+            ),
+            (
+                N[((w >> 5) & 3) as usize],
+                if w & (1 << 7) != 0 { 1 } else { 4 },
+            ),
+            (
+                N[((w >> 8) & 3) as usize],
+                if w & (1 << 10) != 0 { 1 } else { 8 },
+            ),
         ];
         // Fixed regions (BUS-57-04).
         for (region, n16, n32) in [
@@ -237,6 +246,16 @@ impl Bus {
             self.wait_s32[region] = sram;
         }
         self.prefetch = w & (1 << 14) != 0;
+    }
+
+    /// Copy of the waitstate tables for native code (SPEC-062 NB-62-01):
+    /// n16[16], s16[16], n32[16], s32[16], prefetch flag.
+    pub fn wait_snapshot(&self, out: &mut [u8; 65]) {
+        out[0..16].copy_from_slice(&self.wait_n16);
+        out[16..32].copy_from_slice(&self.wait_s16);
+        out[32..48].copy_from_slice(&self.wait_n32);
+        out[48..64].copy_from_slice(&self.wait_s32);
+        out[64] = u8::from(self.prefetch);
     }
 
     #[inline]

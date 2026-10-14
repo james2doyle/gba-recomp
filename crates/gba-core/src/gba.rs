@@ -29,7 +29,33 @@ pub struct GbaConfig<'a> {
 pub struct Gba {
     pub cpu: Cpu,
     pub bus: Bus,
+    /// Instructions retired by the interpreter (including shells).
     pub instructions: u64,
+    pub native: NativeStats,
+}
+
+/// Outcome of offering the current PC to native code (SPEC-062).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeOutcome {
+    /// No native code covers this PC: interpret one instruction.
+    Miss,
+    /// Native code ran and left the CPU at an instruction boundary.
+    Ran,
+    /// Native code requested an interpreter shell for the current PC.
+    Interpret,
+}
+
+/// Native code provider. Implementations update `cpu`/`bus` exactly as the
+/// interpreter would (NB-62-01) and count retired instructions themselves.
+pub trait NativeExec {
+    fn run(&mut self, cpu: &mut Cpu, bus: &mut Bus) -> NativeOutcome;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NativeStats {
+    pub misses: u64,
+    pub shells: u64,
+    pub calls: u64,
 }
 
 impl Gba {
@@ -51,6 +77,7 @@ impl Gba {
             cpu,
             bus,
             instructions: 0,
+            native: NativeStats::default(),
         }
     }
 
@@ -60,6 +87,11 @@ impl Gba {
 
     /// Execute one CPU step (or one halted wait) and service events.
     pub fn step(&mut self) -> Result<(), SystemFault> {
+        self.step_with(None)
+    }
+
+    /// Like [`Gba::step`], but offers the PC to native code first.
+    pub fn step_with(&mut self, native: Option<&mut dyn NativeExec>) -> Result<(), SystemFault> {
         if self.bus.dma_pending() {
             self.bus.run_dmas();
         }
@@ -83,11 +115,22 @@ impl Gba {
             self.cpu.irq(&mut self.bus);
         }
         self.bus.pc_in_bios = self.cpu.pc() < 0x4000;
-        match self.cpu.step(&mut self.bus) {
-            StepResult::Fault(fault) => return Err(SystemFault::Cpu(fault)),
-            StepResult::Retired | StepResult::Skipped | StepResult::Exception => {}
+        let mut interpret = true;
+        if let Some(native) = native {
+            self.native.calls += 1;
+            match native.run(&mut self.cpu, &mut self.bus) {
+                NativeOutcome::Ran => interpret = false,
+                NativeOutcome::Miss => self.native.misses += 1,
+                NativeOutcome::Interpret => self.native.shells += 1,
+            }
         }
-        self.instructions += 1;
+        if interpret {
+            match self.cpu.step(&mut self.bus) {
+                StepResult::Fault(fault) => return Err(SystemFault::Cpu(fault)),
+                StepResult::Retired | StepResult::Skipped | StepResult::Exception => {}
+            }
+            self.instructions += 1;
+        }
         if self.bus.halt_requested || self.bus.stop_requested {
             self.bus.halt_requested = false;
             self.bus.stop_requested = false;
@@ -104,6 +147,15 @@ impl Gba {
         self.bus.frame_ready = false;
         while !self.bus.frame_ready {
             self.step()?;
+        }
+        Ok(())
+    }
+
+    /// Run one frame offering every instruction boundary to native code.
+    pub fn run_frame_with(&mut self, native: &mut dyn NativeExec) -> Result<(), SystemFault> {
+        self.bus.frame_ready = false;
+        while !self.bus.frame_ready {
+            self.step_with(Some(&mut *native))?;
         }
         Ok(())
     }

@@ -137,7 +137,11 @@ fn all_conditions_against_all_flag_combinations() {
             false,
         ];
         for (cond, want) in expected.iter().enumerate() {
-            assert_eq!(cpu.condition(cond as u32), *want, "cond {cond} flags {bits:04b}");
+            assert_eq!(
+                cpu.condition(cond as u32),
+                *want,
+                "cond {cond} flags {bits:04b}"
+            );
         }
     }
 }

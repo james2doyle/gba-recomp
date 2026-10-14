@@ -233,7 +233,10 @@ impl Ppu {
         let width = if size & 1 != 0 { 512 } else { 256 };
         let height = if size & 2 != 0 { 512 } else { 256 };
         let (mos_h, mos_v) = if cnt & 0x40 != 0 {
-            ((mosaic & 0xF) as usize + 1, ((mosaic >> 4) & 0xF) as usize + 1)
+            (
+                (mosaic & 0xF) as usize + 1,
+                ((mosaic >> 4) & 0xF) as usize + 1,
+            )
         } else {
             (1, 1)
         };
@@ -297,7 +300,11 @@ impl Ppu {
         let wrap = cnt & 0x2000 != 0;
         let size = 128i32 << (cnt >> 14);
         let tiles = size / 8;
-        let mos_h = if cnt & 0x40 != 0 { (mosaic & 0xF) as usize + 1 } else { 1 };
+        let mos_h = if cnt & 0x40 != 0 {
+            (mosaic & 0xF) as usize + 1
+        } else {
+            1
+        };
         let mut out = [TRANSPARENT; SCREEN_WIDTH];
         for (sx, slot) in out.iter_mut().enumerate() {
             let mx = (sx - sx % mos_h) as i32;
@@ -331,7 +338,11 @@ impl Ppu {
         let pc = i32::from(reg16(io, 0x24) as i16);
         let frame = if self.dispcnt & 0x10 != 0 { 0xA000 } else { 0 };
         let (w, h) = if mode == 5 { (160, 128) } else { (240, 160) };
-        let mos_h = if cnt & 0x40 != 0 { (mosaic & 0xF) as usize + 1 } else { 1 };
+        let mos_h = if cnt & 0x40 != 0 {
+            (mosaic & 0xF) as usize + 1
+        } else {
+            1
+        };
         let mut out = [TRANSPARENT; SCREEN_WIDTH];
         for (sx, slot) in out.iter_mut().enumerate() {
             let mx = (sx - sx % mos_h) as i32;
@@ -344,9 +355,8 @@ impl Ppu {
             match mode {
                 3 => {
                     let a = p * 2;
-                    *slot = u32::from(
-                        u16::from_le_bytes([self.vram[a], self.vram[a + 1]]) & 0x7FFF,
-                    );
+                    *slot =
+                        u32::from(u16::from_le_bytes([self.vram[a], self.vram[a + 1]]) & 0x7FFF);
                 }
                 4 => {
                     let index = self.vram[frame + p] as usize;
@@ -356,9 +366,8 @@ impl Ppu {
                 }
                 _ => {
                     let a = frame + p * 2;
-                    *slot = u32::from(
-                        u16::from_le_bytes([self.vram[a], self.vram[a + 1]]) & 0x7FFF,
-                    );
+                    *slot =
+                        u32::from(u16::from_le_bytes([self.vram[a], self.vram[a + 1]]) & 0x7FFF);
                 }
             }
         }
@@ -390,7 +399,11 @@ impl Ppu {
             }
             let (w, h) = OBJ_SIZES[shape][(attr1 >> 14) as usize];
             let (w, h) = (w as i32, h as i32);
-            let (box_w, box_h) = if affine && double { (w * 2, h * 2) } else { (w, h) };
+            let (box_w, box_h) = if affine && double {
+                (w * 2, h * 2)
+            } else {
+                (w, h)
+            };
             let mut y = i32::from(attr0 & 0xFF);
             if y >= 160 {
                 y -= 256;
@@ -461,8 +474,7 @@ impl Ppu {
                     let addr = 0x10000 + tile * 32 + (ty % 8) as usize * 8 + (tx % 8) as usize;
                     self.vram[addr.min(0x17FFF)] as usize
                 } else {
-                    let addr =
-                        0x10000 + tile * 32 + (ty % 8) as usize * 4 + (tx % 8) as usize / 2;
+                    let addr = 0x10000 + tile * 32 + (ty % 8) as usize * 4 + (tx % 8) as usize / 2;
                     let byte = self.vram[addr.min(0x17FFF)];
                     (if tx & 1 != 0 { byte >> 4 } else { byte & 0xF }) as usize
                 };
@@ -507,12 +519,15 @@ impl Ppu {
             let (x1, x2) = ((h >> 8) as usize, (h & 0xFF) as usize);
             let (y1, y2) = ((v >> 8) as usize, (v & 0xFF) as usize);
             let inside = |p: usize, a: usize, b: usize| {
-                if a <= b { p >= a && p < b } else { p >= a || p < b }
+                if a <= b {
+                    p >= a && p < b
+                } else {
+                    p >= a || p < b
+                }
             };
             let x2 = if x2 > 240 { 240 } else { x2 };
             let y2 = if y2 > 228 { 228 } else { y2 };
-            if inside(x, x1, x2) && inside(line, y1, y2)
-            {
+            if inside(x, x1, x2) && inside(line, y1, y2) {
                 return ((winin >> (w * 8)) & 0x3F) as u8;
             }
         }

@@ -11,6 +11,7 @@ use gba_runtime_abi::{
     ABI_RUNTIME_V3_SOURCE, GBA_ABI_VERSION_V4, GBA_MACHINE_STATE_VERSION_V1,
 };
 
+mod compat;
 mod decoder;
 mod discover;
 mod rom;
@@ -95,12 +96,30 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     let mut optimization = None;
     let mut steps = 100_u64;
     let mut mode = ExecutionMode::StrictAot;
+    let mut profile = compat::ProfileOptions {
+        frames: 600,
+        inputs: Vec::new(),
+        follow_direct_branches: true,
+    };
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--rom" => rom_path = Some(PathBuf::from(args.next().ok_or_else(usage)?)),
             "--out" => output = Some(PathBuf::from(args.next().ok_or_else(usage)?)),
             "--opt" => optimization = Some(parse_optimization(&args.next().ok_or_else(usage)?)?),
             "--mode" => mode = parse_execution_mode(&args.next().ok_or_else(usage)?)?,
+            "--profile-frames" => {
+                profile.frames = args
+                    .next()
+                    .ok_or_else(usage)?
+                    .parse()
+                    .map_err(|_| "--profile-frames must be an integer".to_owned())?;
+            }
+            "--profile-input" => {
+                profile
+                    .inputs
+                    .push(compat::parse_input(&args.next().ok_or_else(usage)?)?);
+            }
+            "--no-static-branches" => profile.follow_direct_branches = false,
             "--steps" => {
                 steps = args
                     .next()
@@ -119,6 +138,12 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     let optimization = optimization.ok_or_else(usage)?;
     println!("execution_mode: {}", mode.as_str());
     require_available_mode(mode)?;
+    if mode == ExecutionMode::AotCompatible {
+        let report = compat::build_package(&rom_path, &output, optimization, &profile)?;
+        println!("package: {}", report.path.display());
+        print!("{}", report.manifest);
+        return Ok(());
+    }
     let image = rom::RomImage::read(&rom_path)?;
     let program = discover::discover_arm_program(&image)?;
     let package = build_native_package(&image, &program, optimization, steps, &output)?;
@@ -438,13 +463,15 @@ fn parse_execution_mode(value: &str) -> Result<ExecutionMode, String> {
     }
 }
 
-/// IAC-02/IAC-03/IAC-09: `aot-compatible` needs a local ARMv4T interpreter with
-/// declared exact support. None exists yet, so the mode is rejected before
-/// discovery or package output instead of degrading to `strict-aot`.
+/// IAC-02/IAC-09: `aot-compatible` links the `gba-core` interpreter through
+/// the `gba-native-rt` runtime (SPEC-062). Without that library the mode is
+/// rejected before any work instead of degrading to `strict-aot`.
 fn require_available_mode(mode: ExecutionMode) -> Result<(), String> {
     match mode {
         ExecutionMode::StrictAot => Ok(()),
-        ExecutionMode::AotCompatible => Err("execution mode `aot-compatible` is not available: no local interpreter satisfies SPEC-055 (IAC-03/IAC-09); no package was produced and the mode was not changed to strict-aot".to_owned()),
+        ExecutionMode::AotCompatible => compat::runtime_library()
+            .map(|_| ())
+            .map_err(|e| format!("execution mode `aot-compatible` is not available: {e}; the mode was not changed to strict-aot")),
     }
 }
 
@@ -485,7 +512,7 @@ fn print_emit_info(info: &gba_llvm::EmitInfo) {
 fn usage() -> String {
     let target = native_target();
     format!(
-        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--mode strict-aot|aot-compatible] [--steps N]\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
+        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--mode strict-aot|aot-compatible] [--steps N]\n       [--profile-frames N] [--profile-input FRAME:LEN:KEYS]... [--no-static-branches]  (aot-compatible)\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
         target.triple
     )
 }
@@ -516,9 +543,12 @@ mod execution_mode_tests {
     }
 
     #[test]
-    fn compatible_mode_is_rejected_without_local_interpreter() {
+    fn compatible_mode_without_runtime_library_is_rejected_not_downgraded() {
         assert!(require_available_mode(ExecutionMode::StrictAot).is_ok());
+        // SAFETY of test env mutation: this test only reads its own variable.
+        unsafe { std::env::set_var("GBA_NATIVE_RT_LIB", "/nonexistent/libgba_native_rt.a") };
         let error = require_available_mode(ExecutionMode::AotCompatible).unwrap_err();
+        unsafe { std::env::remove_var("GBA_NATIVE_RT_LIB") };
         assert!(error.contains("aot-compatible"), "{error}");
         assert!(error.contains("not changed to strict-aot"), "{error}");
     }
@@ -540,7 +570,12 @@ mod execution_mode_tests {
             "aot-compatible",
         ]))
         .unwrap_err();
-        assert!(error.contains("aot-compatible"), "{error}");
+        // Either the runtime library is missing or the ROM cannot be read;
+        // in both cases nothing is published.
+        assert!(
+            error.contains("aot-compatible") || error.contains("cannot read ROM"),
+            "{error}"
+        );
         assert!(!output.exists());
 
         let error = run_compile(args(&[

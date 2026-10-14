@@ -14,7 +14,7 @@ pub mod ppu;
 
 pub use backup::BackupKind;
 pub use bus::SystemFault;
-pub use gba::{Gba, GbaConfig, keys};
+pub use gba::{Gba, GbaConfig, NativeExec, NativeOutcome, NativeStats, keys};
 pub use ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 /// Version of the interpreted core contract (recorded in manifests, IAC-09).
