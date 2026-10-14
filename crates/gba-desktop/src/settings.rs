@@ -208,6 +208,10 @@ pub const DEADZONE_MAX: f32 = 0.95;
 
 /// Default location (SET-63-01).
 pub fn default_path() -> Option<PathBuf> {
+    // Android (SPEC-068): no HOME/XDG; use the app's internal storage.
+    if cfg!(target_os = "android") {
+        return android_pref_path().map(|d| d.join("settings.toml"));
+    }
     let home = std::env::var_os("HOME").map(PathBuf::from);
     // On iOS `HOME` is the app sandbox container; Library is writable there.
     if cfg!(any(target_os = "macos", target_os = "ios")) {
@@ -218,6 +222,19 @@ pub fn default_path() -> Option<PathBuf> {
             .filter(|p| p.is_absolute())
             .or_else(|| home.map(|h| h.join(".config")))
             .map(|d| d.join("gba-recomp/settings.toml"))
+    }
+}
+
+/// App-private writable directory on Android (`SDL_GetPrefPath`); `None`
+/// elsewhere, where the HOME/XDG rules above apply.
+pub fn android_pref_path() -> Option<PathBuf> {
+    #[cfg(target_os = "android")]
+    {
+        crate::sdl::pref_path()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        None
     }
 }
 

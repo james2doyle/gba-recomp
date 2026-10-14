@@ -309,7 +309,7 @@ fn run_window(
     entries: &[AotEntry],
     guards: &[AotGuard],
     rom: Vec<u8>,
-    _sha256: [u8; 32],
+    sha256: [u8; 32],
 ) -> Result<(), String> {
     let mut program = NativeProgram::new(entries, guards);
     let header_title: String = Some(&rom)
@@ -325,7 +325,13 @@ fn run_window(
     let save = o.save.clone();
     // iOS has no command line: keep the save in the app sandbox by default.
     #[cfg(target_os = "ios")]
-    let save = save.or_else(|| ios_save_path(&_sha256));
+    let save = save.or_else(|| ios_save_path(&sha256));
+    // Android (SPEC-068) has no command line either: keep the save in the
+    // app's internal storage unless --save was given.
+    let save = save.or_else(|| {
+        gba_desktop::settings::android_pref_path()
+            .map(|d| d.join(format!("{}.sav", &hex(&sha256)[..16])))
+    });
     let options = gba_desktop::AppOptions {
         rom: o.rom.clone().unwrap_or_default(),
         rom_bytes: Some(rom),
