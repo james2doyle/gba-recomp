@@ -101,4 +101,4 @@ The project follows specification-driven development: every feature has a spec i
 
 ## Legal
 
-GBA Recomp not contains no Nintendo code or BIOS. Only games whose license allows redistribution may be added to `games/`. Packages produced with `bundle` from commercial ROMs contain the game and are for personal use only.
+GBA Recomp contains no Nintendo code or BIOS. Only games whose license allows redistribution may be added to `games/`. Packages produced with `bundle` from commercial ROMs contain the game and are for personal use only.
