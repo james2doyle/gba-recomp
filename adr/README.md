@@ -24,3 +24,8 @@
 - [ADR-022-additive-thumb-ldmia-abi](ADR-022-additive-thumb-ldmia-abi.md)
 - [ADR-023-additive-thumb-stmia-abi](ADR-023-additive-thumb-stmia-abi.md)
 - [ADR-024-finite-rom-ldmia-specialization](ADR-024-finite-rom-ldmia-specialization.md)
+- [ADR-025-discovery-state-budget](ADR-025-discovery-state-budget.md)
+- [ADR-026-thumb-str-word-immediate](ADR-026-thumb-str-word-immediate.md)
+- [ADR-027-thumb-ldr-word-immediate](ADR-027-thumb-ldr-word-immediate.md)
+- [ADR-028-thumb-lsr-immediate](ADR-028-thumb-lsr-immediate.md)
+- [ADR-029-thumb-ldrh-immediate](ADR-029-thumb-ldrh-immediate.md)

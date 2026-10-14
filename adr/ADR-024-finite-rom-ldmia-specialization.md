@@ -2,7 +2,7 @@
 
 - Estado: Accepted
 - Data: 2026-10-14
-- Supersede: —
+- Supersede: [ADR-025](ADR-025-discovery-state-budget.md) para o budget por PC (64 → 128); restante vigente
 
 ## Contexto
 
