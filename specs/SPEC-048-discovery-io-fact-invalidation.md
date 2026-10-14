@@ -33,6 +33,7 @@ Nesta spec, “região de decode 0x04” ou “possível I/O” significa o inte
 | Store word em `0x04000208` (IME e bytes adjacentes não rastreados) | Todos os fatos de I/O tornam-se Unknown |
 | Store de byte em cada byte de IE, IF ou IME | O halfword inteiro sobreposto torna-se Unknown |
 | Endereço em `0x04FFFFFF` com largura 2 ou 4 | Todos os fatos de I/O tornam-se Unknown por tocar byte não modelado em 0x04 |
+| STRH bruto em `IE + 1`, normalizado para IE | Só IE torna-se Unknown |
 | STRH bruto em `0x04000207`, normalizado para `0x04000206` | Todos os fatos de I/O tornam-se Unknown por tocar bytes não modelados |
 | Endereço em `0x05000000` ou `0x05000002` | Preserva IE/IF/IME; ainda invalida a sombra RAM conforme AMEM-04 |
 | Conjunto finito com alvos fora de I/O e em I/O | Resultado inclui todas as alternativas e independe da ordem |
