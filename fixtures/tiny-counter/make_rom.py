@@ -58,6 +58,27 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xE0:0xE8] = struct.pack("<2I", 0x08000085, 0x080000E8)
         image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+    elif mode in (
+        "thumb-b-unconditional",
+        "thumb-b-target-unsupported",
+        "thumb-b-out-of-range",
+    ):
+        if mode == "thumb-b-out-of-range":
+            thumb = [0xE3FF, 0x46C0, 0x46C0, 0x46C0, 0x4718]
+        else:
+            target = 0x4008 if mode == "thumb-b-target-unsupported" else 0x2022
+            thumb = [0xE001, 0x4008, 0x46C0, target, 0x4718]
+        image[0x84:0x8E] = struct.pack("<5H", *thumb)
+        image[0xC0:0xD4] = struct.pack(
+            "<5I",
+            0xE3A00001,  # MOV r0,#1.
+            0xE3500001,  # CMP r0,#1; branch must preserve these flags.
+            0xE59F2010,  # LDR r2,[pc,#0x10] -> Thumb entry | 1 at 0xE0.
+            0xE59F3010,  # LDR r3,[pc,#0x10] -> ARM loop at 0xE4.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xE0:0xE8] = struct.pack("<2I", 0x08000085, 0x080000E8)
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
     elif mode == "msr-mode":
         image[0xC0:0xCC] = struct.pack(
             "<3I",
@@ -1216,6 +1237,9 @@ def main() -> None:
             "thumb-bcond-eq-fallthrough",
             "thumb-bcond-target-unsupported",
             "thumb-bcond-fallthrough-unsupported",
+            "thumb-b-unconditional",
+            "thumb-b-target-unsupported",
+            "thumb-b-out-of-range",
             "thumb-lsl-bx",
             "thumb-lsl-zero-carry-clear",
             "thumb-lsl-zero-carry-set",

@@ -2511,6 +2511,22 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::UnconditionalBranch { target } => {
+            let next_pc = unsafe { LLVMConstInt(i32_type, u64::from(target), 0) };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::ConditionalBranch {
             condition,
             target,

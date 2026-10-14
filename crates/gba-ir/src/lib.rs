@@ -197,6 +197,9 @@ pub enum ThumbOperation {
         /// Discovery certificate: bit 0 is taken; bit 1 is fallthrough.
         reachable_successors: u8,
     },
+    UnconditionalBranch {
+        target: u32,
+    },
     MovRegister {
         rd: u8,
         rm: u8,
@@ -995,6 +998,21 @@ impl ArmProgram {
                         return Err(VerifyError::MisalignedThumbPc(fallthrough));
                     }
                 }
+                ThumbOperation::UnconditionalBranch { target } => {
+                    let immediate = i32::from(((instruction.encoding & 0x07FF) << 5) as i16 >> 5);
+                    let encoded_target = instruction
+                        .guest_pc
+                        .wrapping_add(4)
+                        .wrapping_add((immediate << 1) as u32);
+                    if instruction.encoding & 0xF800 != 0xE000 || target != encoded_target {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            instruction.encoding,
+                        )));
+                    }
+                    if target & 1 != 0 {
+                        return Err(VerifyError::MisalignedThumbPc(target));
+                    }
+                }
                 ThumbOperation::MovRegister { rd, rm } => {
                     verify_general_register(rd)?;
                     verify_operand_register(rm)?;
@@ -1442,6 +1460,14 @@ impl ArmProgram {
                         }
                     }
                 }
+                ThumbOperation::UnconditionalBranch { target } => {
+                    if !thumb_pcs.contains(&target) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target,
+                        });
+                    }
+                }
                 ThumbOperation::MovRegister { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
@@ -1834,6 +1860,9 @@ pub fn execute_thumb_instruction(
                 fallthrough
             };
         }
+        ThumbOperation::UnconditionalBranch { target } => {
+            state.r[REG_PC as usize] = target;
+        }
         ThumbOperation::AddSubtractImmediate {
             rd,
             immediate,
@@ -2002,6 +2031,20 @@ mod tests {
         }
     }
 
+    fn unconditional_branch_program(encoding: u16, target: u32) -> ArmProgram {
+        ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![ThumbInstruction {
+                guest_pc: 0x0800_0100,
+                encoding,
+                operation: ThumbOperation::UnconditionalBranch { target },
+            }],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![],
+        }
+    }
+
     fn thumb_pop_program(guest_pc: u32, encoding: u16, register_list: u16) -> ArmProgram {
         let fallthrough = guest_pc.wrapping_add(2);
         ArmProgram {
@@ -2121,6 +2164,61 @@ mod tests {
                 assert_eq!(cpu.guest_cycle, 6);
             }
         }
+    }
+
+    #[test]
+    fn thumb_unconditional_branch_updates_only_pc_and_cycle() {
+        let guest_pc = 0x0800_0100;
+        let target = guest_pc + 6;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xE001,
+            operation: ThumbOperation::UnconditionalBranch { target },
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[..15]
+            .iter_mut()
+            .enumerate()
+            .for_each(|(index, register)| *register = 0x1234_0000 + index as u32);
+        cpu.r[15] = guest_pc;
+        let registers_before = cpu.r;
+        let cpsr_before = cpu.cpsr;
+
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+
+        assert_eq!(cpu.r[15], target);
+        assert_eq!(&cpu.r[..15], &registers_before[..15]);
+        assert_eq!(cpu.cpsr, cpsr_before);
+        assert_eq!(cpu.guest_cycle, 6);
+    }
+
+    #[test]
+    fn arm_program_verifier_closes_only_thumb_unconditional_branch_target() {
+        let guest_pc = 0x0800_0100;
+        let self_loop = unconditional_branch_program(0xE7FE, guest_pc);
+        assert!(self_loop.verify().is_ok());
+
+        let mismatched_target = unconditional_branch_program(0xE7FE, guest_pc + 2);
+        assert_eq!(
+            mismatched_target.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xE7FE))
+        );
+
+        let invalid_encoding = unconditional_branch_program(0xD000, guest_pc + 4);
+        assert_eq!(
+            invalid_encoding.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xD000))
+        );
+
+        let missing_target = unconditional_branch_program(0xE000, guest_pc + 4);
+        assert_eq!(
+            missing_target.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 4,
+            })
+        );
     }
 
     #[test]

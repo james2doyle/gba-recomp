@@ -2301,6 +2301,79 @@ verify_thumb_bcond_reject() {
 verify_thumb_bcond_reject thumb-bcond-target-unsupported 0x08000090
 verify_thumb_bcond_reject thumb-bcond-fallthrough-unsupported 0x08000086
 
+verify_thumb_b() {
+    mode=$1
+    expected=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        compile_log="$root/target/gba020/$mode-compile-$optimization.txt"
+        rm -rf "$package"
+        if ! "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 9 \
+            >"$compile_log" 2>&1; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode failed to compile" >&2
+            exit 1
+        fi
+        if ! grep -Fxq 'instructions_aot: 10' "$compile_log"; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode reported an unexpected AOT instruction count" >&2
+            exit 1
+        fi
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["instructions_aot"] == 10
+assert manifest["run_instruction_budget"] == 9
+PY
+    done
+}
+
+verify_thumb_b thumb-b-unconditional \
+    '{"status":"budget_exhausted","steps":9,"r0":34,"r1":0,"pc":"0x080000E8","cpsr":"0x2000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+
+verify_thumb_b_reject() {
+    mode=$1
+    expected_error=$2
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package"
+    compile_log="$root/target/gba020/$mode-compile.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    rm -rf "$package"
+    if "$recomp_bin" compile \
+        --rom "$rom" --out "$package" --opt O2 --steps 8 \
+        >"$compile_log" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        exit 1
+    fi
+    if ! grep -Fq "$expected_error" "$compile_log"; then
+        cat "$compile_log" >&2
+        echo "$mode did not report the expected branch failure" >&2
+        exit 1
+    fi
+    if [ -e "$package" ]; then
+        echo "failed $mode compile left a partial package" >&2
+        exit 1
+    fi
+}
+
+verify_thumb_b_reject thumb-b-target-unsupported \
+    'unsupported_thumb_instruction at 0x0800008A'
+verify_thumb_b_reject thumb-b-out-of-range \
+    'branch_target_out_of_rom at 0x08000084: Thumb target 0x08000886'
+
 bad_rom="$root/target/gba020/unsupported.gba"
 bad_package="$root/target/gba020/unsupported-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$bad_rom" --mode unsupported

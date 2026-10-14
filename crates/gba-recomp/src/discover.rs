@@ -1724,6 +1724,17 @@ fn process_thumb_instruction(
                 )?;
             }
         }
+        ThumbOperation::UnconditionalBranch { target } => {
+            ensure_target_in_image(image, instruction.guest_pc, IsaMode::Thumb, target)?;
+            enqueue_state(
+                IsaMode::Thumb,
+                target,
+                state.clone(),
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
         ThumbOperation::BlPrefix { lr_partial } => {
             let suffix_pc = instruction.guest_pc.wrapping_add(2);
             let suffix_encoding = image.read_thumb_halfword(suffix_pc).map_err(|error| {
@@ -2245,6 +2256,15 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn thumb_unconditional_branch_rom() -> RomImage {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        bytes[0x84..0x86].copy_from_slice(&0xE001_u16.to_le_bytes()); // B to 0x0800008A.
+        bytes[0x86..0x88].copy_from_slice(&0x4008_u16.to_le_bytes()); // Unsupported if fallthrough is reached.
+        bytes[0x8A..0x8C].copy_from_slice(&0x4708_u16.to_le_bytes()); // Target: BX r1.
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     fn thumb_96_iteration_loop_rom() -> RomImage {
         let mut bytes = bx_interwork_rom().bytes().to_vec();
         let thumb = [
@@ -2389,6 +2409,46 @@ mod tests {
             );
         }
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn discovers_only_the_thumb_unconditional_branch_target() {
+        let program = discover_arm_program(&thumb_unconditional_branch_rom()).unwrap();
+        let branch = program
+            .thumb_instructions
+            .iter()
+            .find(|instruction| instruction.guest_pc == ROM_BASE + 0x84)
+            .unwrap();
+        assert_eq!(
+            branch.operation,
+            ThumbOperation::UnconditionalBranch {
+                target: ROM_BASE + 0x8A
+            }
+        );
+        assert!(
+            program
+                .thumb_instructions
+                .iter()
+                .any(|instruction| instruction.guest_pc == ROM_BASE + 0x8A)
+        );
+        assert!(
+            !program
+                .thumb_instructions
+                .iter()
+                .any(|instruction| instruction.guest_pc == ROM_BASE + 0x86)
+        );
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn rejects_thumb_unconditional_branch_target_outside_image() {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        bytes[0x84..0x86].copy_from_slice(&0xE3FF_u16.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        let image = RomImage::from_bytes(bytes).unwrap();
+        let error = discover_arm_program(&image).unwrap_err();
+        assert!(error.contains("branch_target_out_of_rom at 0x08000084"));
+        assert!(error.contains("0x08000886"));
     }
 
     #[test]
@@ -2601,6 +2661,7 @@ mod tests {
             },
         };
         for base in [AbstractValue::Unknown, AbstractValue::constant(0x0800_0000)] {
+            let unknown_base = matches!(&base, AbstractValue::Unknown);
             let mut state = AbstractState::unknown();
             state.registers[0] = AbstractValue::constant(0x1234_5678);
             state.registers[2] = base;
@@ -2621,6 +2682,9 @@ mod tests {
 
             let after = only_state(incoming.get(&(IsaMode::Thumb, guest_pc + 2)).unwrap());
             assert!(after.memory_words.is_empty());
+            if unknown_base {
+                assert!(!after.dma.all_channels_are_proven_quiescent());
+            }
         }
     }
 
@@ -3844,6 +3908,29 @@ mod tests {
         unknown_stack.set_constant(0, 0xDEAD_BEEF);
         unknown_stack.registers[13] = AbstractValue::Unknown;
         let successors = run_thumb_successors(&image, instruction, &unknown_stack);
+        let successor = only_state(&successors);
+        assert_io_facts(
+            successor,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+        assert!(!successor.dma.all_channels_are_proven_quiescent());
+    }
+
+    #[test]
+    fn push_to_dma_register_invalidates_quiescence() {
+        let image = counter_rom();
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x80,
+            encoding: 0xB401,
+            operation: ThumbOperation::Push { register_list: 1 },
+        };
+        let mut state = state_with_known_io();
+        state.set_constant(0, 0xDEAD_BEEF);
+        state.set_constant(13, IO_DMA3_SAD + 4);
+
+        let successors = run_thumb_successors(&image, instruction, &state);
         let successor = only_state(&successors);
         assert_io_facts(
             successor,

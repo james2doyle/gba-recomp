@@ -315,6 +315,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0xE000 {
+        let signed_immediate = (((encoding & 0x07FF) << 5) as i16) >> 5;
+        let displacement = i32::from(signed_immediate) << 1;
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::UnconditionalBranch {
+                target: guest_pc.wrapping_add(4).wrapping_add(displacement as u32),
+            },
+        });
+    }
     if encoding & 0xF000 == 0xD000 {
         let condition = ((encoding >> 8) & 0xF) as u8;
         if condition <= 0xD {
@@ -1075,6 +1086,47 @@ mod tests {
                 .unwrap_err()
                 .contains("undefined_thumb_instruction at 0x08000084")
         );
+    }
+
+    #[test]
+    fn decodes_thumb_unconditional_branch_format_18_with_signed_immediate_and_wrap() {
+        let leafgreen = decode_thumb(0x0800_0AE6, 0xE00A).unwrap();
+        assert_eq!(
+            leafgreen.operation,
+            ThumbOperation::UnconditionalBranch {
+                target: 0x0800_0AFE
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0100, 0xE000).unwrap().operation,
+            ThumbOperation::UnconditionalBranch {
+                target: 0x0800_0104
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0100, 0xE001).unwrap().operation,
+            ThumbOperation::UnconditionalBranch {
+                target: 0x0800_0106
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0100, 0xE7FF).unwrap().operation,
+            ThumbOperation::UnconditionalBranch {
+                target: 0x0800_0102
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_1000, 0xE400).unwrap().operation,
+            ThumbOperation::UnconditionalBranch {
+                target: 0x0800_0804
+            }
+        );
+        assert_eq!(
+            decode_thumb(0xFFFF_FFFE, 0xE000).unwrap().operation,
+            ThumbOperation::UnconditionalBranch { target: 2 }
+        );
+        assert!(decode_thumb(0x0800_0101, 0xE000).is_err());
+        assert!(decode_thumb(0x0800_0100, 0xE800).is_err());
     }
 
     #[test]
