@@ -42,6 +42,16 @@ if [ -z "$config" ]; then
     selection=()
   fi
   sum_file="$dest/sha256"
+  case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Git Bash's GNU tar cannot stream xz reliably; the runner's D: drive has
+    # room, so download, hash and extract with Windows' own bsdtar.
+    curl -fsSL --retry 3 -o "$dest/$asset" "$url"
+    sha256sum "$dest/$asset" | cut -d' ' -f1 > "$sum_file"
+    /c/Windows/System32/tar.exe -xf "$(cygpath -w "$dest/$asset")" -C "$(cygpath -w "$dest")"
+    rm -f "$dest/$asset"
+    ;;
+  *)
   curl -fsSL --retry 3 "$url" \
     | tee >( (sha256sum 2>/dev/null || shasum -a 256) | cut -d' ' -f1 > "$sum_file") \
     | tar -xJf - -C "$dest" ${selection[@]+"${selection[@]}"} 2>/dev/null || {
@@ -49,6 +59,8 @@ if [ -z "$config" ]; then
       # after extracting everything else. Fail only if llvm-config is missing.
       true
     }
+    ;;
+  esac
   sleep 1
   actual=$(cat "$sum_file" 2>/dev/null || true)
   expected=$( (grep -A3 "asset = \"$asset\"" toolchain.lock.toml || true) | sed -n 's/^sha256 = "\(.*\)"/\1/p' | head -1)
