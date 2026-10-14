@@ -98,6 +98,12 @@ No commit local `53eef040c82e2f5a5b4ea07b0eb096cfaf441e62`, `cargo test --locked
 
 Repetindo `cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-strb-53eef04 --opt O2 --steps 100` para a ROM de SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta estática passou por `0x08000998` (`0x7005`, inferido como STRB Format 9) e parou em `0x0800099C`, raw `0x7808`, com `unsupported_thumb_instruction`. A leitura dos campos infere Thumb Format 9 `LDRB r0,[r1,#0]`. Essa classificação é inferência do encoding; nenhum valor de registrador ou endereço efetivo foi observado. A pasta de saída não foi criada, nenhum pacote LeafGreen foi produzido, a ROM não foi executada e REA não produziu decompilação. O resultado registra somente o próximo limite da descoberta estática para o hash fixado.
 
+## Tentativa após SPEC-029 — Thumb LDRB imediato
+
+No commit `6fe39a820fa595905b07120837e259062de8440b`, `cargo test --locked --workspace --jobs 10` passou com 38 testes em `gba-ir` e 42 em `gba-recomp`; `scripts/verify-gba020.sh` passou em Darwin/arm64 com LDRB strict-AOT O0/O2, EWRAM/IWRAM, offsets 0/31, bytes 00/7F/80/FF, alias, faults, wrapping e rejeições sem pacote parcial. Os resultados e hashes estão em [gba020-thumb-ldrb-macos-arm64.json](evidence/gba020-thumb-ldrb-macos-arm64.json).
+
+Repetindo `cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-ldrb-6fe39a8 --opt O2 --steps 100` para a ROM de SHA-256 fixado acima, a descoberta estática passou por `0x0800099C` (`0x7808`, inferido como LDRB Format 9) e parou em `0x0800099E`, raw `0x4318`, com `unsupported_thumb_instruction`. SRC-31 corrobora a classificação como Thumb Format 4 `ORRS r0,r3`, mas não fornece valores de registradores ou flags observados. A pasta de saída não foi criada; nenhum pacote LeafGreen foi produzido, a ROM não foi executada e REA não produziu decompilação. Esta é somente a nova fronteira da descoberta estática para o hash fixado.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

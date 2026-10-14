@@ -1,0 +1,165 @@
+{
+  "record_type": "local-build-and-static-discovery",
+  "date": "2026-10-13",
+  "source_commit": "6fe39a820fa595905b07120837e259062de8440b",
+  "spec_commit": "11e82f011c697dedfb1735a1cd0a8487ab85b2ac",
+  "environment": {
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "rust": "1.99.0",
+    "llvm_backend": "23.1.3",
+    "target": "aarch64-apple-darwin"
+  },
+  "parallelism": {
+    "cargo_jobs": 10,
+    "lld_threads": 10,
+    "measurement": "Configured at the 10 logical CPU count; no sustained throughput benchmark was made."
+  },
+  "rust_tests": {
+    "command": "cargo test --locked --workspace --jobs 10",
+    "result": "passed",
+    "gba_ir_tests": 38,
+    "gba_recomp_tests": 42,
+    "build_time_seconds_approx": 72
+  },
+  "headless_gate": {
+    "script": "scripts/verify-gba020.sh",
+    "host": "Darwin/arm64",
+    "result": "passed",
+    "strict_aot": true,
+    "optimization_levels": [
+      "O0",
+      "O2"
+    ],
+    "package_contract": {
+      "abi_version": 4,
+      "machine_state_version": 1,
+      "bios_hle_version": 1,
+      "instructions_aot": 14,
+      "run_instruction_budget": 12
+    },
+    "positive_fixtures": {
+      "thumb-ldrb-ewram-zero-even-80": {
+        "rom_sha256": "45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":12,\"r0\":128,\"r1\":33554434,\"pc\":\"0x08000086\",\"cpsr\":\"0x6000003F\",\"guest_cycle\":12,\"ewram_word0\":4286611200,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "f6ce681e49392bb735923d447c1f9bbac60c34a33893d8cf436bc08c1cecfcdf",
+          "manifest_sha256": "9696c0229cf73f0a33910e860c55d167d1b2b288ea2348764d4d115fb4bcab9e"
+        },
+        "O2": {
+          "game_sha256": "60ef289c9fa723249deec5b51a60dbc01c269c7e57aaf27f5eb8e58d75a5ffd9",
+          "manifest_sha256": "6d840d3af9399bec1eee20e58f1c9819d11af7f5d9703875c555efd18e10dfb5"
+        }
+      },
+      "thumb-ldrb-ewram-thirtyone-odd-ff": {
+        "rom_sha256": "d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":12,\"r0\":255,\"r1\":33554404,\"pc\":\"0x08000086\",\"cpsr\":\"0x6000003F\",\"guest_cycle\":12,\"ewram_word0\":4286611200,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "d67a88080a9a6a0c31138f788a9f566b101620bb11aee27603e1417a37279206",
+          "manifest_sha256": "4c8f7ef5cc3d539a5da37643e76349403ecd247d267c78edd5d6c7d4455778bc"
+        },
+        "O2": {
+          "game_sha256": "494ddf3b0a76efb2e8254674cec1b85f03c34c4d84028cd51c6f87aef03fc5b6",
+          "manifest_sha256": "af5fbd1fdae8017bc28d87aa58422737adad8dc19a9b41e99ab6a726439489dd"
+        }
+      },
+      "thumb-ldrb-iwram-zero-odd-7f": {
+        "rom_sha256": "7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":12,\"r0\":127,\"r1\":50331649,\"pc\":\"0x08000086\",\"cpsr\":\"0x6000003F\",\"guest_cycle\":12,\"ewram_word0\":0,\"iwram_word0\":4286611200}",
+        "O0": {
+          "game_sha256": "4d2dc32fbabddaa12503d11fc75f8288e3d46fb165504a095934e0c5b1c86861",
+          "manifest_sha256": "0915fc1d5232f5ad0687818ddf6b30c8b75353b504f98bddd8ae2f8e726a6e29"
+        },
+        "O2": {
+          "game_sha256": "06cffa718b4ec4298404fe3a93d94c0d2a0c4091737c05953d49aa00cd898c53",
+          "manifest_sha256": "e3a8b21251308f64f9cd79128bbe181ca1d931ba27b10518a4fc7ec50c04bd5e"
+        }
+      },
+      "thumb-ldrb-iwram-thirtyone-even-zero": {
+        "rom_sha256": "13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":12,\"r0\":0,\"r1\":50331617,\"pc\":\"0x08000086\",\"cpsr\":\"0x6000003F\",\"guest_cycle\":12,\"ewram_word0\":0,\"iwram_word0\":4286611200}",
+        "O0": {
+          "game_sha256": "54eb191be9ded82821beae2d492de8db04b7274ca199a5bd682dc79be41113ca",
+          "manifest_sha256": "d9a7e801f0aa2635c227b1259815d3d74ed37544ce1fe785d1b67f3f57249f01"
+        },
+        "O2": {
+          "game_sha256": "7553165cb807d3f811c117b209eba96e26ac8257921c6692001008b80d5a9e84",
+          "manifest_sha256": "4493e7b707a209ca64479c56fbc213227832f64e46f42e288a82fcc87f84d5b4"
+        }
+      },
+      "thumb-ldrb-ewram-thirtyone-alias-80": {
+        "rom_sha256": "390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":12,\"r0\":2864434397,\"r1\":128,\"pc\":\"0x08000086\",\"cpsr\":\"0x6000003F\",\"guest_cycle\":12,\"ewram_word0\":4286611200,\"iwram_word0\":0}",
+        "note": "Rd==Rb uses the pre-instruction base.",
+        "O0": {
+          "game_sha256": "5880bf1ece3f5cacc29e5c12ed95404a592450d54729827db685feca05a37ea2",
+          "manifest_sha256": "0f689033a10ee945853b464f87e73db7c93a63b8aeb3b7b78e218b03aa09b0a1"
+        },
+        "O2": {
+          "game_sha256": "c7f0114915e526d7900744201e83a05287397576733752d1c4793b690960f8ca",
+          "manifest_sha256": "9f3fc44972495ee63ea30594ca8f654af751767d09331ed5c6c9529f687d4d9d"
+        }
+      }
+    },
+    "runtime_fault_fixtures": {
+      "thumb-ldrb-invalid-odd": {
+        "rom_sha256": "22c3cc1360fe113ed3a94c4447980e216bd53529007037a5dc6955582c5bcfa4",
+        "O0": {
+          "game_sha256": "ee4f5442ae069898628e3b03389fd3b0232a03800f67a17ca2fb2366d9bc48c6",
+          "manifest_sha256": "b77088362e1ba33fdfe5286f0453686ecbc84b9bbadcc3ae6732b9f10c54f848",
+          "stdout": "guest stopped: reason=4 pc=0x08000084 address=0x04000001 fault_code=5"
+        },
+        "O2": {
+          "game_sha256": "670038a572e5bb38b142f0358b60241f785a1ce27a9d20cbfebedcd8774b9ccd",
+          "manifest_sha256": "ca9311aadced0bc99579e26386ad314180c7d29bea2a84f03f1ff7872bb8f0e2",
+          "stdout": "guest stopped: reason=4 pc=0x08000084 address=0x04000001 fault_code=5"
+        }
+      },
+      "thumb-ldrb-wraparound": {
+        "rom_sha256": "2753be2697bfccb5ab9e1e66b152122b4fb62b7fc0be7e498e81168373a1e989",
+        "O0": {
+          "game_sha256": "19353b37adf96536fd00652257ecdbe58ba49cf04165ee4c6b6dc30e1d5a0a7a",
+          "manifest_sha256": "4fefefb26581340ec8e55ef9c90c011ca687cbb6ab777b23f07b0de73b46fdbc",
+          "stdout": "guest stopped: reason=4 pc=0x08000084 address=0x00000000 fault_code=5"
+        },
+        "O2": {
+          "game_sha256": "52e5f8aa6d2ab95781639d293a134a1a7a80885881e9bff177a6bb7d1f376d53",
+          "manifest_sha256": "4a1f5899de6be4997d5d0d55067335f36482fa0538bfd9428b691f279dd73b88",
+          "stdout": "guest stopped: reason=4 pc=0x08000084 address=0x00000000 fault_code=5"
+        }
+      }
+    },
+    "negative_fixture": {
+      "thumb-ldrb-register-unsupported": {
+        "rom_sha256": "3224e8c2297418a2516b74a7180406364f56ad228cb409d2435a3a15c6d6e79b",
+        "encoding": "0x5C08",
+        "result": "gba-recomp: unsupported_thumb_instruction at 0x08000084: 0x5C08",
+        "package_directory_created": false
+      }
+    }
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-ldrb-6fe39a8 --opt O2 --steps 100",
+    "result": "rejected before package creation",
+    "reported_pc": "0x0800099E",
+    "raw_halfword": "0x4318",
+    "diagnostic": "unsupported_thumb_instruction",
+    "classification": "Thumb ALU Format 4 ORRS r0,r3, inferred from encoding fields; no runtime register values or flags were observed",
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea_decompilation": false
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  },
+  "limitations": [
+    "SPEC-029 implements only Thumb LDRB immediate with guest addresses limited to physical EWRAM/IWRAM; mirrors and other bus regions fault.",
+    "Fixtures validate the strict-AOT subset on macOS arm64 only; Linux x86-64 qualification remains pending.",
+    "LeafGreen records static discovery only. No game package, runtime values, dynamic execution, or REA decompilation was produced.",
+    "No hardware differential run was performed.",
+    "The workspace build duration is approximate for this run, not a sustained performance benchmark."
+  ]
+}
