@@ -1,11 +1,15 @@
 <!doctype html>
 <!-- gba-recomp Web package (SPEC-068 TGT-68-02). ROM SHA-256 {{SHA}} -->
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{{TITLE}}</title>
 <link rel="icon" href="logo.png">
+<script>
+  // ?embed: game only, for an iframe on another page (the project site).
+  if (/[?&]embed\b/.test(location.search)) document.documentElement.classList.add('embed');
+</script>
 <style>
   :root { --bg: #111; --fg: #eee; --muted: #9a9a9a; --accent: #f0c040; }
   * { box-sizing: border-box; }
@@ -34,6 +38,9 @@
   #overlay.hidden { display: none; }
   #status { color: var(--accent); font-size: 16px; }
   #help { max-width: 720px; padding: 12px 16px 24px; color: var(--muted); font-size: 13px; }
+  html.embed header, html.embed #help { display: none; }
+  html.embed body { justify-content: center; }
+  html.embed #stage { width: min(100vw, 150vh); border-radius: 0; }
   #help kbd { background: #2a2a2a; border: 1px solid #444; border-radius: 3px; padding: 0 4px;
     color: var(--fg); font-size: 12px; }
 </style>
@@ -41,21 +48,21 @@
 <body>
 <header>
   <h1>{{TITLE}}</h1>
-  <button id="fullscreen" type="button" title="Tela cheia">Tela cheia</button>
+  <button id="fullscreen" type="button" title="Fullscreen">Fullscreen</button>
 </header>
 <div id="stage">
   <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
-  <div id="overlay" role="button" tabindex="0" aria-label="Iniciar o jogo">
+  <div id="overlay" role="button" tabindex="0" aria-label="Start the game">
     <img src="logo.png" alt="gba-recomp">
-    <div id="status">Carregando…</div>
+    <div id="status">Loading…</div>
   </div>
 </div>
 <div id="help">
-  Teclado: setas = direcional, <kbd>Z</kbd> = A, <kbd>X</kbd> = B, <kbd>A</kbd> = L, <kbd>S</kbd> = R,
-  <kbd>Enter</kbd> = Start, <kbd>Backspace</kbd> = Select, <kbd>F1</kbd> = menu, <kbd>Tab</kbd> = acelerar.
-  Gamepads são reconhecidos ao pressionar um botão. O som começa depois do clique inicial (regra dos
-  navegadores). Saves ficam no armazenamento deste navegador (IndexedDB).
-  Código recompilado para WebAssembly por gba-recomp; não há party/rede na versão Web.
+  Keyboard: arrows = D-pad, <kbd>Z</kbd> = A, <kbd>X</kbd> = B, <kbd>A</kbd> = L, <kbd>S</kbd> = R,
+  <kbd>Enter</kbd> = Start, <kbd>Backspace</kbd> = Select, <kbd>F1</kbd> = menu, <kbd>Tab</kbd> = fast-forward.
+  Gamepads are detected when you press a button. Sound starts after the first click (a browser rule).
+  Saves stay in this browser's storage (IndexedDB).
+  Code recompiled to WebAssembly by gba-recomp; party/network play is not available on the Web.
 </div>
 <script>
 (function () {
@@ -94,14 +101,14 @@
     monitorRunDependencies: function (left) {
       if (waiting && !started && left <= 1 && !ready) {
         ready = true;
-        setStatus('Clique ou pressione uma tecla para jogar');
+        setStatus('Click or press a key to play');
       }
     },
     print: function (t) { console.log(t); },
     printErr: function (t) { console.warn(t); },
     onAbort: function (what) {
       overlay.classList.remove('hidden');
-      setStatus('Erro: ' + what);
+      setStatus('Error: ' + what);
     }
   };
   overlay.addEventListener('click', start);

@@ -76,7 +76,6 @@ jobs:
           emcc --version | head -1
           mkdir -p dist/site
           inputs=(--profile-input 200:5:START --profile-input 300:5:A --profile-input 400:60:LEFT --profile-input 500:60:RIGHT)
-          links=""
           for rom in games/*.gba; do
             game=$(basename "$rom" .gba)
             target/release/gba-recomp bundle --rom "$rom" --out "dist/site/$game" \
@@ -84,16 +83,11 @@ jobs:
               --runtime-lib target/wasm32-unknown-emscripten/release/libgba_native_rt.a \
               "${inputs[@]}"
             for f in index.html game.js game.wasm logo.png; do test -s "dist/site/$game/$f"; done
-            links="$links<li><a href=\"$game/\">$game</a></li>"
             (cd dist/site && zip -qr "../$game-web.zip" "$game")
           done
-          cat > dist/site/index.html <<HTML
-          <!doctype html><html lang="en"><head><meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>gba-recomp demos</title></head>
-          <body style="background:#111;color:#eee;font-family:system-ui,sans-serif;padding:16px">
-          <h1>gba-recomp: free games recompiled to WebAssembly</h1><ul>$links</ul></body></html>
-          HTML
+          # Project site (site/) with the first game playable in its hero.
+          cp site/* dist/site/
+          test -s dist/site/rkanoid-v3.00/game.wasm
           ls -la dist dist/site/*
 
       - uses: actions/upload-artifact@v4

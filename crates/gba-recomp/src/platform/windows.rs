@@ -46,7 +46,9 @@ pub(super) fn package(i: &PackageInputs<'_>) -> Result<Packaged, String> {
         .args(i.objects)
         .arg(i.runtime)
         .arg(&import_lib)
-        .args(SYSTEM_LIBS)
+        // `-lname` makes the clang driver hand `name.lib` to lld-link, which
+        // finds it through LIB (vcvars); a bare `name.lib` is a file path.
+        .args(SYSTEM_LIBS.iter().map(|lib| format!("-l{}", lib.trim_end_matches(".lib"))))
         .arg("-o")
         .arg(&executable)
         .arg("-Wl,/subsystem:console")

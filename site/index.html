@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GBA Recomp</title>
+<meta name="description" content="A static recompiler for Game Boy Advance games: GBA ROM → LLVM → native executable for macOS, Linux, Windows, iOS, Android and the Web.">
+<meta property="og:title" content="GBA Recomp">
+<meta property="og:description" content="Game Boy Advance games, recompiled to native code. Play the WebAssembly demo in your browser.">
+<meta property="og:image" content="logo.png">
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0913;
+    --bg-2: #110f20;
+    --surface: #171430;
+    --surface-2: #1e1a3d;
+    --line: #2c2756;
+    --fg: #ece9ff;
+    --muted: #9d97c4;
+    --violet: #8b5cf6;
+    --violet-2: #a78bfa;
+    --cyan: #22d3ee;
+    --green: #4ade80;
+    --amber: #fbbf24;
+    --radius: 18px;
+    --pixel: "Press Start 2P", ui-monospace, monospace;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: var(--violet-2); text-decoration: none; }
+  a:hover { color: var(--fg); }
+  code, pre, kbd { font-family: var(--mono); }
+  .wrap { width: min(1180px, 100% - 32px); margin: 0 auto; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--fg); font-weight: 700; letter-spacing: .02em; }
+  .brand img { width: 34px; height: 34px; }
+  .brand span { font-family: var(--pixel); font-size: 11px; }
+  nav ul { display: flex; gap: 22px; list-style: none; margin: 0; padding: 0; font-size: 15px; }
+  nav ul a { color: var(--muted); }
+  nav ul a:hover { color: var(--fg); }
+  @media (max-width: 720px) { nav ul li.opt { display: none; } }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; padding: 56px 0 72px; isolation: isolate; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: -20% -10% auto; height: 120%; z-index: -1;
+    background:
+      radial-gradient(40% 50% at 78% 30%, rgba(139, 92, 246, .32), transparent 70%),
+      radial-gradient(30% 40% at 15% 20%, rgba(34, 211, 238, .14), transparent 70%);
+  }
+  .hero::after {
+    content: ""; position: absolute; inset: 0; z-index: -1; opacity: .35;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(60% 70% at 50% 30%, #000 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(60% 70% at 50% 30%, #000 30%, transparent 80%);
+  }
+  .hero .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 48px; align-items: center; }
+  @media (max-width: 960px) { .hero .wrap { grid-template-columns: minmax(0, 1fr); gap: 32px; } .hero { padding-top: 24px; } .hero .play { order: -1; } }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--bg-2); color: var(--muted); font-size: 13px;
+  }
+  .eyebrow b { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); }
+  h1 { font-size: clamp(38px, 5.4vw, 62px); line-height: 1.04; margin: 18px 0 18px; letter-spacing: -.025em; }
+  h1 em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--violet-2), var(--cyan));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lede { color: var(--muted); font-size: 19px; max-width: 34em; margin: 0 0 28px; }
+  .pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 30px; font-family: var(--mono); font-size: 13px; }
+  .pipeline span { padding: 6px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); }
+  .pipeline i { color: var(--violet-2); font-style: normal; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px;
+    font-weight: 600; font-size: 16px; border: 1px solid var(--line); color: var(--fg); background: var(--surface);
+    transition: transform .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); border-color: var(--violet); color: var(--fg); }
+  .btn.primary { background: linear-gradient(135deg, var(--violet), #6d28d9); border-color: transparent; box-shadow: 0 10px 30px -10px rgba(139, 92, 246, .7); }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* ---------- console with the live demo ---------- */
+  .console {
+    position: relative; padding: 22px 26px 18px; border-radius: 34px 34px 46px 46px;
+    background: linear-gradient(160deg, #5b3fd1 0%, #3b2a9a 45%, #24196a 100%);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.18), inset 0 -6px 0 rgba(0,0,0,.25), 0 40px 80px -30px rgba(91, 63, 209, .75);
+  }
+  .bezel {
+    position: relative; padding: 14px 16px 12px; border-radius: 14px 14px 34px 14px;
+    background: #15132a; box-shadow: inset 0 0 0 2px #0c0b18;
+  }
+  .bezel .label { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-family: var(--pixel); font-size: 8px; color: #7f79b5; letter-spacing: .08em; }
+  .bezel .led { width: 7px; height: 7px; border-radius: 50%; background: #3b3366; transition: background .3s, box-shadow .3s; }
+  .bezel .led.on { background: #ff4d6d; box-shadow: 0 0 10px #ff4d6d; }
+  .screen { position: relative; aspect-ratio: 3 / 2; border-radius: 6px; overflow: hidden; background: #000; }
+  .screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  .console .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  .console .logo-type { font-family: var(--pixel); font-size: 12px; color: #e3dcff; letter-spacing: .06em; text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+  .console .logo-type small { display: block; font-family: var(--sans); font-size: 12px; letter-spacing: 0; color: #c4b9ff; margin-top: 6px; text-shadow: none; }
+  .console button {
+    font: 600 13px var(--sans); color: #fff; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 999px; padding: 8px 14px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+  }
+  .console button:hover { background: rgba(0,0,0,.4); }
+  .keys { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 16px; color: var(--muted); font-size: 13px; }
+  .keys kbd {
+    display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 4px; text-align: center;
+    border-radius: 5px; background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px;
+    color: var(--fg); font-size: 12px;
+  }
+  .demo-note { margin-top: 10px; color: var(--muted); font-size: 13px; }
+
+  /* ---------- sections ---------- */
+  section { padding: 84px 0; }
+  section.alt { background: var(--bg-2); border-block: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+  .kicker { font-family: var(--pixel); font-size: 10px; color: var(--cyan); letter-spacing: .1em; }
+  h2 { font-size: clamp(30px, 3.6vw, 42px); line-height: 1.1; margin: 14px 0 14px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); max-width: 46em; margin: 0 0 40px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { padding: 24px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+  .stat b { display: block; font-size: clamp(30px, 3.4vw, 40px); line-height: 1; letter-spacing: -.02em; margin-bottom: 10px;
+    background: linear-gradient(90deg, var(--fg), var(--violet-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .stat span { color: var(--muted); font-size: 14px; }
+  .footnote { color: var(--muted); font-size: 13px; margin-top: 18px; }
+
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; counter-reset: step; }
+  @media (max-width: 960px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .steps, .stats { grid-template-columns: 1fr; } }
+  .step { position: relative; padding: 26px 22px 24px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+  .step::before {
+    counter-increment: step; content: "0" counter(step);
+    font-family: var(--pixel); font-size: 11px; color: var(--violet-2);
+  }
+  .step h3 { margin: 14px 0 8px; font-size: 21px; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+  .step code { color: var(--fg); font-size: 13px; }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 960px) { .features { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+  .feature { padding: 26px; border-radius: var(--radius); background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--line); }
+  .feature .icon {
+    width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px;
+    background: color-mix(in srgb, var(--violet) 20%, transparent); color: var(--violet-2);
+  }
+  .feature .icon svg { width: 22px; height: 22px; }
+  .feature h3 { margin: 0 0 8px; font-size: 19px; }
+  .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .platforms { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 960px) { .platforms { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .platforms { grid-template-columns: 1fr; } }
+  .platform { padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .platform h3 { margin: 0; font-size: 18px; }
+  .platform code { font-size: 12px; color: var(--muted); word-break: break-all; }
+  .platform p { margin: 0; font-size: 13px; color: var(--muted); }
+  .pill { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.ok { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
+  .pill.ci { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 12%, transparent); }
+  .pill.wip { color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+
+  .quick { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 40px; align-items: start; }
+  @media (max-width: 960px) { .quick { grid-template-columns: minmax(0, 1fr); } }
+  .code { position: relative; border-radius: var(--radius); background: #0d0c1a; border: 1px solid var(--line); overflow: hidden; }
+  .code .bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  .code .dots { display: flex; gap: 6px; }
+  .code .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .code button { font: 600 12px var(--sans); color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  .code button:hover { color: var(--fg); border-color: var(--violet); }
+  .code pre { margin: 0; padding: 18px 20px; overflow-x: auto; font-size: 13.5px; line-height: 1.7; color: #d9d4ff; }
+  .code .c { color: #6e68a0; }
+  .code .k { color: var(--cyan); }
+  .checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  .checks li { display: flex; gap: 12px; color: var(--muted); font-size: 15px; }
+  .checks li::before { content: "▸"; color: var(--violet-2); }
+  .checks b { color: var(--fg); font-weight: 500; }
+
+  footer { padding: 48px 0 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  footer .wrap { display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; }
+  @media (max-width: 760px) { footer .wrap { grid-template-columns: 1fr; } }
+  footer .links { display: flex; flex-wrap: wrap; gap: 10px 22px; justify-content: flex-end; align-content: flex-start; }
+  @media (max-width: 760px) { footer .links { justify-content: flex-start; } }
+  footer p { margin: 0 0 10px; }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } .btn { transition: none; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="logo.png" alt=""><span>GBA RECOMP</span></a>
+    <ul>
+      <li class="opt"><a href="#how">How it works</a></li>
+      <li class="opt"><a href="#platforms">Platforms</a></li>
+      <li><a href="#start">Get started</a></li>
+      <li><a href="https://github.com/recomp-paradise/gba-recomp">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow"><b></b> Live demo: running natively in your browser</span>
+      <h1>Game Boy Advance games, <em>recompiled</em> to native code.</h1>
+      <p class="lede">GBA Recomp is a static recompiler. It turns the ARM code inside a GBA ROM into LLVM IR and links it into a real executable for desktop, mobile and the Web. There is no emulator loop and no JIT, and a cycle-exact interpreter verifies the result.</p>
+      <div class="pipeline"><span>game.gba</span><i>→</i><span>ARM / Thumb IR</span><i>→</i><span>LLVM 23</span><i>→</i><span>native · wasm</span></div>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/recomp-paradise/gba-recomp">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
+          View on GitHub
+        </a>
+        <a class="btn" href="https://github.com/recomp-paradise/gba-recomp/releases">Download builds</a>
+        <a class="btn" href="#start">Get started</a>
+      </div>
+    </div>
+
+    <div class="play">
+      <div class="console">
+        <div class="bezel">
+          <div class="label"><span class="led" id="led"></span>POWER · RKANOID</div>
+          <div class="screen">
+            <iframe id="game" src="rkanoid-v3.00/?embed" title="Rkanoid, recompiled to WebAssembly: click to play" allow="fullscreen; autoplay; gamepad" loading="eager"></iframe>
+          </div>
+        </div>
+        <div class="row">
+          <div class="logo-type">GAME BOY ADVANCE<small>recompiled to WebAssembly</small></div>
+          <button type="button" id="fs" aria-label="Play fullscreen">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            Fullscreen
+          </button>
+        </div>
+      </div>
+      <div class="keys">
+        <span><kbd>←↑↓→</kbd>D-pad</span>
+        <span><kbd>Z</kbd>A</span>
+        <span><kbd>X</kbd>B</span>
+        <span><kbd>A</kbd><kbd>S</kbd>L / R</span>
+        <span><kbd>Enter</kbd>Start</span>
+        <span><kbd>⌫</kbd>Select</span>
+        <span><kbd>F1</kbd>Menu</span>
+      </div>
+      <p class="demo-note">Click the screen to start; sound begins after that click. Rkanoid is a free homebrew breakout game. Its ROM is recompiled ahead of time to about 5&nbsp;MB of WebAssembly, and saves stay in your browser.</p>
+    </div>
+  </div>
+</header>
+
+<section class="alt">
+  <div class="wrap">
+    <span class="kicker reveal">RESULTS</span>
+    <h2 class="reveal">Measured, not estimated.</h2>
+    <p class="sub reveal">Every package can run the native code and the reference interpreter side by side and compare registers, cycles and the framebuffer after every frame.</p>
+    <div class="stats">
+      <div class="stat reveal"><b>99.9%</b><span>of executed instructions run as native code in Pokémon LeafGreen</span></div>
+      <div class="stat reveal"><b>0</b><span>cycles of drift from the interpreter across 3000 verified frames</span></div>
+      <div class="stat reveal"><b>~900</b><span>frames per second headless on an Apple M4, about 15× real time</span></div>
+      <div class="stat reveal"><b>99.9999%</b><span>native instructions in the Rkanoid demo, checked in CI on every push</span></div>
+    </div>
+    <p class="footnote reveal">The LeafGreen framebuffer hash matches the mGBA reference. Commercial ROMs are only used locally and are never distributed.</p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <span class="kicker reveal">HOW IT WORKS</span>
+    <h2 class="reveal">From ROM to executable in four steps.</h2>
+    <p class="sub reveal">One command (<code>gba-recomp bundle</code>) runs the whole pipeline and produces a package with the game embedded.</p>
+    <div class="steps">
+      <div class="step reveal"><h3>Profile</h3><p>The built-in interpreter plays the game, with optional scripted input, and records every ARM/Thumb run it executes, including routines copied to RAM.</p></div>
+      <div class="step reveal"><h3>Recompile</h3><p>Each run is lowered to LLVM IR with exact cycle accounting and compiled in parallel shards for the target triple: x86-64, AArch64, ARMv7 or wasm32.</p></div>
+      <div class="step reveal"><h3>Link</h3><p>The machine code is linked with <code>gba-native-rt</code>, which provides the bus, PPU, APU, DMA, timers, IRQs, HLE BIOS, saves and the SDL3 frontend.</p></div>
+      <div class="step reveal"><h3>Verify</h3><p><code>--verify-interpreter</code> runs the native build in lockstep with the interpreter. Code that cannot be translated safely falls back to one interpreted step.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <span class="kicker reveal">FEATURES</span>
+    <h2 class="reveal">More than a translator.</h2>
+    <p class="sub reveal">The recompiled package is a complete player with video, audio, input, settings, saves and online play.</p>
+    <div class="features">
+      <div class="feature reveal">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg></div>
+        <h3>Cycle-exact core</h3>
+        <p>An ARM7TDMI interpreter with PPU modes 0–5, sprites, windows, blending and mosaic, PSG and direct sound, DMA, timers, and SRAM/Flash/EEPROM saves.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
+        <h3>Native code in RAM too</h3>
+        <p>Routines that games copy to IWRAM/EWRAM are recompiled as well. Content guards check the bytes before native code runs.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="12" rx="6"/><path d="M7 11v4M5 13h4M16 12h.01M18 14h.01"/></svg></div>
+        <h3>Every controller</h3>
+        <p>Keyboard, USB and Bluetooth gamepads, generic joysticks, GPIO buttons on Raspberry Pi and Orange Pi, and an on-screen gamepad for touch screens.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></div>
+        <h3>Settings, your way</h3>
+        <p>Video, audio and control settings in an in-game menu, a native macOS menu bar and context menu, or the separate <code>gba-settings</code> app.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></div>
+        <h3>Party over WebRTC</h3>
+        <p>Room codes, with signaling hosted inside one player's own game, and text chat over data channels. Voice, shared screens and link cable are planned next.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7Z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div>
+        <h3>One-file packages</h3>
+        <p><code>bundle</code> embeds the ROM and produces a macOS <code>.app</code>, a Linux or Windows folder, an iOS <code>.ipa</code>, an Android APK or a static website.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="platforms">
+  <div class="wrap">
+    <span class="kicker reveal">PLATFORMS</span>
+    <h2 class="reveal">One ROM, eight targets.</h2>
+    <p class="sub reveal">CI builds and tests every target on each push. Each status below states what has actually been run.</p>
+    <div class="platforms">
+      <div class="platform reveal"><h3>macOS · Apple Silicon</h3><code>aarch64-apple-darwin</code><span class="pill ok">Verified</span><p>Played locally and checked against the interpreter in CI.</p></div>
+      <div class="platform reveal"><h3>macOS · Intel</h3><code>x86_64-apple-darwin</code><span class="pill ok">Verified in CI</span><p>Cross-built and checked against the interpreter under Rosetta&nbsp;2.</p></div>
+      <div class="platform reveal"><h3>Linux x86-64</h3><code>x86_64-unknown-linux-gnu</code><span class="pill ok">Verified in CI</span><p>Bundled demo checked against the interpreter, headless.</p></div>
+      <div class="platform reveal"><h3>Raspberry Pi · Orange Pi</h3><code>aarch64-unknown-linux-gnu</code><span class="pill ok">Verified in CI</span><p>On ARM64 Linux, with GPIO buttons via gpiochip v2.</p></div>
+      <div class="platform reveal"><h3>Windows x86-64</h3><code>x86_64-pc-windows-msvc</code><span class="pill wip">In progress</span><p>Linking against the official LLVM build in CI.</p></div>
+      <div class="platform reveal"><h3>Web</h3><code>wasm32-unknown-emscripten</code><span class="pill ok">Playable</span><p>The demo at the top of this page, deployed by CI.</p></div>
+      <div class="platform reveal"><h3>iOS · iPadOS</h3><code>aarch64-apple-ios</code><span class="pill ci">Builds in CI</span><p>An unsigned <code>.ipa</code> and a simulator build; not yet run on a device.</p></div>
+      <div class="platform reveal"><h3>Android</h3><code>aarch64-linux-android</code><span class="pill wip">In progress</span><p>Native library linked; APK packaging runs in CI.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="start">
+  <div class="wrap quick">
+    <div>
+      <span class="kicker reveal">GET STARTED</span>
+      <h2 class="reveal">Recompile your first game.</h2>
+      <p class="sub reveal" style="margin-bottom:24px">You need Rust 1.99, the pinned LLVM 23.1.3 build and SDL3. Prebuilt toolchains and demo packages are attached to every release.</p>
+      <ul class="checks reveal">
+        <li><span><b>Without <code>--embed</code></b>, <code>compile</code> produces a package with no game data, and players bring their own ROM.</span></li>
+        <li><span><b><code>--profile-input</code></b> scripts button presses so the profile reaches more code.</span></li>
+        <li><span><b><code>--target</code></b> selects any of the eight triples from a single build host.</span></li>
+      </ul>
+    </div>
+    <div class="code reveal">
+      <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span>terminal</span><button type="button" id="copy">Copy</button></div>
+<pre id="snippet"><span class="c"># build the toolchain</span>
+<span class="k">export</span> LLVM_SYS_231_PREFIX=/path/to/LLVM-23.1.3
+cargo build --release -p gba-recomp -p gba-native-rt
+
+<span class="c"># recompile the free demo into one package</span>
+target/release/gba-recomp bundle \
+  --rom games/rkanoid-v3.00.gba --out out/Rkanoid
+
+<span class="c"># play it (macOS: out/Rkanoid.app)</span>
+out/Rkanoid/game
+
+<span class="c"># or check native code against the interpreter</span>
+out/Rkanoid/game --headless --frames 1200 --verify-interpreter
+
+<span class="c"># the same game for the Web</span>
+target/release/gba-recomp bundle --rom games/rkanoid-v3.00.gba \
+  --out out/web --target wasm32-unknown-emscripten</pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <p><b style="color:var(--fg)">GBA Recomp</b> is licensed under MIT OR Apache-2.0. It contains no Nintendo code or BIOS.</p>
+      <p>Only games whose license allows redistribution are distributed with the project. Packages built from commercial ROMs are for personal use only. Game Boy Advance is a trademark of Nintendo, which is not affiliated with this project.</p>
+    </div>
+    <div class="links">
+      <a href="https://github.com/recomp-paradise/gba-recomp">Source</a>
+      <a href="https://github.com/recomp-paradise/gba-recomp/releases">Releases</a>
+      <a href="https://github.com/recomp-paradise/gba-recomp/tree/main/specs">Specs</a>
+      <a href="https://github.com/recomp-paradise/gba-recomp/blob/main/ROADMAP.md">Roadmap</a>
+      <a href="rkanoid-v3.00/">Demo, full page</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var frame = document.getElementById('game');
+  var led = document.getElementById('led');
+  // The LED lights up once the player clicks into the game.
+  window.addEventListener('blur', function () {
+    setTimeout(function () { if (document.activeElement === frame) led.classList.add('on'); }, 0);
+  });
+  document.getElementById('fs').addEventListener('click', function () {
+    var el = frame;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) req.call(el); else window.location.href = 'rkanoid-v3.00/';
+    led.classList.add('on');
+    try { frame.focus(); } catch (e) {}
+  });
+  document.getElementById('copy').addEventListener('click', function (e) {
+    var text = document.getElementById('snippet').innerText;
+    var btn = e.currentTarget;
+    function done(ok) { btn.textContent = ok ? 'Copied' : 'Select & copy'; setTimeout(function () { btn.textContent = 'Copy'; }, 1600); }
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    else done(false);
+  });
+  var items = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) { items.forEach(function (n) { n.classList.add('in'); }); return; }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, { rootMargin: '0px 0px -8% 0px' });
+  items.forEach(function (n) { io.observe(n); });
+})();
+</script>
+</body>
+</html>
