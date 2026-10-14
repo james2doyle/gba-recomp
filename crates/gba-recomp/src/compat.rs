@@ -40,9 +40,14 @@ pub struct Profile {
     pub seconds: f64,
 }
 
-/// Locate the runtime static library built for `target` (NB-62-07, SPEC-068).
-pub fn runtime_library_for(target: &TargetSpec) -> Result<PathBuf, String> {
-    platform::default_runtime(target)
+/// Locate the runtime static library for `target` (NB-62-07, SPEC-068):
+/// the explicit `--runtime-lib` when given, else the default location.
+pub fn runtime_library(target: &TargetSpec, explicit: Option<&Path>) -> Result<PathBuf, String> {
+    match explicit {
+        Some(path) if path.is_file() => Ok(path.to_path_buf()),
+        Some(path) => Err(format!("runtime library not found: {}", path.display())),
+        None => platform::default_runtime(target),
+    }
 }
 
 pub fn parse_keys(text: &str) -> Result<u16, String> {
@@ -176,6 +181,8 @@ fn record_ram_variant(
 pub struct PackageReport {
     pub path: PathBuf,
     pub manifest: String,
+    /// Extra distributable made from the package (iOS device `.ipa`).
+    pub archive: Option<PathBuf>,
 }
 
 /// Build an `aot-compatible` package directory atomically (no partial
@@ -316,9 +323,11 @@ pub fn build_package(
         )?;
         fs::rename(&temporary, &published)
             .map_err(|e| format!("cannot publish package {}: {e}", published.display()))?;
+        let archive = platform::after_publish(&options.target, &published)?;
         Ok(PackageReport {
             path: published,
             manifest,
+            archive,
         })
     })();
     if result.is_err() {

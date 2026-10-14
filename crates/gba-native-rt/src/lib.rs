@@ -486,3 +486,33 @@ mod tests {
         assert_eq!(program.run(&mut gba.cpu, &mut gba.bus), NativeOutcome::Miss);
     }
 }
+
+/// iOS entry point (SPEC-068 TGT-68-02). UIKit must own the main thread, so
+/// the process `main` hands control to SDL3 (`SDL_RunApp`), which starts the
+/// application delegate and later calls the generated `SDL_main`; that in
+/// turn calls [`gba_native_main`].
+#[cfg(target_os = "ios")]
+mod ios_main {
+    use std::ffi::{c_char, c_int, c_void};
+
+    type MainFn = unsafe extern "C" fn(c_int, *mut *mut c_char) -> c_int;
+
+    unsafe extern "C" {
+        /// Defined by the generated package object (`TargetSpec::entry_symbol`).
+        fn SDL_main(argc: c_int, argv: *mut *mut c_char) -> c_int;
+        fn SDL_RunApp(
+            argc: c_int,
+            argv: *mut *mut c_char,
+            main: Option<MainFn>,
+            reserved: *mut c_void,
+        ) -> c_int;
+    }
+
+    /// # Safety
+    /// Called once by the C runtime with the process arguments.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn main(argc: c_int, argv: *mut *mut c_char) -> c_int {
+        // SAFETY: SDL_RunApp forwards the process arguments to SDL_main.
+        unsafe { SDL_RunApp(argc, argv, Some(SDL_main), std::ptr::null_mut()) }
+    }
+}

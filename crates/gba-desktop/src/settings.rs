@@ -209,7 +209,8 @@ pub const DEADZONE_MAX: f32 = 0.95;
 /// Default location (SET-63-01).
 pub fn default_path() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    if cfg!(target_os = "macos") {
+    // On iOS `HOME` is the app sandbox container; Library is writable there.
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
         home.map(|h| h.join("Library/Application Support/gba-recomp/settings.toml"))
     } else {
         std::env::var_os("XDG_CONFIG_HOME")

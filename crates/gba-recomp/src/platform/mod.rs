@@ -117,10 +117,19 @@ pub fn finalize(
 ) -> Result<(), String> {
     match Platform::of(spec) {
         Platform::MacOs => apple::finalize(dir, rom, sha_hex, embed),
-        Platform::Ios => ios::finalize(dir, rom, sha_hex, embed),
+        Platform::Ios => ios::finalize(spec, dir, rom, sha_hex, embed),
         Platform::Android => android::finalize(dir, rom, sha_hex, embed),
         Platform::Web => web::finalize(dir, rom, sha_hex, embed),
         Platform::Linux | Platform::Windows => Ok(()),
+    }
+}
+
+/// Step run on the published package; returns an extra distributable
+/// (the unsigned `.ipa` for iOS devices), if any.
+pub fn after_publish(spec: &TargetSpec, published: &Path) -> Result<Option<PathBuf>, String> {
+    match Platform::of(spec) {
+        Platform::Ios => ios::after_publish(spec, published),
+        _ => Ok(None),
     }
 }
 
@@ -163,6 +172,17 @@ pub fn default_runtime(spec: &TargetSpec) -> Result<PathBuf, String> {
 /// Default SDL3 location for `spec`: `SDL3_LIB_DIR` or the usual install
 /// directory for the platform.
 pub fn default_sdl_dir(spec: &TargetSpec) -> PathBuf {
+    // iOS: static SDL3 per SDK (scripts/ci/setup-sdl3-ios.sh).
+    if Platform::of(spec) == Platform::Ios {
+        let var = if spec.triple.ends_with("-sim") {
+            "SDL3_IOS_SIM_DIR"
+        } else {
+            "SDL3_IOS_DIR"
+        };
+        if let Some(dir) = env::var_os(var) {
+            return PathBuf::from(dir);
+        }
+    }
     if let Some(dir) = env::var_os("SDL3_LIB_DIR") {
         return PathBuf::from(dir);
     }

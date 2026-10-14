@@ -1,0 +1,117 @@
+# iOS packages of the free demo games (SPEC-068 TGT-68-02, CI-68-01).
+# Builds SDL3 and the runtime for iOS device and simulator, bundles every
+# game of games/ as an unsigned `.ipa` (device) and an ad hoc signed `.app`
+# (simulator), and attaches them to the release on tags `v*`.
+# Independent from ci.yml: it only needs the macOS host toolchain.
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  ios:
+    name: ios-arm64
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (rust-toolchain.toml) and iOS targets
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+
+      - name: Cache LLVM
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/llvm
+          key: llvm-23.1.3-LLVM-23.1.3-macOS-ARM64.tar.xz
+
+      - name: LLVM 23.1.3
+        run: scripts/ci/setup-llvm.sh LLVM-23.1.3-macOS-ARM64.tar.xz
+
+      - name: Use LLVM clang as the Rust linker
+        run: echo "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=$LLVM_SYS_231_PREFIX/bin/clang" >> "$GITHUB_ENV"
+
+      - name: Cache SDL3 for iOS
+        id: sdl-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sdl3-ios
+          key: sdl3-ios-3.4.12-${{ hashFiles('scripts/ci/setup-sdl3-ios.sh') }}
+
+      - name: SDL 3 for iOS (device and simulator, static)
+        run: scripts/ci/setup-sdl3-ios.sh "$RUNNER_TEMP/sdl3-ios"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-ios-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-ios-
+
+      - name: Build gba-recomp (host)
+        run: cargo build --release --locked -p gba-recomp
+
+      - name: Build the runtime for iOS
+        run: |
+          cargo build --release --locked -p gba-native-rt --target aarch64-apple-ios
+          cargo build --release --locked -p gba-native-rt --target aarch64-apple-ios-sim
+
+      - name: Bundle games for iOS
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          inputs=(--profile-input 200:5:START --profile-input 300:5:A --profile-input 400:60:LEFT --profile-input 500:60:RIGHT)
+          for rom in games/*.gba; do
+            game=$(basename "$rom" .gba)
+            target/release/gba-recomp bundle --rom "$rom" --out "dist/$game-ios" \
+              --target aarch64-apple-ios \
+              --runtime-lib target/aarch64-apple-ios/release/libgba_native_rt.a \
+              --sdl-dir "$SDL3_IOS_DIR" "${inputs[@]}"
+            target/release/gba-recomp bundle --rom "$rom" --out "dist/$game-ios-simulator" \
+              --target aarch64-apple-ios-sim \
+              --runtime-lib target/aarch64-apple-ios-sim/release/libgba_native_rt.a \
+              --sdl-dir "$SDL3_IOS_SIM_DIR" "${inputs[@]}"
+            plutil -lint "dist/$game-ios.app/Info.plist" "dist/$game-ios-simulator.app/Info.plist"
+            otool -l "dist/$game-ios.app/game" | grep -A4 LC_BUILD_VERSION
+            otool -l "dist/$game-ios-simulator.app/game" | grep -A4 LC_BUILD_VERSION
+            # The simulator app is zipped for download; the device .ipa already is.
+            ditto -c -k --keepParent "dist/$game-ios-simulator.app" "dist/$game-ios-simulator.app.zip"
+          done
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-ios
+          path: |
+            dist/*.ipa
+            dist/*.app.zip
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.ipa
+            dist/*.app.zip
+          append_body: true
+          body: |
+            iOS: `<game>-ios.ipa` is an unsigned device build (sign it with your own certificate and provisioning profile to install); `<game>-ios-simulator.app.zip` runs in the iOS Simulator on Apple silicon Macs (`xcrun simctl install booted <app>`).
