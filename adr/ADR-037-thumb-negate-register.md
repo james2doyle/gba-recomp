@@ -1,6 +1,6 @@
 # ADR-037 — Implementar NEGS Thumb Format 4 como operação específica
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 - Supersede: —
 
@@ -10,9 +10,9 @@ Após SPEC-051, a discovery O2 da LeafGreen fixada em KNO-004 parou em `0x4248` 
 
 O projeto já tem ALU aditiva/subtrativa e operações Thumb Format 4 ANDS/ORRS, mas NEGS atualiza NZCV de forma diferente das operações lógicas e não pode ser modelada como AND/OR ou SUB imediato existente.
 
-## Decisão proposta
+## Decisão
 
-Adotar [SPEC-052](../specs/SPEC-052-thumb-negate-register.md) e adicionar uma variante `NegateRegister` dedicada. Emitir `0 - Rs` e recalcular NZCV exatamente; propagar somente valores de registradores dentro do domínio limitado e manter discovery de flags conservadora. Não ampliar automaticamente a aceitação para as demais suboperações Format 4.
+Adotar [SPEC-052](../specs/SPEC-052-thumb-negate-register.md) e adicionar uma variante `NegateRegister` dedicada. Emitir `0 - Rs` e recalcular NZCV exatamente; propagar somente valores de registradores dentro do domínio limitado e manter discovery de flags conservadora. Não ampliar automaticamente a aceitação para as demais suboperações Format 4. A implementação foi concluída no commit `bb94888cb7bc6dc6778dd43be804a86501155e95`; testes, gate e tentativa estática LeafGreen estão na [evidência estruturada](../knowledge/evidence/gba020-thumb-negs-macos-arm64.json).
 
 Manter ABI/runtime, estado de máquina e `GBA_IR_VERSION` inalterados. Respeitar o limite detectado de CPU do host: dez slots no Mac mini M4, sem permitir orçamento superior.
 

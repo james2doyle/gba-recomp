@@ -1,6 +1,6 @@
 # SPEC-052 — NEGS Thumb Format 4 por registrador em AOT estrito
 
-Estado do documento: Draft. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementada no commit `bb94888cb7bc6dc6778dd43be804a86501155e95`. Testes, gate, hashes e nova fronteira estática: [evidência estruturada](../knowledge/evidence/gba020-thumb-negs-macos-arm64.json). Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Problema, objetivos e escopo
 

@@ -1,0 +1,21 @@
+gba-recomp: unsupported_thumb_instruction at 0x08000BEE: 0x17C1
+real 0.61
+user 0.59
+sys 0.00
+            35241984  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                2867  page reclaims
+                  16  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   5  voluntary context switches
+                 650  involuntary context switches
+          7955084247  instructions retired
+          2379664027  cycles elapsed
+            29885016  peak memory footprint

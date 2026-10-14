@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "source_commit": "bb94888cb7bc6dc6778dd43be804a86501155e95",
+  "compiler_sha256": "bfd575b3654a80b26c3d79b33228f69877b7f5fef1af3a1637fa70b698f0c8ef",
+  "host": {
+    "os": "Darwin 15.3.1",
+    "architecture": "arm64",
+    "detected_logical_cpus": 10,
+    "automatic_cpu_budget": 10,
+    "cargo_jobs": 10,
+    "cargo_link_threads": 10,
+    "fixture_workers": 10,
+    "lld_threads_per_fixture": 1,
+    "max_phase_slots": 10
+  },
+  "implementation": {
+    "feature": "Thumb NEGS Format 4 register operation",
+    "operation": "ThumbOperation::NegateRegister { rd, rs }",
+    "commit": "bb94888cb7bc6dc6778dd43be804a86501155e95",
+    "ir_version": 2,
+    "runtime_abi_version": 4,
+    "runtime_abi_changed": false,
+    "strict_aot": true
+  },
+  "workspace_tests": {
+    "command": "cargo test --locked --workspace --jobs 10",
+    "exit_code": 0,
+    "results": {
+      "gba_ir_passed": 72,
+      "gba_recomp_passed": 117,
+      "failed": 0
+    },
+    "timing_seconds": {
+      "real": 76.3,
+      "user": 468.62,
+      "system": 5.21
+    },
+    "log": {
+      "path": "knowledge/evidence/cargo-test-thumb-negs-20261014-macos-arm64.log",
+      "sha256": "ee426bc4018b003d14dbc91a3d00694c148299582064fe006539bdb91b2c70a8"
+    }
+  },
+  "gba020_gate": {
+    "command": "GBA020_JOBS=10 GBA020_LINK_THREADS=1 scripts/verify-gba020.sh",
+    "result": "passed",
+    "target": "aarch64-apple-darwin",
+    "timing_seconds": {
+      "real": 141.08,
+      "user": 503.21,
+      "system": 19.93
+    },
+    "aggregate_cpu_seconds": 523.14,
+    "derived_average_logical_cpus": 3.71,
+    "sustained_saturation_measured": false,
+    "thumb_negate_fixture_group": {
+      "independent_compilations": 12,
+      "workers": 10,
+      "lld_threads_per_worker": 1,
+      "max_phase_slots": 10,
+      "wall_ms": 2444.4,
+      "baseline_comparison": null
+    },
+    "log": {
+      "path": "knowledge/evidence/gba020-thumb-negs-macos-arm64.log",
+      "sha256": "e358ea182624d6f24fede383a91b74255682e972a5063ef1f00e980bae75a2c5"
+    }
+  },
+  "fixtures": [
+    {
+      "rom_mode": "thumb-neg-zero-branch",
+      "rom_sha256": "3c8d43b8b9c139457a5a2969e62f512934fb735a5a5a3654f0a2c40baa3e80af",
+      "run_instruction_budget": 9,
+      "expected_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 0,
+        "r1": 0,
+        "pc": "0x08000090",
+        "cpsr": "0x6000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "53e87b46b3f624b6fb075808cd77e5575ef59d004fc39b3b8f93cc2f794bcebc",
+          "manifest_sha256": "bdcd24d5275d01481d12f27db32f2bd34e683ede6f5fefcaf4889c58ae4f82f5",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "5595bf5717a2b5041d33b6f6f72a7e3d3c6d23e7e8921ae83de82bddea61e7c0",
+          "manifest_sha256": "b5f7a17191f8c4b90b97cd8289157f7ebd240b9bc81591d45c90d34e293181e9",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-neg-negative-branch",
+      "rom_sha256": "28caef0753d0a6946e3ac9c2da88569dfccedcc330b7f197f353b5b4dbc95a5f",
+      "run_instruction_budget": 9,
+      "expected_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 4294967295,
+        "r1": 1,
+        "pc": "0x08000088",
+        "cpsr": "0x8000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "41b9e71eab3c83baf4b536f1b67b24c7c8dc639a100c6c62c359d119f4182b79",
+          "manifest_sha256": "7565948cff61630f9cf3b7af3b7c0c9e7f704f077aea6f7fb3a7e205af6d7a23",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "61fc0d766cea0a671bae65c1d16b8f04721ca932a6b1600a2e62dc1d47e09d72",
+          "manifest_sha256": "b580fb1f88bb0a87b4a55db8b0aec877c036f79d5019af6334991214353a78ee",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-neg-alias-branch",
+      "rom_sha256": "4990d6f5e482c8cbeffc5d53d1ac32f27a890c1a025c2b537f894da929379d31",
+      "run_instruction_budget": 9,
+      "expected_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 2147483648,
+        "r1": 4294967295,
+        "pc": "0x08000088",
+        "cpsr": "0x8000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "bb22e16067dd99268d42f098648007d28306973f93d01dc01a58708d5cef2789",
+          "manifest_sha256": "31b2fb25d12fa416a4b367451c7dbee4fc5ad641d3d42591f2ae2f33a959e883",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "76ed7d5995b0a785aff4677b8a3f883c930b1244af1e7c1dbd060b8d162ea1f9",
+          "manifest_sha256": "5ca3ce2b83d959fa3f22668a30e915f2add569683b36e3fd56cf9b2c4b29287a",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-neg-maxpositive-branch",
+      "rom_sha256": "6b6f31099f6bf62f203b07fb64b7e5bc4fbe0b8635c078b0bf5060b9b39a39ed",
+      "run_instruction_budget": 9,
+      "expected_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 2147483649,
+        "r1": 2147483647,
+        "pc": "0x08000088",
+        "cpsr": "0x8000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "5ee98e228b94ceb0b1a1c9723771aa3df9cabdf201632c99c12b3dcc88142510",
+          "manifest_sha256": "f8574553159f6478e294df0d43a25798fb3558452ee2f832b24fa28c9229ad62",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "404086734489f9bdcb8d5ae0a00e69cf9e221fa2ab753a37d50800acd962f0a1",
+          "manifest_sha256": "ed99bebd68f5ff77efe2e780be9e26853bccc6d5e7111a389f9e98dc8b60281f",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-neg-overflow-branch",
+      "rom_sha256": "258c1deb6a1fb79d44c0db08f30d8aacfb9d58e5f50ce564c6a25fa4f60d5b4a",
+      "run_instruction_budget": 9,
+      "expected_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 2147483648,
+        "r1": 2147483648,
+        "pc": "0x08000088",
+        "cpsr": "0x9000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "60af51d3e0d89fc9c39d08881fa44439ced68d1fcfeb99d30a8c5f505ff291f8",
+          "manifest_sha256": "be1b44e79a90b1b71b2ea0e93a8fd0f1166ee94630b2417c1ac6ff68218cf878",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "3cb0862339ae088acd660ed5b1eb2432c0deeffb9a7c22cf8e6b54f5e531a33b",
+          "manifest_sha256": "38afdc6ee1c3ad2d09b4ffd1aaf4e0d4010c7ebf7ee7cb47c1917d48c65a1bf1",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-neg-ones-branch",
+      "rom_sha256": "78d7e6b8a99dde7f3cc060a17a7532b47b21517d230b308f0111bca98ae98513",
+      "run_instruction_budget": 9,
+      "expected_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 1,
+        "r1": 4294967295,
+        "pc": "0x08000088",
+        "cpsr": "0x0000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "837163731a4800ce8b2f472f2b81ca4b45f8b1b83b29dc8ecbfd72e699650a76",
+          "manifest_sha256": "96b488a8a2b49ba76ff96a0af615c83fdd6b0cb4a5486e320451161bb43c4b10",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "44d71b7623b7ffb7ca91048b9c70683689aa2772c0afbf093dd30947c1d6ee1b",
+          "manifest_sha256": "0bbeff5892577a9f0473aa18d00b55d8a4099577be33c4c372bc60a4e7b1bc43",
+          "execution_mode": "strict-aot",
+          "aot_instruction_count": 12
+        }
+      }
+    }
+  ],
+  "negative_cases": {
+    "unsupported_thumb_format4_tst": {
+      "rom_sha256": "23c26b4356281651327d669d0b73b7e89f45f2e49f977daa9a5219305d2a2fb0",
+      "diagnostic": "gba-recomp: unsupported_thumb_instruction at 0x08000084: 0x4288",
+      "package_created": false
+    }
+  },
+  "leafgreen_static_discovery": {
+    "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "GBA_RECOMP_LINK_THREADS=10 target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-negs-20261014-O2 --opt O2 --steps 100",
+    "exit_code": 1,
+    "diagnostic": "gba-recomp: unsupported_thumb_instruction at 0x08000BEE: 0x17C1",
+    "frontier_pc": "0x08000BEE",
+    "frontier_halfword": "0x17C1",
+    "source_classification": "Thumb Format 1 ASRS r1,r0,#31 (static encoding inference; SRC-39)",
+    "real_seconds": 0.61,
+    "user_seconds": 0.59,
+    "system_seconds": 0.0,
+    "analysis": "static discovery only; no guest execution",
+    "llvm_emission_reached": false,
+    "link_reached": false,
+    "package_created": false,
+    "rom_executed": false,
+    "rea_decompilation_performed": false,
+    "log": {
+      "path": "knowledge/evidence/leafgreen-after-negs-20261014-O2.log",
+      "sha256": "67aefe7edc6ce602c581742e0f6540949f1ba23b7cece6d339cd04efd872b9fd"
+    }
+  },
+  "limitations": [
+    "Fixtures prove only their configured states and strict-AOT subsets on macOS arm64.",
+    "Discovery propagates NEGS register values but does not track NZCV produced by NEG; conditional branches remain conservative.",
+    "LeafGreen evidence records only static discovery and the next decoder frontier; no package, LLVM output, link, guest execution, or decompilation was produced.",
+    "The 0.61 second LeafGreen failure is not an end-to-end compile benchmark.",
+    "The gate used the ten-slot host budget; this report does not claim sustained saturation of all ten logical CPUs.",
+    "The measured 2.4444 second NEGS group has no before/after baseline and is not evidence of a commercial-ROM speedup."
+  ]
+}
