@@ -35,3 +35,4 @@
 - [ADR-033-discovery-io-fact-invalidation](ADR-033-discovery-io-fact-invalidation.md)
 - [ADR-034-discovery-safe-dma3-latches](ADR-034-discovery-safe-dma3-latches.md)
 - [ADR-035-thumb-unconditional-branch](ADR-035-thumb-unconditional-branch.md)
+- [ADR-036-thumb-and-register](ADR-036-thumb-and-register.md)

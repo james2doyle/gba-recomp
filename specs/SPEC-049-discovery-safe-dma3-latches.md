@@ -1,6 +1,6 @@
 # SPEC-049 — Preservar fatos de latches após DMA3 imediato ROM→IWRAM
 
-Estado do documento: Draft. Especificação escrita antes da implementação. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Especificação escrita antes da implementação; aceite registrado após os testes de discovery e a compilação estática LeafGreen em [evidência](../knowledge/evidence/leafgreen-after-thumb-b-20261014-O2.json). Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 
@@ -39,8 +39,14 @@ No mGBA fixado, habilitar DMA imediato agenda início após três ciclos e bloqu
 | HLE #1 com reset DMA singleton | Configuração DMA volta a todos canais ociosos |
 | HLE #1 com flags que podem preservar ou resetar DMA | Prova de quiescência torna-se Unknown |
 | Store DMA aceito ou rejeitado | Sombra `memory_words` fica vazia; conteúdo copiado não é inferido |
-| Fixture sintética das três stores em O0/O2 | Discovery preserva latches apenas no perfil all-zero sem eventos; runtime/fault continua explícito |
-| LeafGreen do SHA-256 de KNO-004 | Registrar se BX em `0x08000B6A` fecha ou qual próxima fronteira aparece; nenhum resultado de discovery será chamado de execução |
+| Testes unitários de discovery para DMA3 aceito, controles desconhecidos, outros canais, rearmamento, PUSH/STMIA e reset HLE | Latches só são preservados com prova completa; caminhos incertos invalidam quiescência e memória abstrata |
+| LeafGreen do SHA-256 de KNO-004 | Discovery ultrapassa a sequência DMA3, BX e o B Thumb; a fronteira estática seguinte fica em `0x08000BE4`; nenhum resultado é chamado de execução |
+
+## Evidência de implementação e aceite
+
+A implementação está no commit `75aaf8d43e5e5887a9525002cb2822ffe8cb71a7`; os testes negativos adicionais de invalidação DMA foram concluídos no commit `0ebcefa47120c6288fd6a0948ab746699b14dd5e`. Em Darwin/arm64, `cargo test --locked --workspace --jobs 10` passou com 66 testes em `gba-ir` e 113 em `gba-recomp`; `scripts/verify-gba020.sh` também passou com o orçamento detectado de dez CPUs. A evidência e os logs estão em [compilação LeafGreen pós-branch](../knowledge/evidence/leafgreen-after-thumb-b-20261014-O2.json) e [gate strict-AOT](../knowledge/evidence/gba020-thumb-unconditional-branch-macos-arm64.json).
+
+Esse resultado valida somente a regra estática sob o runner sem eventos. O runtime não implementa DMA, nenhum pacote LeafGreen foi criado e a ROM não foi executada.
 
 ## Fontes e relações
 

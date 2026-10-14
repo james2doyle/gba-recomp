@@ -1,6 +1,6 @@
 # ADR-034 — Reconhecer somente transferências DMA3 imediatas e sem IRQ na discovery
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 - Supersede: —
 
@@ -10,7 +10,7 @@ Depois de corrigir invalidações em Palette RAM e WAITCNT, o trace interno da d
 
 O runner atual declara `io_initialization: "all-zero"` e `interrupt_model: "none"`. O runtime não implementa DMA e não tem scheduler de eventos. Portanto, uma extensão limitada só pode aumentar precisão da descoberta estática; não cria semântica de execução nem suporte para o título.
 
-## Decisão proposta
+## Decisão adotada
 
 Adotar [SPEC-049](../specs/SPEC-049-discovery-safe-dma3-latches.md): carregar em cada estado completo uma prova path-sensitive de que os canais DMA permanecem ociosos, a configuração DMA3 conhecida e sua origem/destino. Inicializar a prova somente pela entrada all-zero explícita. Reconhecer os stores Thumb word imediatos em SAD, DAD e CNT quando endereço/valor e canal desabilitado forem provados. Para habilitar, exigir a configuração imediata de 32 bits, incremento, one-shot, sem DRQ/IRQ, fonte integralmente dentro da ROM carregada e destino dentro de IWRAM. Qualquer alternativa, formato diferente ou canal incerto volta à invalidação conservadora.
 
@@ -27,7 +27,7 @@ Em toda store DMA, limpar a sombra abstrata de RAM. No caso aceito, não propaga
 
 Discovery pode avançar na rota estática específica que originou a investigação, se a evidência anterior estiver correta. O estado DMA aumenta o custo por estado, mas não paraleliza uma análise de ROM. A fonte mGBA mostra timing/CPU halt e IRQ condicional; esses eventos permanecem fora do perfil estático. O runtime local segue strict-AOT e faults explícitos, sem fallback.
 
-A aceitação exige testes negativos para stores parciais, outros canais, control inesperado, fonte/destino inválidos, overflow e DMA não ocioso; teste positivo O0/O2 e nova compilação estática de LeafGreen com hash fixo. O resultado da compilação não será descrito como execução do jogo.
+A implementação `75aaf8d` e os testes de invalidação DMA adicionados até `0ebcefa` cobrem as provas positivas/negativas de discovery. A suíte workspace passou (66 testes `gba-ir`, 113 `gba-recomp`), e o gate GBA-020 passou em Darwin/arm64. A compilação O2 da ROM fixada passou pela sequência DMA3 e registrou uma fronteira Thumb posterior, sem pacote; a evidência está em [KNO-004](../knowledge/KNO-004-rom-intake.md). Isso aceita o contrato estritamente estático; não aceita runtime DMA nem compatibilidade LeafGreen.
 
 ## Referências
 

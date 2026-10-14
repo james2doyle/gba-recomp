@@ -1,6 +1,6 @@
 # ADR-035 — Representar branch incondicional Thumb como alvo estático
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 - Supersede: —
 
@@ -8,7 +8,7 @@
 
 A análise estática O2 da LeafGreen fixada em KNO-004 alcançou o halfword `0xE00A` em `0x08000AE6`. Os campos inferem Thumb `B` Format 18 com alvo `0x08000AFE`; o erro atual interrompe discovery antes da emissão. A fonte mGBA no commit fixado corrobora a extensão signed de `imm11` e o uso do PC Thumb, sem constituir execução da ROM.
 
-## Decisão proposta
+## Decisão adotada
 
 Adotar [SPEC-050](../specs/SPEC-050-thumb-unconditional-branch.md). Representar a instrução como uma operação de IR com um único destino estático constante. Discovery enfileira somente esse destino, mantendo o estado guest. A validação IR exige que o destino exista como instrução Thumb no programa. LLVM emite a saída direta ao dispatcher existente.
 
@@ -23,7 +23,7 @@ Manter `GBA_IR_VERSION` e ABI/runtime inalterados. Não usar a máscara de suces
 
 ## Consequências
 
-O branch resolve diretamente destinos estaticamente codificados, sem novo estado ou custo de runtime. Um destino fora da imagem ou que contenha instrução ainda não suportada mantém a compilação estrita em erro, sem pacote parcial. O trabalho não representa branches Thumb em geral nem garante compatibilidade de LeafGreen.
+O branch resolve diretamente destinos estaticamente codificados, sem novo estado ou custo de runtime. Um destino fora da imagem ou que contenha instrução ainda não suportada mantém a compilação estrita em erro, sem pacote parcial. O gate O0/O2 passou; a análise estática LeafGreen avançou até `0x08000BE4`, sem emissão LLVM, link ou execução do jogo. O trabalho não representa branches Thumb em geral nem garante compatibilidade de LeafGreen.
 
 ## Referências
 

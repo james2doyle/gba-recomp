@@ -1,0 +1,4 @@
+gba-recomp: unsupported_thumb_instruction at 0x08000BE4: 0x4002
+real 0.60
+user 0.59
+sys 0.00

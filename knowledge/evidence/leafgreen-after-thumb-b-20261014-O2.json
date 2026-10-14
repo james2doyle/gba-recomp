@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "source_commit": "0ebcefa47120c6288fd6a0948ab746699b14dd5e",
+  "compiler_sha256": "96e17d2327ff36422cc264ca536af44ae15c14b3da7b90325555aa9f3aab9a81",
+  "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+  "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+  "analysis": "static strict-AOT discovery only; not guest execution",
+  "command": "GBA_RECOMP_LINK_THREADS=10 /usr/bin/time -p target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-thumb-b-20261014-O2 --opt O2 --steps 100",
+  "result": {
+    "exit_code": 1,
+    "diagnostic": "unsupported_thumb_instruction at 0x08000BE4: 0x4002",
+    "real_seconds": 0.60,
+    "user_seconds": 0.59,
+    "system_seconds": 0.00,
+    "package_created": false,
+    "llvm_emission_reached": false,
+    "link_reached": false,
+    "rom_executed": false
+  },
+  "observations": [
+    "The static discovery passed the previous unsupported Thumb halfword 0xE00A at 0x08000AE6 after the Format 18 branch implementation.",
+    "The next reported halfword is 0x4002 at 0x08000BE4. SRC-45 classifies it as ANDS r2,r0 by encoding fields and fixed reference sources; this is an inference, not a register-state or runtime observation."
+  ],
+  "evidence_files": [
+    {
+      "path": "knowledge/evidence/leafgreen-after-thumb-b-20261014-O2.log",
+      "sha256": "9ff4047bd0421d7668672cf901d4567094dc5eb92ab7d8bd7e822f288d51710d"
+    }
+  ],
+  "rea": {
+    "mcp_result": "Transport closed; no REA Evidence ID returned.",
+    "cli_fallback": "rea-agents 6.4.0 firmware scan reported capability_unavailable on Darwin because it requires Linux and an absolute REA_BINWALK_COMMAND.",
+    "decompilation_performed": false
+  },
+  "limitations": [
+    "Compiler discovery is static and does not establish which path LeafGreen executes at runtime.",
+    "No package was created; this run stopped before LLVM emission and linking.",
+    "The 0.60 second wall result is one failure sample, not an end-to-end compilation benchmark.",
+    "The REA MCP transport was unavailable and the CLI firmware provider was unavailable on this host; no decompilation or REA Evidence ID was produced."
+  ]
+}

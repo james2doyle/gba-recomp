@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "source_commit": "0ebcefa47120c6288fd6a0948ab746699b14dd5e",
+  "compiler_sha256": "96e17d2327ff36422cc264ca536af44ae15c14b3da7b90325555aa9f3aab9a81",
+  "host": {
+    "os": "Darwin",
+    "architecture": "arm64",
+    "detected_logical_cpus": 10,
+    "automatic_cpu_budget": 10,
+    "fixture_workers": 10,
+    "lld_threads_per_fixture": 1,
+    "cargo_jobs": 10,
+    "cargo_link_threads": 10,
+    "max_phase_slots": 10
+  },
+  "implementation": {
+    "feature": "Thumb unconditional branch Format 18",
+    "commit": "0ebcefa47120c6288fd6a0948ab746699b14dd5e",
+    "ir_version": 2,
+    "runtime_abi_changed": false,
+    "strict_aot": true
+  },
+  "workspace_tests": {
+    "command": "cargo test --locked --workspace --jobs 10",
+    "exit_code": 0,
+    "results": {
+      "gba_ir_passed": 66,
+      "gba_recomp_passed": 113,
+      "other_unit_and_doc_test_suites_passed": 3,
+      "failed": 0
+    },
+    "log": {
+      "path": "knowledge/evidence/cargo-test-thumb-unconditional-branch-20261014-macos-arm64.log",
+      "sha256": "ad10b99575de6011aa9bc2e39991cbabb12a0c08ad39ef1ad189430f46c90224"
+    }
+  },
+  "gba020_gate": {
+    "command": "GBA020_JOBS=10 GBA020_LINK_THREADS=1 scripts/verify-gba020.sh",
+    "result": "passed",
+    "target": "aarch64-apple-darwin",
+    "log": {
+      "path": "knowledge/evidence/gba020-thumb-unconditional-branch-macos-arm64.log",
+      "sha256": "8a26191a6ce84967286b55d4c6678701746d5a79f297c1954cfa6eaadfcc95c4"
+    }
+  },
+  "fixture": {
+    "rom_mode": "thumb-b-unconditional",
+    "rom_sha256": "8af97367d95915bc308d4945505eb094d647d13cbf06b5a625087800454c10cb",
+    "execution_mode": "strict-aot",
+    "aot_instruction_count": 10,
+    "run_instruction_budget": 9,
+    "optimization_results": {
+      "O0": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":34,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x2000001F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+      "O2": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":34,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x2000001F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}"
+    },
+    "negative_cases": {
+      "unsupported_target": "rejected before package publication",
+      "out_of_rom_target": "rejected before package publication"
+    }
+  },
+  "limitations": [
+    "The gate proves this static branch subset and its synthetic fixture on macOS arm64 only.",
+    "The commercial LeafGreen ROM was not executed; its next frontier is recorded separately.",
+    "The result does not prove Linux x86-64 support or general Thumb branch coverage."
+  ]
+}
