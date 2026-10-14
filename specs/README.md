@@ -54,3 +54,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-050 — Branch incondicional Thumb Format 18 em AOT estrito](SPEC-050-thumb-unconditional-branch.md)
 - [SPEC-051 — ANDS Thumb Format 4 por registrador em AOT estrito](SPEC-051-thumb-and-register.md)
 - [SPEC-052 — NEGS Thumb Format 4 por registrador em AOT estrito](SPEC-052-thumb-negate-register.md)
+- [SPEC-053 — ASR Thumb imediato Format 1 em AOT estrito](SPEC-053-thumb-asr-immediate.md)

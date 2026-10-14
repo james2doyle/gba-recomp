@@ -36,3 +36,5 @@
 - [ADR-034-discovery-safe-dma3-latches](ADR-034-discovery-safe-dma3-latches.md)
 - [ADR-035-thumb-unconditional-branch](ADR-035-thumb-unconditional-branch.md)
 - [ADR-036-thumb-and-register](ADR-036-thumb-and-register.md)
+- [ADR-037-thumb-negate-register](ADR-037-thumb-negate-register.md)
+- [ADR-038-thumb-asr-immediate](ADR-038-thumb-asr-immediate.md)
