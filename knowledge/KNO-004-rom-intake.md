@@ -116,6 +116,12 @@ No commit `2020649`, `cargo test --locked --workspace --jobs 10` passou com 45 t
 
 Com a ROM identificada acima, a descoberta estática passou por `0x3201` em `0x080009A2` (inferido como `ADDS r2,#1`) e parou em `0x080009A6`, raw `0xDDF6`, com `unsupported_thumb_instruction`. Pelos campos, `0xDDF6` infere `BLE` com imm8 assinado `-10`; PC Thumb `+4` calcula o destino `0x08000996` e o caminho sequencial é `0x080009A8`. Isso não revela NZCV, caminho tomado, nem execução dinâmica. O diretório de saída não foi criado; LeafGreen não foi empacotada ou executada. A chamada REA `binary_session` desta retomada falhou com `Transport closed`, sem produzir Evidence ID nem decompilação.
 
+## Tentativa após SPEC-032 — branch condicional Thumb Format 16
+
+No commit local `eabe929ad677245faecebda7508bc681f6ce6902`, `cargo test --locked --workspace --jobs 10` passou com 48 testes em `gba-ir` e 49 em `gba-recomp`; `scripts/verify-gba020.sh` passou em Darwin/arm64 com fixtures strict-AOT O0/O2 para branch EQ tomado e fallthrough, conferência dos dois sucessores e rejeição sem pacote parcial quando cada sucessor contém uma instrução não suportada. Evidência e hashes constam em [gba020-thumb-conditional-branch-macos-arm64.json](evidence/gba020-thumb-conditional-branch-macos-arm64.json).
+
+Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-bcond-20261013 --opt O2 --steps 100` para a ROM de SHA-256 acima, a descoberta estática passou pelo branch em `0x080009A6` (`0xDDF6`) e parou em `0x080009B6`, raw `0xBC08`, com `unsupported_thumb_instruction`. Os campos inferem Thumb POP `{r3}`; SRC-34 corrobora a regra de leitura e incremento de SP nas fontes fixadas. Nenhum SP, valor lido ou caminho dinâmico foi observado. A saída de pacote não foi criada. A tentativa de REA desta retomada falhou com `Transport closed`, sem Evidence ID ou decompilação; a nova fronteira deriva apenas da descoberta estática local.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.
