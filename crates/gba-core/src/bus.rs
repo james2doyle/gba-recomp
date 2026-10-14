@@ -106,6 +106,7 @@ impl Dma {
     }
 }
 
+#[derive(Clone)]
 pub struct Bus {
     bios: Box<[u8]>,
     pub hle_bios: bool,
@@ -116,7 +117,7 @@ pub struct Bus {
     pub io: Box<[u8]>,
     pub ppu: Ppu,
     pub apu: Apu,
-    pub rom: Box<[u8]>,
+    pub rom: std::sync::Arc<[u8]>,
     rom_mask: usize,
     pub backup: Backup,
     pub timers: [Timer; 4],
@@ -143,6 +144,8 @@ pub struct Bus {
     pub unsupported_io: BTreeMap<u32, u64>,
     pub fault: Option<SystemFault>,
     pub frame_ready: bool,
+    /// One-shot marker consumed by `Gba::step_with` at the VBlank boundary.
+    pub frame_boundary: bool,
     pub frame_count: u64,
     pub hle: crate::bios::HleState,
     /// Write generation per 1 KiB RAM page: EWRAM pages 0..256, IWRAM
@@ -191,7 +194,7 @@ impl Bus {
             io: vec![0; 0x400].into_boxed_slice(),
             ppu: Ppu::new(),
             apu: Apu::new(),
-            rom: rom_buf.into_boxed_slice(),
+            rom: rom_buf.into(),
             rom_mask,
             backup,
             timers: [Timer::default(); 4],
@@ -217,6 +220,7 @@ impl Bus {
             unsupported_io: BTreeMap::new(),
             fault: None,
             frame_ready: false,
+            frame_boundary: false,
             frame_count: 0,
             hle: crate::bios::HleState::default(),
             ram_gen: vec![0; RAM_PAGES],
@@ -1030,6 +1034,7 @@ impl Bus {
                 self.trigger_dma(true);
                 self.ppu.vblank_latch(&self.io);
                 self.frame_ready = true;
+                self.frame_boundary = true;
                 self.frame_count += 1;
             } else if line == 227 {
                 self.ppu.dispstat &= !1;

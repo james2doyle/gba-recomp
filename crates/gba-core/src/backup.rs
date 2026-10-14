@@ -90,6 +90,7 @@ enum EepromState {
     },
 }
 
+#[derive(Clone)]
 pub struct Backup {
     kind: BackupKind,
     data: Vec<u8>,

@@ -68,6 +68,9 @@ struct GuardState {
 
 pub type NativeFn = unsafe extern "C" fn(*mut NativeCtx, u32) -> u32;
 
+// Layout checks for 64-bit targets; 32-bit targets (ARMv7, wasm32) use the
+// same C layout with 4-byte pointers, which LLVM's struct type follows.
+#[cfg(target_pointer_width = "64")]
 const _: () = {
     assert!(std::mem::offset_of!(NativeCtx, cpsr) == 64);
     assert!(std::mem::offset_of!(NativeCtx, next_seq) == 68);

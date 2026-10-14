@@ -31,6 +31,64 @@ pub const EXIT_INTERPRET: u64 = 2;
 const ROM_START: u32 = 0x0800_0000;
 const MAX_RUN: usize = 1024;
 
+/// LLVM code generation target for native runs (SPEC-068 TGT-68-01).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TargetSpec {
+    pub triple: String,
+    pub cpu: String,
+    pub features: String,
+    /// LLVM backend to initialise: x86, aarch64, arm or webassembly.
+    pub backend: &'static str,
+}
+
+impl TargetSpec {
+    /// The build host.
+    pub fn host() -> Self {
+        let t = native_target();
+        Self::for_triple(t.triple).expect("host triple is supported")
+    }
+
+    /// Supported package targets (SPEC-068 TGT-68-02).
+    pub fn for_triple(triple: &str) -> Result<Self, String> {
+        let (cpu, features, backend) = match triple {
+            "aarch64-apple-darwin"
+            | "aarch64-unknown-linux-gnu"
+            | "aarch64-apple-ios"
+            | "aarch64-apple-ios-sim"
+            | "aarch64-linux-android" => ("generic", "", "aarch64"),
+            "x86_64-apple-darwin" | "x86_64-unknown-linux-gnu" | "x86_64-pc-windows-msvc" => {
+                ("x86-64", "", "x86")
+            }
+            "armv7-unknown-linux-gnueabihf" => ("cortex-a7", "+neon,+vfp4", "arm"),
+            "wasm32-unknown-emscripten" => ("generic", "", "webassembly"),
+            other => {
+                return Err(format!(
+                    "unsupported target `{other}`; supported: aarch64-apple-darwin, x86_64-apple-darwin, \
+                     x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf, \
+                     x86_64-pc-windows-msvc, aarch64-apple-ios, aarch64-apple-ios-sim, \
+                     aarch64-linux-android, wasm32-unknown-emscripten"
+                ));
+            }
+        };
+        Ok(Self {
+            triple: triple.to_owned(),
+            cpu: cpu.to_owned(),
+            features: features.to_owned(),
+            backend,
+        })
+    }
+
+    fn llvm_triple(&self) -> String {
+        match self.triple.as_str() {
+            // LLVM spells the simulator/Android variants differently.
+            "aarch64-apple-ios-sim" => "arm64-apple-ios14.0-simulator".to_owned(),
+            "aarch64-apple-ios" => "arm64-apple-ios14.0".to_owned(),
+            "aarch64-linux-android" => "aarch64-linux-android24".to_owned(),
+            t => t.to_owned(),
+        }
+    }
+}
+
 /// A guest entry point: address and ISA state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Entry {
@@ -1865,6 +1923,7 @@ pub fn emit_native_objects(
     out_dir: &Path,
     optimization: Optimization,
     threads: usize,
+    target: &TargetSpec,
 ) -> Result<(Vec<std::path::PathBuf>, NativeEmitResult), String> {
     let mut stats = NativeStats {
         entries_in: entries.len(),
@@ -1896,14 +1955,8 @@ pub fn emit_native_objects(
     if runs.is_empty() {
         return Err("no ROM entry points to compile".to_owned());
     }
-    let target = native_target();
-    let prefix = if target.triple.starts_with("x86_64-") {
-        "x86"
-    } else {
-        "aarch64"
-    };
     // SAFETY: backend initialisation happens once, before worker threads.
-    unsafe { initialize_backend(prefix) }?;
+    unsafe { initialize_backend(target.backend) }?;
 
     // Balance shards by instruction count.
     let threads = threads.clamp(1, 64).min(runs.len());
@@ -1926,7 +1979,7 @@ pub fn emit_native_objects(
             handles.push(scope.spawn(move || {
                 // SAFETY: each thread owns its LLVM context and module.
                 unsafe {
-                    with_module(out, optimization, |e| {
+                    with_module(out, optimization, target, |e| {
                         for run in shard {
                             emit_run(e, run, &run_name(run));
                         }
@@ -1938,7 +1991,7 @@ pub fn emit_native_objects(
         let table = scope.spawn(|| {
             // SAFETY: as above.
             unsafe {
-                with_module(&table_out, optimization, |e| {
+                with_module(&table_out, optimization, target, |e| {
                     build_table(e, rom_sha256, &runs, &guards, embed_rom.then_some(rom))
                 })
             }
@@ -1984,12 +2037,17 @@ fn run_name(run: &Run) -> String {
 unsafe fn with_module(
     output: &Path,
     optimization: Optimization,
+    spec: &TargetSpec,
     build: impl FnOnce(&Emitter) -> Result<(), String>,
 ) -> Result<EmitInfo, String> {
-    let target = native_target();
-    let triple = CString::new(target.triple).expect("static triple");
-    let cpu = CString::new(target.cpu).expect("static cpu");
-    let features = CString::new(target.features).expect("static features");
+    let triple = CString::new(spec.llvm_triple()).expect("triple has no NUL");
+    let cpu = CString::new(spec.cpu.as_str()).expect("cpu has no NUL");
+    let features = CString::new(spec.features.as_str()).expect("features have no NUL");
+    let reloc = if spec.backend == "webassembly" {
+        LLVMRelocMode::LLVMRelocDefault
+    } else {
+        LLVMRelocMode::LLVMRelocPIC
+    };
     let level = match optimization {
         Optimization::O0 => LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
         Optimization::O2 => LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
@@ -2006,7 +2064,7 @@ unsafe fn with_module(
             cpu.as_ptr(),
             features.as_ptr(),
             level,
-            LLVMRelocMode::LLVMRelocPIC,
+            reloc,
             LLVMCodeModel::LLVMCodeModelSmall,
         )
     };
@@ -2041,9 +2099,14 @@ unsafe fn with_module(
     }
     result.map(|()| EmitInfo {
         llvm_version: env!("GBA_LLVM_VERSION"),
-        triple: target.triple,
-        cpu: target.cpu,
-        object_format: target.object_format,
+        triple: Box::leak(spec.triple.clone().into_boxed_str()),
+        cpu: Box::leak(spec.cpu.clone().into_boxed_str()),
+        object_format: match spec.backend {
+            "webassembly" => "WebAssembly",
+            _ if spec.triple.contains("apple") => "Mach-O",
+            _ if spec.triple.contains("windows") => "COFF",
+            _ => "ELF",
+        },
         data_layout,
         optimization,
     })

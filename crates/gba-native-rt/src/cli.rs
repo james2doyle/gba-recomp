@@ -20,6 +20,7 @@ struct Options {
     ppm_every: Option<u64>,
     interpret_only: bool,
     verify: bool,
+    find_divergence: bool,
     hashes: bool,
     headless: bool,
     no_splash: bool,
@@ -65,6 +66,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         ppm_every: None,
         interpret_only: false,
         verify: false,
+        find_divergence: false,
         hashes: false,
         headless: false,
         no_splash: false,
@@ -105,6 +107,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--ppm-every" => o.ppm_every = Some(value()?.parse().map_err(|_| "bad --ppm-every")?),
             "--interpret-only" => o.interpret_only = true,
             "--verify-interpreter" => o.verify = true,
+            "--find-divergence" => o.find_divergence = true,
             "--hashes" => o.hashes = true,
             "--help" | "-h" => return Err(USAGE.to_owned()),
             _ => return Err(format!("unknown argument `{flag}`\n{USAGE}")),
@@ -173,6 +176,9 @@ pub fn run(
     let mut gba = make();
     let mut reference = if o.verify { Some(make()) } else { None };
     let mut program = NativeProgram::new(entries, guards);
+    if o.find_divergence {
+        return find_divergence(&mut gba, &mut program, &o);
+    }
     let started = Instant::now();
     let mut fault = None;
     let mut divergence = None;
@@ -342,5 +348,92 @@ fn run_window(
         r.guest_cycles,
         r.frame_hash,
     );
+    Ok(())
+}
+
+/// Debug aid (SPEC-062 NB-62-09): replay every native dispatch on a clone
+/// with the interpreter and stop at the first run whose result differs.
+fn find_divergence(gba: &mut Gba, program: &mut NativeProgram, o: &Options) -> Result<(), String> {
+    // Independent interpreter advanced in lockstep by retired instructions.
+    let mut r = gba.clone();
+    let total = |g: &Gba, p: &NativeProgram| g.instructions + p.counters.retired;
+    let mut last: Option<(u32, bool, u64)> = None;
+    for frame in 0..o.frames {
+        let pressed = o
+            .input
+            .iter()
+            .filter(|(s, l, _)| frame >= *s && frame < s + l)
+            .fold(0, |m, (_, _, k)| m | k);
+        gba.set_keys(pressed);
+        r.set_keys(pressed);
+        gba.bus.frame_ready = false;
+        while !gba.bus.frame_ready {
+            let pc = gba.cpu.pc();
+            let thumb = gba.cpu.thumb();
+            let native_before = program.counters.retired;
+            gba.step_with(Some(&mut *program))
+                .map_err(|f| format!("{f:?}"))?;
+            let native = program.counters.retired - native_before;
+            let target = total(gba, program);
+            while r.instructions < target {
+                r.step().map_err(|f| format!("reference: {f:?}"))?;
+            }
+            // Halted waits retire nothing: let the reference catch up in time.
+            while gba.cpu.halted
+                && !r.cpu.halted
+                && r.instructions == target
+                && r.bus.cycles < gba.bus.cycles
+            {
+                r.step().map_err(|f| format!("reference: {f:?}"))?;
+            }
+            if r.cpu.r != gba.cpu.r || r.cpu.cpsr != gba.cpu.cpsr || r.bus.cycles != gba.bus.cycles
+            {
+                let regs: Vec<String> = (0..16)
+                    .filter(|&i| r.cpu.r[i] != gba.cpu.r[i])
+                    .map(|i| {
+                        format!(
+                            "r{i}: native {:08X} interp {:08X}",
+                            gba.cpu.r[i], r.cpu.r[i]
+                        )
+                    })
+                    .collect();
+                let size = if thumb { 2 } else { 4 };
+                let ops: Vec<String> = (0..native.clamp(1, 16) as u32)
+                    .map(|k| {
+                        let a = pc + k * size;
+                        if thumb {
+                            format!("{a:08X}:{:04X}", r.bus.peek16(a))
+                        } else {
+                            format!("{a:08X}:{:08X}", r.bus.peek32(a))
+                        }
+                    })
+                    .collect();
+                println!(
+                    "divergence at frame {frame} after step at 0x{pc:08X} ({}), {native} native instructions (previous native run: {:?})\n  cycles native {} interp {} (delta {})\n  cpsr native {:08X} interp {:08X}  next_seq native {} interp {}\n  {}\n  ops: {}",
+                    if thumb { "thumb" } else { "arm" },
+                    last.map(|(p, t, n)| format!(
+                        "0x{p:08X} {} x{n}",
+                        if t { "thumb" } else { "arm" }
+                    )),
+                    gba.bus.cycles,
+                    r.bus.cycles,
+                    gba.bus.cycles as i64 - r.bus.cycles as i64,
+                    gba.cpu.cpsr,
+                    r.cpu.cpsr,
+                    gba.cpu.next_seq(),
+                    r.cpu.next_seq(),
+                    regs.join(", "),
+                    ops.join(" ")
+                );
+                return Err("divergence found".into());
+            }
+            if native > 0 {
+                last = Some((pc, thumb, native));
+            }
+        }
+        gba.take_audio();
+        r.take_audio();
+    }
+    println!("no divergence in {} frames", o.frames);
     Ok(())
 }

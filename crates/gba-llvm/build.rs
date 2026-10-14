@@ -10,6 +10,8 @@ const LINK_COMPONENTS: &[&str] = &[
     "target",
     "x86codegen",
     "aarch64codegen",
+    "armcodegen",
+    "webassemblycodegen",
 ];
 
 fn main() {

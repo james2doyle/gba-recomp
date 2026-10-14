@@ -188,6 +188,7 @@ impl Fifo {
     }
 }
 
+#[derive(Clone)]
 pub struct Apu {
     regs: [u8; 0x50],
     wave_ram: [[u8; 16]; 2],

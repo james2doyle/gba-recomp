@@ -18,6 +18,7 @@ struct ObjPixel {
     semi: bool,
 }
 
+#[derive(Clone)]
 pub struct Ppu {
     pub palette: Box<[u8]>,
     pub vram: Box<[u8]>,

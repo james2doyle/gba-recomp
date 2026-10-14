@@ -4376,6 +4376,18 @@ unsafe fn initialize_backend(target: &str) -> Result<(), String> {
             LLVMInitializeAArch64TargetMC();
             LLVMInitializeAArch64AsmPrinter();
         },
+        "arm" => unsafe {
+            LLVMInitializeARMTargetInfo();
+            LLVMInitializeARMTarget();
+            LLVMInitializeARMTargetMC();
+            LLVMInitializeARMAsmPrinter();
+        },
+        "webassembly" => unsafe {
+            LLVMInitializeWebAssemblyTargetInfo();
+            LLVMInitializeWebAssemblyTarget();
+            LLVMInitializeWebAssemblyTargetMC();
+            LLVMInitializeWebAssemblyAsmPrinter();
+        },
         _ => return Err(format!("unsupported LLVM backend {target}")),
     }
     Ok(())

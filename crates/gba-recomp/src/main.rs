@@ -14,6 +14,7 @@ use gba_runtime_abi::{
 mod compat;
 mod decoder;
 mod discover;
+mod platform;
 mod rom;
 
 fn main() -> ExitCode {
@@ -103,6 +104,9 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
         follow_direct_branches: true,
         ram_code: true,
         embed_rom: false,
+        target: gba_llvm::native::TargetSpec::host(),
+        runtime_lib: None,
+        sdl_dir: None,
     };
     while let Some(flag) = args.next() {
         match flag.as_str() {
@@ -125,6 +129,14 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
             "--no-static-branches" => profile.follow_direct_branches = false,
             "--no-ram-code" => profile.ram_code = false,
             "--embed-rom" => profile.embed_rom = true,
+            "--target" => {
+                profile.target =
+                    gba_llvm::native::TargetSpec::for_triple(&args.next().ok_or_else(usage)?)?
+            }
+            "--runtime-lib" => {
+                profile.runtime_lib = Some(PathBuf::from(args.next().ok_or_else(usage)?))
+            }
+            "--sdl-dir" => profile.sdl_dir = Some(PathBuf::from(args.next().ok_or_else(usage)?)),
             "--steps" => {
                 steps = args
                     .next()
@@ -541,7 +553,7 @@ fn print_emit_info(info: &gba_llvm::EmitInfo) {
 fn usage() -> String {
     let target = native_target();
     format!(
-        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--mode strict-aot|aot-compatible] [--steps N]\n       [--profile-frames N] [--profile-input FRAME:LEN:KEYS]... [--no-static-branches] [--no-ram-code] [--embed-rom]  (aot-compatible)\n  gba-recomp bundle --rom <path.gba> --out <package-dir> [--opt O0|O2] [--profile-frames N] [--profile-input ...]  (ROM embedded)\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
+        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--mode strict-aot|aot-compatible] [--steps N]\n       [--profile-frames N] [--profile-input FRAME:LEN:KEYS]... [--no-static-branches] [--no-ram-code] [--embed-rom]\n       [--target TRIPLE] [--runtime-lib FILE] [--sdl-dir DIR]  (aot-compatible)\n  gba-recomp bundle --rom <path.gba> --out <package-dir> [--opt O0|O2] [--profile-frames N] [--profile-input ...]  (ROM embedded)\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
         target.triple
     )
 }

@@ -26,6 +26,7 @@ pub struct GbaConfig<'a> {
     pub save: Option<&'a [u8]>,
 }
 
+#[derive(Clone)]
 pub struct Gba {
     pub cpu: Cpu,
     pub bus: Bus,
@@ -100,6 +101,11 @@ impl Gba {
             if self.bus.dma_pending() {
                 self.bus.run_dmas();
             }
+        }
+        // End frames exactly at the VBlank boundary for both the interpreter
+        // and native runs, so per-frame comparisons line up (NB-62-09).
+        if std::mem::take(&mut self.bus.frame_boundary) {
+            return Ok(());
         }
         if self.cpu.halted {
             if self.bus.wake_condition() {
