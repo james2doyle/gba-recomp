@@ -1,0 +1,686 @@
+binary_sha256=41a42a1ee8ce9d1f340dd56e1c0de147937f4a3b7a29012c1a951c043175d1e8
+harness_sha256=e9987f2913713db59dbe79292a10041b3e2976b1bf3e9855a406c37c84ec1366
+gate_sha256=9be9bc917af82fc5058d01afa4314d735cf8f7279668b8c1c60c8f0918b1ca99
+
+ROUND=1 jobs=1 link_threads=10 exit=0 process_wall_seconds=5.913
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even.gba (256 bytes, mode=thumb-strb-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O0
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O2
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O0
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O2
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd.gba (256 bytes, mode=thumb-strb-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O0
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O2
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strb-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O0
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O2
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-even-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O0
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O2
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80.gba (256 bytes, mode=thumb-ldrb-ewram-zero-even-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O0
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O2
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-odd-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O0
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O2
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f.gba (256 bytes, mode=thumb-ldrb-iwram-zero-odd-7f)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O0
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O2
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero.gba (256 bytes, mode=thumb-ldrb-iwram-thirtyone-even-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O0
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O2
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-alias-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O0
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O2
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-byte-load-store jobs=1 link_threads=10 wall_ms=5887.3
+
+ROUND=2 jobs=10 link_threads=1 exit=0 process_wall_seconds=2.141
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even.gba (256 bytes, mode=thumb-strb-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O0
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O2
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O0
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O2
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd.gba (256 bytes, mode=thumb-strb-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O0
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O2
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strb-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O0
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O2
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-even-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O0
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O2
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80.gba (256 bytes, mode=thumb-ldrb-ewram-zero-even-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O0
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O2
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-odd-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O0
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O2
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f.gba (256 bytes, mode=thumb-ldrb-iwram-zero-odd-7f)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O0
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O2
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero.gba (256 bytes, mode=thumb-ldrb-iwram-thirtyone-even-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O0
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O2
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-alias-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O0
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O2
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-byte-load-store jobs=10 link_threads=1 wall_ms=2119.8
+
+ROUND=3 jobs=1 link_threads=10 exit=0 process_wall_seconds=5.528
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even.gba (256 bytes, mode=thumb-strb-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O0
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O2
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O0
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O2
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd.gba (256 bytes, mode=thumb-strb-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O0
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O2
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strb-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O0
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O2
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-even-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O0
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O2
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80.gba (256 bytes, mode=thumb-ldrb-ewram-zero-even-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O0
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O2
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-odd-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O0
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O2
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f.gba (256 bytes, mode=thumb-ldrb-iwram-zero-odd-7f)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O0
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O2
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero.gba (256 bytes, mode=thumb-ldrb-iwram-thirtyone-even-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O0
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O2
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-alias-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O0
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O2
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-byte-load-store jobs=1 link_threads=10 wall_ms=5506.7
+
+ROUND=4 jobs=10 link_threads=1 exit=0 process_wall_seconds=2.135
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even.gba (256 bytes, mode=thumb-strb-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O0
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O2
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O0
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O2
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd.gba (256 bytes, mode=thumb-strb-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O0
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O2
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strb-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O0
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O2
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-even-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O0
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O2
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80.gba (256 bytes, mode=thumb-ldrb-ewram-zero-even-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O0
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O2
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-odd-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O0
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O2
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f.gba (256 bytes, mode=thumb-ldrb-iwram-zero-odd-7f)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O0
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O2
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero.gba (256 bytes, mode=thumb-ldrb-iwram-thirtyone-even-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O0
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O2
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-alias-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O0
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O2
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-byte-load-store jobs=10 link_threads=1 wall_ms=2114.6
+
+ROUND=5 jobs=1 link_threads=10 exit=0 process_wall_seconds=5.506
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even.gba (256 bytes, mode=thumb-strb-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O0
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O2
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O0
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O2
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd.gba (256 bytes, mode=thumb-strb-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O0
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O2
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strb-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O0
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O2
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-even-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O0
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O2
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80.gba (256 bytes, mode=thumb-ldrb-ewram-zero-even-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O0
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O2
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-odd-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O0
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O2
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f.gba (256 bytes, mode=thumb-ldrb-iwram-zero-odd-7f)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O0
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O2
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero.gba (256 bytes, mode=thumb-ldrb-iwram-thirtyone-even-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O0
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O2
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-alias-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O0
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O2
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-byte-load-store jobs=1 link_threads=10 wall_ms=5485.8
+
+ROUND=6 jobs=10 link_threads=1 exit=0 process_wall_seconds=2.106
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even.gba (256 bytes, mode=thumb-strb-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O0
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O2
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O0
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O2
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd.gba (256 bytes, mode=thumb-strb-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O0
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O2
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strb-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O0
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O2
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-even-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O0
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O2
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80.gba (256 bytes, mode=thumb-ldrb-ewram-zero-even-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O0
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O2
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-odd-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O0
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O2
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f.gba (256 bytes, mode=thumb-ldrb-iwram-zero-odd-7f)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O0
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O2
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero.gba (256 bytes, mode=thumb-ldrb-iwram-thirtyone-even-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O0
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O2
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-alias-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O0
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O2
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-byte-load-store jobs=10 link_threads=1 wall_ms=2085.0
+
+serial_group_ms=[5887.3, 5506.7, 5485.8]
+parallel_group_ms=[2119.8, 2114.6, 2085.0]
+serial_median_ms=5506.7
+parallel_median_ms=2114.6

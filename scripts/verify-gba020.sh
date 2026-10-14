@@ -5,10 +5,6 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
 : "${LLVM_SYS_231_PREFIX:?set LLVM_SYS_231_PREFIX to the LLVM 23.1.3 installation}"
-if [ "$("$LLVM_SYS_231_PREFIX/bin/llvm-config" --version)" != "23.1.3" ]; then
-    echo "LLVM 23.1.3 is required" >&2
-    exit 2
-fi
 os=$(uname -s)
 arch=$(uname -m)
 case "$os/$arch" in
@@ -23,47 +19,104 @@ case "$os/$arch" in
         exit 2
         ;;
 esac
-gba020_jobs=${GBA020_JOBS:-10}
-case "$gba020_jobs" in
-    1)
-        gba020_link_threads=${GBA020_LINK_THREADS:-10}
-        ;;
-    2)
-        gba020_link_threads=${GBA020_LINK_THREADS:-4}
-        ;;
-    4)
-        gba020_link_threads=${GBA020_LINK_THREADS:-2}
-        ;;
-    5)
-        gba020_link_threads=${GBA020_LINK_THREADS:-2}
-        ;;
-    7)
-        gba020_link_threads=${GBA020_LINK_THREADS:-1}
-        ;;
-    8)
-        gba020_link_threads=${GBA020_LINK_THREADS:-1}
-        ;;
-    9|10)
-        gba020_link_threads=${GBA020_LINK_THREADS:-1}
-        ;;
-    *)
-        echo "GBA020_JOBS must be 1, 2, 4, 5, 7, 8, 9, or 10" >&2
-        exit 2
-        ;;
-esac
-case "$gba020_link_threads" in
-    1|2|3|4|5|6|7|8|9|10) ;;
-    *)
-        echo "GBA020_LINK_THREADS must be an integer from 1 to 10" >&2
-        exit 2
-        ;;
-esac
-if [ "$((gba020_jobs * gba020_link_threads))" -gt 10 ]; then
-    echo "GBA020_JOBS times GBA020_LINK_THREADS cannot exceed 10" >&2
+. "$root/scripts/gba020-cpu-budget.sh"
+gba020_detect_cpu_budget "$os" "$arch"
+if ! gba020_choose_effective_budget; then
     exit 2
 fi
 
-cargo build --locked -p gba-recomp
+if [ "${GBA020_JOBS+x}" = x ]; then
+    case "$GBA020_JOBS" in
+        1|2|4|5|7|8|9|10) gba020_jobs=$GBA020_JOBS ;;
+        *)
+            echo "GBA020_JOBS must be 1, 2, 4, 5, 7, 8, 9, or 10" >&2
+            exit 2
+            ;;
+    esac
+else
+    case "$GBA020_EFFECTIVE_BUDGET" in
+        1) gba020_jobs=1 ;;
+        2|3) gba020_jobs=2 ;;
+        4) gba020_jobs=4 ;;
+        5|6) gba020_jobs=5 ;;
+        7|8|9|10) gba020_jobs=$GBA020_EFFECTIVE_BUDGET ;;
+        *)
+            echo "invalid effective CPU budget" >&2
+            exit 2
+            ;;
+    esac
+fi
+if [ "$gba020_jobs" -gt "$GBA020_EFFECTIVE_BUDGET" ]; then
+    echo "GBA020_JOBS cannot exceed the effective CPU budget ($GBA020_EFFECTIVE_BUDGET)" >&2
+    exit 2
+fi
+
+case "$gba020_jobs" in
+    1) gba020_default_link_threads=10 ;;
+    2) gba020_default_link_threads=4 ;;
+    4|5) gba020_default_link_threads=2 ;;
+    7|8|9|10) gba020_default_link_threads=1 ;;
+esac
+gba020_product_link_limit=$((GBA020_EFFECTIVE_BUDGET / gba020_jobs))
+if [ "$gba020_default_link_threads" -gt "$gba020_product_link_limit" ]; then
+    gba020_default_link_threads=$gba020_product_link_limit
+fi
+if [ "${GBA020_LINK_THREADS+x}" = x ]; then
+    if ! gba020_normalize_budget_value "$GBA020_LINK_THREADS"; then
+        echo "GBA020_LINK_THREADS must be a decimal integer from 1 to 10" >&2
+        exit 2
+    fi
+    gba020_link_threads=$GBA020_NORMALIZED_VALUE
+else
+    gba020_link_threads=$gba020_default_link_threads
+fi
+if [ "$gba020_link_threads" -gt "$GBA020_EFFECTIVE_BUDGET" ]; then
+    echo "GBA020_LINK_THREADS cannot exceed the effective CPU budget ($GBA020_EFFECTIVE_BUDGET)" >&2
+    exit 2
+fi
+if [ "$((gba020_jobs * gba020_link_threads))" -gt "$GBA020_EFFECTIVE_BUDGET" ]; then
+    echo "GBA020_JOBS times GBA020_LINK_THREADS cannot exceed the effective CPU budget ($GBA020_EFFECTIVE_BUDGET)" >&2
+    exit 2
+fi
+
+if [ "${GBA020_SERIAL_LINK_THREADS+x}" = x ]; then
+    if ! gba020_normalize_budget_value "$GBA020_SERIAL_LINK_THREADS"; then
+        echo "GBA020_SERIAL_LINK_THREADS must be a decimal integer from 1 to 10" >&2
+        exit 2
+    fi
+    gba020_serial_link_threads=$GBA020_NORMALIZED_VALUE
+else
+    gba020_serial_link_threads=$GBA020_EFFECTIVE_BUDGET
+fi
+if [ "$gba020_serial_link_threads" -gt "$GBA020_EFFECTIVE_BUDGET" ]; then
+    echo "GBA020_SERIAL_LINK_THREADS cannot exceed the effective CPU budget ($GBA020_EFFECTIVE_BUDGET)" >&2
+    exit 2
+fi
+
+gba020_group_slots=$((gba020_jobs * gba020_link_threads))
+gba020_cargo_link_threads=$GBA020_EFFECTIVE_BUDGET
+gba020_max_phase_slots=$GBA020_EFFECTIVE_BUDGET
+if [ "$gba020_group_slots" -gt "$gba020_max_phase_slots" ]; then
+    gba020_max_phase_slots=$gba020_group_slots
+fi
+if [ "$gba020_serial_link_threads" -gt "$gba020_max_phase_slots" ]; then
+    gba020_max_phase_slots=$gba020_serial_link_threads
+fi
+printf 'GBA020_CPU_BUDGET os=%s arch=%s detector=%s detected_cpus=%s automatic_budget=%s budget_override=%s effective_budget=%s cargo_jobs=%s cargo_link_threads=%s fixture_workers=%s group_link_threads=%s serial_link_threads=%s max_phase_slots=%s fallback=%s\n' \
+    "$os" "$arch" "$GBA020_CPU_DETECTOR" "$GBA020_DETECTED_CPUS" \
+    "$GBA020_AUTOMATIC_BUDGET" "$GBA020_BUDGET_OVERRIDE" \
+    "$GBA020_EFFECTIVE_BUDGET" "$GBA020_EFFECTIVE_BUDGET" \
+    "$gba020_cargo_link_threads" "$gba020_jobs" "$gba020_link_threads" "$gba020_serial_link_threads" \
+    "$gba020_max_phase_slots" "$GBA020_CPU_FALLBACK"
+
+if [ "$("$LLVM_SYS_231_PREFIX/bin/llvm-config" --version)" != "23.1.3" ]; then
+    echo "LLVM 23.1.3 is required" >&2
+    exit 2
+fi
+export GBA_RECOMP_LINK_THREADS=$gba020_serial_link_threads
+export GBA_RECOMP_CARGO_LINK_THREADS=$gba020_cargo_link_threads
+
+cargo build --locked --jobs "$GBA020_EFFECTIVE_BUDGET" -p gba-recomp --bin gba-recomp
 recomp_bin="$root/target/debug/gba-recomp"
 if [ ! -x "$recomp_bin" ]; then
     echo "built gba-recomp binary is missing: $recomp_bin" >&2
@@ -710,7 +763,7 @@ verify_thumb_strb() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        "$recomp_bin" compile \
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
             --rom "$rom" --out "$package" --opt "$optimization" --steps 12
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -734,17 +787,6 @@ PY
     done
 }
 
-verify_thumb_strb thumb-strb-ewram-zero-even \
-    '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":33554432,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201949,"iwram_word0":0}'
-verify_thumb_strb thumb-strb-ewram-thirtyone-odd \
-    '{"status":"budget_exhausted","steps":12,"r0":305419896,"r1":33554402,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144223761,"iwram_word0":0}'
-verify_thumb_strb thumb-strb-iwram-zero-odd \
-    '{"status":"budget_exhausted","steps":12,"r0":52719,"r1":50331649,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":1144254225}'
-verify_thumb_strb thumb-strb-iwram-thirtyone-even \
-    '{"status":"budget_exhausted","steps":12,"r0":190,"r1":50331617,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":1144201918}'
-verify_thumb_strb thumb-strb-ewram-thirtyone-even-alias \
-    '{"status":"budget_exhausted","steps":12,"r0":0,"r1":33554401,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201953,"iwram_word0":0}'
-
 verify_thumb_ldrb() {
     mode=$1
     expected=$2
@@ -753,7 +795,7 @@ verify_thumb_ldrb() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        "$recomp_bin" compile \
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
             --rom "$rom" --out "$package" --opt "$optimization" --steps 12
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -777,16 +819,83 @@ PY
     done
 }
 
-verify_thumb_ldrb thumb-ldrb-ewram-zero-even-80 \
+thumb_byte_active_pids=
+thumb_byte_active_modes=
+thumb_byte_active_count=0
+wait_thumb_byte_batch() {
+    failed=0
+    for pid in $thumb_byte_active_pids; do
+        if ! wait "$pid"; then
+            failed=1
+        fi
+    done
+    if [ "$failed" -ne 0 ]; then
+        for mode in $thumb_byte_active_modes; do
+            cat "$root/target/gba020/$mode-byte-worker.log" >&2
+        done
+        return 1
+    fi
+    for mode in $thumb_byte_active_modes; do
+        cat "$root/target/gba020/$mode-byte-worker.log"
+        rm -f "$root/target/gba020/$mode-byte-worker.log"
+    done
+    thumb_byte_active_pids=
+    thumb_byte_active_modes=
+    thumb_byte_active_count=0
+}
+schedule_thumb_byte_case() {
+    mode=$1
+    kind=$2
+    expected=$3
+    if [ "$gba020_jobs" -eq 1 ]; then
+        case "$kind" in
+            STRB) verify_thumb_strb "$mode" "$expected" ;;
+            LDRB) verify_thumb_ldrb "$mode" "$expected" ;;
+        esac
+        return
+    fi
+    log="$root/target/gba020/$mode-byte-worker.log"
+    rm -f "$log"
+    (
+        case "$kind" in
+            STRB) verify_thumb_strb "$mode" "$expected" ;;
+            LDRB) verify_thumb_ldrb "$mode" "$expected" ;;
+        esac
+    ) >"$log" 2>&1 &
+    thumb_byte_active_pids="$thumb_byte_active_pids $!"
+    thumb_byte_active_modes="$thumb_byte_active_modes $mode"
+    thumb_byte_active_count=$((thumb_byte_active_count + 1))
+    if [ "$thumb_byte_active_count" -ge "$gba020_jobs" ]; then
+        wait_thumb_byte_batch
+    fi
+}
+
+begin_group_timing thumb-byte-load-store
+schedule_thumb_byte_case thumb-strb-ewram-zero-even STRB \
+    '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":33554432,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201949,"iwram_word0":0}'
+schedule_thumb_byte_case thumb-strb-ewram-thirtyone-odd STRB \
+    '{"status":"budget_exhausted","steps":12,"r0":305419896,"r1":33554402,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144223761,"iwram_word0":0}'
+schedule_thumb_byte_case thumb-strb-iwram-zero-odd STRB \
+    '{"status":"budget_exhausted","steps":12,"r0":52719,"r1":50331649,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":1144254225}'
+schedule_thumb_byte_case thumb-strb-iwram-thirtyone-even STRB \
+    '{"status":"budget_exhausted","steps":12,"r0":190,"r1":50331617,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":1144201918}'
+schedule_thumb_byte_case thumb-strb-ewram-thirtyone-even-alias STRB \
+    '{"status":"budget_exhausted","steps":12,"r0":0,"r1":33554401,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201953,"iwram_word0":0}'
+
+schedule_thumb_byte_case thumb-ldrb-ewram-zero-even-80 LDRB \
     '{"status":"budget_exhausted","steps":12,"r0":128,"r1":33554434,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":4286611200,"iwram_word0":0}'
-verify_thumb_ldrb thumb-ldrb-ewram-thirtyone-odd-ff \
+schedule_thumb_byte_case thumb-ldrb-ewram-thirtyone-odd-ff LDRB \
     '{"status":"budget_exhausted","steps":12,"r0":255,"r1":33554404,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":4286611200,"iwram_word0":0}'
-verify_thumb_ldrb thumb-ldrb-iwram-zero-odd-7f \
+schedule_thumb_byte_case thumb-ldrb-iwram-zero-odd-7f LDRB \
     '{"status":"budget_exhausted","steps":12,"r0":127,"r1":50331649,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":4286611200}'
-verify_thumb_ldrb thumb-ldrb-iwram-thirtyone-even-zero \
+schedule_thumb_byte_case thumb-ldrb-iwram-thirtyone-even-zero LDRB \
     '{"status":"budget_exhausted","steps":12,"r0":0,"r1":50331617,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":4286611200}'
-verify_thumb_ldrb thumb-ldrb-ewram-thirtyone-alias-80 \
+schedule_thumb_byte_case thumb-ldrb-ewram-thirtyone-alias-80 LDRB \
     '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":128,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":4286611200,"iwram_word0":0}'
+if [ "$thumb_byte_active_count" -gt 0 ]; then
+    wait_thumb_byte_batch
+fi
+end_group_timing
 
 verify_thumb_ldrword() {
     mode=$1
@@ -1660,7 +1769,7 @@ if [ -e "$thumb_format3_bad_package" ]; then
     exit 1
 fi
 
-scripts/verify-gba020-lsl.sh "$gba020_jobs" "$gba020_link_threads"
+scripts/verify-gba020-lsl.sh "$gba020_jobs" "$gba020_link_threads" "$GBA020_EFFECTIVE_BUDGET"
 
 for mode in thumb-lsr-register-unsupported thumb-asr-unsupported thumb-lsl-register-unsupported; do
     thumb_shift_rom="$root/target/gba020/$mode.gba"

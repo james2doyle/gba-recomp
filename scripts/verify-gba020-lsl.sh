@@ -4,12 +4,36 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
-if [ "$#" -ne 2 ]; then
-    echo "usage: verify-gba020-lsl.sh <jobs: 1|2|4|5|7|8|9|10> <lld-threads: 1..10>" >&2
+if [ "$#" -ne 3 ]; then
+    echo "usage: verify-gba020-lsl.sh <jobs: 1|2|4|5|7|8|9|10> <lld-threads: 1..10> <effective-cpu-budget: 1..10>" >&2
     exit 2
 fi
 gba020_jobs=$1
 gba020_link_threads=$2
+gba020_passed_budget=$3
+os=$(uname -s)
+arch=$(uname -m)
+case "$os/$arch" in
+    Darwin/arm64|Linux/x86_64) ;;
+    *)
+        echo "unsupported GBA-020 host: $os/$arch" >&2
+        exit 2
+        ;;
+esac
+. "$root/scripts/gba020-cpu-budget.sh"
+gba020_detect_cpu_budget "$os" "$arch"
+if ! gba020_choose_effective_budget; then
+    exit 2
+fi
+if ! gba020_normalize_budget_value "$gba020_passed_budget"; then
+    echo "effective CPU budget must be an integer from 1 to 10" >&2
+    exit 2
+fi
+gba020_passed_budget=$GBA020_NORMALIZED_VALUE
+if [ "$gba020_passed_budget" -ne "$GBA020_EFFECTIVE_BUDGET" ]; then
+    echo "helper CPU budget must match the detected and configured effective budget ($GBA020_EFFECTIVE_BUDGET)" >&2
+    exit 2
+fi
 case "$gba020_jobs" in
     1|2|4|5|7|8|9|10) ;;
     *)
@@ -17,15 +41,15 @@ case "$gba020_jobs" in
         exit 2
         ;;
 esac
-case "$gba020_link_threads" in
-    1|2|3|4|5|6|7|8|9|10) ;;
-    *)
-        echo "GBA020_LINK_THREADS must be an integer from 1 to 10" >&2
-        exit 2
-        ;;
-esac
-if [ "$((gba020_jobs * gba020_link_threads))" -gt 10 ]; then
-    echo "GBA020_JOBS times GBA020_LINK_THREADS cannot exceed 10" >&2
+if ! gba020_normalize_budget_value "$gba020_link_threads"; then
+    echo "GBA020_LINK_THREADS must be an integer from 1 to 10" >&2
+    exit 2
+fi
+gba020_link_threads=$GBA020_NORMALIZED_VALUE
+if [ "$gba020_jobs" -gt "$GBA020_EFFECTIVE_BUDGET" ] || \
+    [ "$gba020_link_threads" -gt "$GBA020_EFFECTIVE_BUDGET" ] || \
+    [ "$((gba020_jobs * gba020_link_threads))" -gt "$GBA020_EFFECTIVE_BUDGET" ]; then
+    echo "GBA020_JOBS and GBA020_LINK_THREADS must fit the effective CPU budget ($GBA020_EFFECTIVE_BUDGET)" >&2
     exit 2
 fi
 

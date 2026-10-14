@@ -47,3 +47,5 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-043 — Paralelismo limitado de fixtures independentes do GBA-020](SPEC-043-bounded-fixture-parallelism.md)
 - [SPEC-044 — Thumb STRH para IME em AOT estrito](SPEC-044-thumb-ime-store.md)
 - [SPEC-045 — Loads e stores Thumb halfword para latches IE/IF/IME](SPEC-045-thumb-ie-ime-latches.md)
+- [SPEC-046 — Estado inicial do runner strict-AOT e seed de discovery](SPEC-046-strict-aot-entry-state.md)
+- [SPEC-047 — Orçamento de CPUs lógicas para o gate GBA-020](SPEC-047-logical-cpu-budget.md)

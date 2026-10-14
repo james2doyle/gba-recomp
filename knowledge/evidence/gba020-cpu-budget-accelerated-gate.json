@@ -1,0 +1,148 @@
+{
+  "record_type": "gba020-cpu-budget-and-fixture-throughput-evidence",
+  "date": "2026-10-14",
+  "repository_commit_before_changes": "298b2967e2a9fec9870f0fe5da4d5f97305450f0",
+  "evidence_class": "scripted gate execution, simulated host detector inputs, and repeated synthetic fixture timing; no commercial ROM execution",
+  "host": {
+    "os": "Darwin",
+    "arch": "arm64",
+    "logical_cpus": 10,
+    "detector": "sysctl -n hw.logicalcpu",
+    "rust_toolchain": "1.99.0-aarch64-apple-darwin",
+    "llvm": "23.1.3",
+    "target": "aarch64-apple-darwin"
+  },
+  "effective_configuration": {
+    "cpu_budget": 10,
+    "cargo_jobs": 10,
+    "cargo_binary_link_threads": 10,
+    "fixture_workers": 10,
+    "fixture_link_threads": 1,
+    "serial_link_threads": 10,
+    "max_phase_slots": 10,
+    "fallback": false,
+    "phases_overlap": false
+  },
+  "commands": {
+    "parallel_full_gate": "PATH=/Users/celsoinacio/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:$PATH LLVM_SYS_231_PREFIX=<repo>/target/toolchains/LLVM-23.1.3-macOS-ARM64 /usr/bin/time -lp scripts/verify-gba020.sh 2>&1 | tee knowledge/evidence/gba020-cpu-budget-accelerated-gate.log",
+    "serial_equivalence_gate": "PATH=/Users/celsoinacio/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:$PATH LLVM_SYS_231_PREFIX=<repo>/target/toolchains/LLVM-23.1.3-macOS-ARM64 GBA020_JOBS=1 /usr/bin/time -lp scripts/verify-gba020.sh 2>&1 | tee knowledge/evidence/gba020-cpu-budget-serial-equivalence.log",
+    "byte_fixture_benchmark": "Three alternating pairs of knowledge/evidence/gba020-thumb-byte-benchmark-harness.sh 1 10 and knowledge/evidence/gba020-thumb-byte-benchmark-harness.sh 10 1, same built binary; each run checked all ten STRB/LDRB fixtures in O0/O2 and their manifests.",
+    "invalid_jobs_preflight": "GBA020_CPU_BUDGET=4 GBA020_JOBS=5 scripts/verify-gba020.sh",
+    "helper_budget_mismatch_preflight": "scripts/verify-gba020-lsl.sh 10 1 1",
+    "syntax_and_format": "sh -n scripts/verify-gba020.sh; sh -n scripts/verify-gba020-lsl.sh; sh -n scripts/gba020-cpu-budget.sh; rustfmt --check crates/gba-recomp/build.rs; git diff --check"
+  },
+  "parallel_full_gate": {
+    "exit_code": 0,
+    "wall_seconds": 44.55,
+    "user_seconds": 31.31,
+    "system_seconds": 13.47,
+    "maximum_resident_set_bytes_reported_by_time": 41828352,
+    "rss_scope": "time -lp reports the invoking process; this is not the sum of simultaneous workers",
+    "swaps": 0,
+    "result": "GBA-020 headless AOT fixture passed on Darwin/arm64",
+    "group_wall_ms": {
+      "thumb-byte-load-store": 2109.1,
+      "thumb-ldrword": 1890.2,
+      "thumb-ldrh": 1729.2,
+      "thumb-format3": 2099.9,
+      "thumb-lsl-lsr": 2841.4,
+      "thumb-addsub": 1700.9
+    },
+    "log": "gba020-cpu-budget-accelerated-gate.log",
+    "log_sha256": "35320a78d041080760ce380c7aed6f09a73a2c2ead15de30ea50701b0c64e74b"
+  },
+  "serial_equivalence_gate": {
+    "exit_code": 0,
+    "settings": "Cargo jobs 10; fixture workers 1; fixture LLD 10",
+    "wall_seconds": 82.61,
+    "user_seconds": 28.18,
+    "system_seconds": 12.76,
+    "maximum_resident_set_bytes_reported_by_time": 41074688,
+    "rss_scope": "time -lp reports the invoking process; this is not the sum of simultaneous workers",
+    "swaps": 0,
+    "result": "GBA-020 headless AOT fixture passed on Darwin/arm64; O0/O2 states, manifests, and rejection assertions passed",
+    "group_wall_ms": {
+      "thumb-byte-load-store": 7088.5,
+      "thumb-ldrword": 6353.4,
+      "thumb-ldrh": 5714.4,
+      "thumb-format3": 7194.4,
+      "thumb-lsl-lsr": 9182.4,
+      "thumb-addsub": 5748.3
+    },
+    "log": "gba020-cpu-budget-serial-equivalence.log",
+    "log_sha256": "407dcceb667b423cc1659e5caafc6fe8dfabca9a6bafc2e07ac28be503418bf7"
+  },
+  "thumb_byte_fixture_benchmark": {
+    "round_order": [
+      "serial 1x10",
+      "parallel 10x1",
+      "serial 1x10",
+      "parallel 10x1",
+      "serial 1x10",
+      "parallel 10x1"
+    ],
+    "same_binary_sha256": "41a42a1ee8ce9d1f340dd56e1c0de147937f4a3b7a29012c1a951c043175d1e8",
+    "gate_source_sha256": "9be9bc917af82fc5058d01afa4314d735cf8f7279668b8c1c60c8f0918b1ca99",
+    "harness_sha256": "e9987f2913713db59dbe79292a10041b3e2976b1bf3e9855a406c37c84ec1366",
+    "serial_group_wall_ms": [
+      5887.3,
+      5506.7,
+      5485.8
+    ],
+    "parallel_group_wall_ms": [
+      2119.8,
+      2114.6,
+      2085.0
+    ],
+    "serial_median_ms": 5506.7,
+    "parallel_median_ms": 2114.6,
+    "median_wall_reduction_percent": 61.6,
+    "median_speedup": 2.60,
+    "measured_work": "ROM generation, strict-AOT O0/O2 compilation, execution, and manifest assertions for ten independent synthetic fixtures",
+    "log": "gba020-thumb-byte-benchmark-20261014.log",
+    "log_sha256": "c318d4d3af3396384fa9b7220e7af1e3217544ab265d5bfef9add1035c06499f",
+    "harness": "gba020-thumb-byte-benchmark-harness.sh"
+  },
+  "detector_and_override_matrix": {
+    "simulated_results": [
+      { "os_arch": "Darwin/arm64", "detector_value": "1", "automatic_budget": 1 },
+      { "os_arch": "Darwin/arm64", "detector_value": "2", "automatic_budget": 2 },
+      { "os_arch": "Darwin/arm64", "detector_value": "4", "automatic_budget": 4 },
+      { "os_arch": "Darwin/arm64", "detector_value": "8", "automatic_budget": 8 },
+      { "os_arch": "Darwin/arm64", "detector_value": "10", "automatic_budget": 10 },
+      { "os_arch": "Darwin/arm64", "detector_value": "16", "automatic_budget": 10 },
+      { "os_arch": "Linux/x86_64", "detector_value": "8", "automatic_budget": 8 },
+      { "os_arch": "Darwin/arm64", "detector_value": "n/a", "detector": "fallback-one", "automatic_budget": 1 }
+    ],
+    "valid_override": { "host_budget": 10, "input": "0004", "effective_budget": 4 },
+    "rejected_overrides": ["", "0", "-1", "11", "bad"],
+    "early_rejections": [
+      {
+        "command": "GBA020_CPU_BUDGET=4 GBA020_JOBS=5 scripts/verify-gba020.sh",
+        "exit_code": 2,
+        "message": "GBA020_JOBS cannot exceed the effective CPU budget (4)"
+      },
+      {
+        "command": "scripts/verify-gba020-lsl.sh 10 1 1",
+        "exit_code": 2,
+        "message": "helper CPU budget must match the detected and configured effective budget (10)"
+      }
+    ],
+    "linux_note": "Linux detector behavior was simulated; the gate and product were not executed or qualified on Linux."
+  },
+  "implementation_hashes": {
+    "scripts/verify-gba020.sh": "9be9bc917af82fc5058d01afa4314d735cf8f7279668b8c1c60c8f0918b1ca99",
+    "scripts/verify-gba020-lsl.sh": "86d4b531f27e14312a5da091d992fb1ea1f6c616dc23884e3f1de4c1bb186877",
+    "scripts/gba020-cpu-budget.sh": "b471d316739953fdf148f886abd4552948022921c0bbbd82df04af0b0e392fcd",
+    "crates/gba-recomp/build.rs": "bb971fd91504b9eb1a39e8915165c606c4057ef6dc5175ee39e9a72e65eeb795",
+    "specs/SPEC-047-logical-cpu-budget.md": "4fdd5135fc0506618a432227c58289e63d6308861a7fae10757852960815c22c",
+    "adr/ADR-032-parallel-thumb-byte-fixtures.md": "83f0e023b3ac8bf3849519dd875bd890c019fee088e44436fa2e7c8266dd2e19"
+  },
+  "limitations": [
+    "The measured throughput applies only to ten synthetic STRB/LDRB fixtures; it does not predict commercial-ROM compilation speed.",
+    "One full parallel and one full serial gate establish output equivalence but are not a repeated full-suite throughput benchmark.",
+    "The cold build and individual ps samples are not used to claim sustained CPU saturation.",
+    "CFG discovery and LLVM module construction for a single ROM remain serial in this implementation.",
+    "No LeafGreen package was produced and no commercial ROM was executed."
+  ]
+}
