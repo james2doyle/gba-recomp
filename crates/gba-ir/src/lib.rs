@@ -208,6 +208,10 @@ pub enum ThumbOperation {
         rd: u8,
         rs: u8,
     },
+    NegateRegister {
+        rd: u8,
+        rs: u8,
+    },
     BlPrefix {
         lr_partial: u32,
     },
@@ -354,6 +358,7 @@ pub enum VerifyError {
     InvalidThumbLsrRegister(u8),
     InvalidThumbOrrRegister(u8),
     InvalidThumbAndRegister(u8),
+    InvalidThumbNegateRegister(u8),
     InvalidThumbBranchCondition(u8),
     InvalidThumbBranchSuccessorMask(u8),
     InvalidArmBranchSuccessorMask(u8),
@@ -478,6 +483,9 @@ impl fmt::Display for VerifyError {
             }
             Self::InvalidThumbAndRegister(register) => {
                 write!(f, "Thumb AND register r{register} is not a low register")
+            }
+            Self::InvalidThumbNegateRegister(register) => {
+                write!(f, "Thumb NEG register r{register} is not a low register")
             }
             Self::InvalidThumbBranchCondition(condition) => write!(
                 f,
@@ -794,6 +802,21 @@ impl ArmProgram {
                     let encoded_rd = (encoding & 0x7) as u8;
                     let encoded_rs = ((encoding >> 3) & 0x7) as u8;
                     if encoding & 0xFFC0 != 0x4000 || rd != encoded_rd || rs != encoded_rs {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
+                ThumbOperation::NegateRegister { rd, rs } => {
+                    for register in [rd, rs] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbNegateRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    let encoded_rs = ((encoding >> 3) & 0x7) as u8;
+                    if encoding & 0xFFC0 != 0x4240 || rd != encoded_rd || rs != encoded_rs {
                         return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
                             encoding,
                         )));
@@ -1354,6 +1377,15 @@ impl ArmProgram {
                         });
                     }
                 }
+                ThumbOperation::NegateRegister { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
                 ThumbOperation::AddSubtract { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
@@ -1796,6 +1828,17 @@ pub fn execute_thumb_instruction(
             state.cpsr = (state.cpsr & !0xC000_0000)
                 | (result & 0x8000_0000)
                 | (u32::from(result == 0) << 30);
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
+        ThumbOperation::NegateRegister { rd, rs } => {
+            let old_source = state.r[rs as usize];
+            let result = 0_u32.wrapping_sub(old_source);
+            state.r[rd as usize] = result;
+            state.cpsr = (state.cpsr & !0xF000_0000)
+                | (result & 0x8000_0000)
+                | (u32::from(result == 0) << 30)
+                | (u32::from(old_source == 0) << 29)
+                | (u32::from(old_source == 0x8000_0000) << 28);
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
         ThumbOperation::AddSubtract {
@@ -3606,6 +3649,69 @@ mod tests {
     }
 
     #[test]
+    fn thumb_negate_register_sets_nzcv_and_preserves_other_state() {
+        let guest_pc = 0x0800_0100;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4248,
+            operation: ThumbOperation::NegateRegister { rd: 0, rs: 1 },
+        };
+        let cases = [
+            (0, 0, 0x6123_003F),
+            (1, u32::MAX, 0x8123_003F),
+            (0x7FFF_FFFF, 0x8000_0001, 0x8123_003F),
+            (0x8000_0000, 0x8000_0000, 0x9123_003F),
+            (u32::MAX, 1, 0x0123_003F),
+        ];
+        for (source, expected_result, expected_cpsr) in cases {
+            let mut cpu = state(guest_pc);
+            cpu.cpsr = 0xF123_003F;
+            cpu.r[0] = 0xAABB_CCDD;
+            cpu.r[1] = source;
+            cpu.r[2] = 0x5566_7788;
+
+            execute_thumb_instruction(&mut cpu, instruction).unwrap();
+
+            assert_eq!(cpu.r[0], expected_result);
+            assert_eq!(cpu.r[1], source);
+            assert_eq!(cpu.r[2], 0x5566_7788);
+            assert_eq!(cpu.r[15], guest_pc + 2);
+            assert_eq!(cpu.cpsr, expected_cpsr);
+            assert_eq!(cpu.guest_cycle, 6);
+        }
+    }
+
+    #[test]
+    fn thumb_negate_register_alias_uses_old_source_and_requires_thumb_mode() {
+        let guest_pc = 0x0800_0100;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4252,
+            operation: ThumbOperation::NegateRegister { rd: 2, rs: 2 },
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr = 0xF123_003F;
+        cpu.r[2] = 1;
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[2], u32::MAX);
+        assert_eq!(cpu.cpsr, 0x8123_003F);
+        assert_eq!(cpu.r[15], guest_pc + 2);
+        assert_eq!(cpu.guest_cycle, 6);
+
+        let mut arm_state = state(guest_pc);
+        arm_state.r[2] = 0xA5A5_5A5A;
+        let before = arm_state;
+        assert_eq!(
+            execute_thumb_instruction(&mut arm_state, instruction),
+            Err(StepFault::IsaModeMismatch {
+                expected: IsaMode::Thumb,
+                actual: IsaMode::Arm,
+            })
+        );
+        assert_eq!(arm_state, before);
+    }
+
+    #[test]
     fn thumb_addsub_format2_sets_all_nzcv_flags_and_preserves_control_bits() {
         let cases = [
             (0, 1, 1, true, false, 0xFFFF_FFFF, 1, 0, 0x6000_00FF),
@@ -4266,6 +4372,83 @@ mod tests {
             thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
+        assert_eq!(
+            missing_successor.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_negate_fields_registers_alignment_and_successor() {
+        let guest_pc = 0x0800_0100;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4248,
+            operation: ThumbOperation::NegateRegister { rd: 0, rs: 1 },
+        };
+        let bx = ThumbInstruction {
+            guest_pc: guest_pc + 2,
+            encoding: 0x4700,
+            operation: ThumbOperation::BranchExchange { rm: 0 },
+        };
+        let make_program = |instruction| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![instruction, bx],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc,
+            }],
+        };
+        assert!(make_program(instruction).verify().is_ok());
+
+        for operation in [
+            ThumbOperation::NegateRegister { rd: 0, rs: 2 },
+            ThumbOperation::NegateRegister { rd: 1, rs: 1 },
+        ] {
+            let mut mismatched = make_program(instruction);
+            mismatched.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                mismatched.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(0x4248))
+            );
+        }
+
+        let mut out_of_family = make_program(instruction);
+        out_of_family.thumb_instructions[0].encoding = 0x4288;
+        assert_eq!(
+            out_of_family.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x4288))
+        );
+
+        for operation in [
+            ThumbOperation::NegateRegister { rd: 8, rs: 1 },
+            ThumbOperation::NegateRegister { rd: 0, rs: 8 },
+        ] {
+            let mut invalid_register = make_program(instruction);
+            invalid_register.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                invalid_register.verify(),
+                Err(VerifyError::InvalidThumbNegateRegister(8))
+            );
+        }
+
+        let mut misaligned = make_program(instruction);
+        misaligned.thumb_instructions[0].guest_pc += 1;
+        assert_eq!(
+            misaligned.verify(),
+            Err(VerifyError::MisalignedThumbPc(guest_pc + 1))
+        );
+
+        let mut missing_successor = make_program(instruction);
+        missing_successor.thumb_instructions.pop();
+        missing_successor.branch_targets.clear();
         assert_eq!(
             missing_successor.verify(),
             Err(VerifyError::MissingSuccessor {

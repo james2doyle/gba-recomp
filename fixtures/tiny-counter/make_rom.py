@@ -530,6 +530,58 @@ def generate(mode: str = "valid") -> bytes:
         image[0xD0:0xD4] = struct.pack("<I", 0x08000085)
         image[0xD8:0xDC] = struct.pack("<I", 0x080000C8)
     elif mode in (
+        "thumb-neg-zero-branch",
+        "thumb-neg-negative-branch",
+        "thumb-neg-alias-branch",
+        "thumb-neg-maxpositive-branch",
+        "thumb-neg-overflow-branch",
+        "thumb-neg-ones-branch",
+        "thumb-neg-unsupported",
+    ):
+        cases = {
+            "thumb-neg-zero-branch": (0, 0x80000000),
+            "thumb-neg-negative-branch": (1, 0x80000000),
+            "thumb-neg-alias-branch": (1, 0x80000000),
+            "thumb-neg-maxpositive-branch": (0x7FFFFFFF, 0x80000000),
+            "thumb-neg-overflow-branch": (0x80000000, 0x80000000),
+            "thumb-neg-ones-branch": (0xFFFFFFFF, 0x80000000),
+            "thumb-neg-unsupported": (1, 0x80000000),
+        }
+        source, destination = cases[mode]
+        if mode == "thumb-neg-unsupported":
+            encoding = 0x4288
+        elif mode == "thumb-neg-alias-branch":
+            encoding = 0x4249
+        else:
+            encoding = 0x4248
+        image[0x84:0x9A] = struct.pack(
+            "<11H",
+            encoding,  # NEGS r0,r1, except the deliberate unsupported TST fixture.
+            0xD003,  # BEQ 0x08000090; discovery must also keep fallthrough.
+            0xE006,  # Fallthrough B 0x08000098.
+            0x46C0,
+            0x46C0,
+            0x46C0,
+            0xE002,  # Taken-path B 0x08000098.
+            0x46C0,
+            0x46C0,
+            0x46C0,
+            0xE7FE,  # Shared self-loop.
+        )
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE59F1018,  # LDR r1,[pc,#0x18] -> NEGS source at 0xE0.
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> CMP seed at 0xE4.
+            0xE3500001,  # CMP r0,#1 seeds C/V before NEGS replaces NZCV.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE59F3004,  # LDR r3,[pc,#4] -> ARM loop at 0xDC.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xE8] = struct.pack(
+            "<4I", 0x08000085, 0x080000E8, source, destination
+        )
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+    elif mode in (
         "thumb-ands-zero-branch",
         "thumb-ands-positive-branch",
         "thumb-ands-negative-branch",
@@ -1307,6 +1359,13 @@ def main() -> None:
             "thumb-ands-zero-branch",
             "thumb-ands-positive-branch",
             "thumb-ands-negative-branch",
+            "thumb-neg-zero-branch",
+            "thumb-neg-negative-branch",
+            "thumb-neg-alias-branch",
+            "thumb-neg-maxpositive-branch",
+            "thumb-neg-overflow-branch",
+            "thumb-neg-ones-branch",
+            "thumb-neg-unsupported",
             "thumb-orr-zero",
             "thumb-orr-positive-c0v0",
             "thumb-orr-negative-c1v1",

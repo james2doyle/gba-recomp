@@ -3396,6 +3396,155 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::NegateRegister { rd, rs } => {
+            let source_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rs) };
+            let old_source = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    source_pointer,
+                    c"thumb_neg_old_rs".as_ptr(),
+                )
+            };
+            let result = unsafe {
+                LLVMBuildSub(
+                    builder,
+                    LLVMConstInt(i32_type, 0, 0),
+                    old_source,
+                    c"thumb_neg_result".as_ptr(),
+                )
+            };
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            unsafe { LLVMBuildStore(builder, result, destination_pointer) };
+
+            let cpsr_pointer = unsafe {
+                LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr())
+            };
+            let old_cpsr =
+                unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+            let preserved_cpsr = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    old_cpsr,
+                    LLVMConstInt(i32_type, u64::from(!0xF000_0000_u32), 0),
+                    c"thumb_neg_cpsr_without_nzcv".as_ptr(),
+                )
+            };
+            let negative_flag = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    result,
+                    LLVMConstInt(i32_type, 0x8000_0000, 0),
+                    c"thumb_neg_negative_flag".as_ptr(),
+                )
+            };
+            let is_zero = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    result,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_neg_is_zero".as_ptr(),
+                )
+            };
+            let zero_flag = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    is_zero,
+                    LLVMConstInt(i32_type, 0x4000_0000, 0),
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_neg_zero_flag".as_ptr(),
+                )
+            };
+            let no_borrow = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    old_source,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_neg_no_borrow".as_ptr(),
+                )
+            };
+            let carry_flag = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    no_borrow,
+                    LLVMConstInt(i32_type, 0x2000_0000, 0),
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_neg_carry_flag".as_ptr(),
+                )
+            };
+            let has_overflow = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    old_source,
+                    LLVMConstInt(i32_type, 0x8000_0000, 0),
+                    c"thumb_neg_has_overflow".as_ptr(),
+                )
+            };
+            let overflow_flag = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    has_overflow,
+                    LLVMConstInt(i32_type, 0x1000_0000, 0),
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_neg_overflow_flag".as_ptr(),
+                )
+            };
+            let flags_with_n = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    preserved_cpsr,
+                    negative_flag,
+                    c"thumb_neg_cpsr_with_n".as_ptr(),
+                )
+            };
+            let flags_with_zc = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    zero_flag,
+                    carry_flag,
+                    c"thumb_neg_zc_flags".as_ptr(),
+                )
+            };
+            let flags_with_zcv = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    flags_with_zc,
+                    overflow_flag,
+                    c"thumb_neg_zcv_flags".as_ptr(),
+                )
+            };
+            let updated_cpsr = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    flags_with_n,
+                    flags_with_zcv,
+                    c"thumb_neg_updated_cpsr".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, updated_cpsr, cpsr_pointer) };
+
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::BlPrefix { lr_partial } => {
             let lr_pointer =
                 unsafe { register_pointer(builder, context, runtime_type, runtime, 14) };

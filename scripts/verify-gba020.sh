@@ -1984,6 +1984,128 @@ verify_thumb_ands_branch thumb-ands-zero-branch '{"status":"budget_exhausted","s
 verify_thumb_ands_branch thumb-ands-positive-branch '{"status":"budget_exhausted","steps":9,"r0":2,"r1":3,"pc":"0x08000088","cpsr":"0x0000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_ands_branch thumb-ands-negative-branch '{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":2147483648,"pc":"0x08000088","cpsr":"0xB000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 
+verify_thumb_negate_branch() {
+    mode=$1
+    optimization=$2
+    expected=$3
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package-$optimization"
+    rm -rf "$package"
+    GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+        --rom "$rom" --out "$package" --opt "$optimization" --steps 9
+    actual=$("$package/game")
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["abi_version"] == 4
+assert manifest["instructions_aot"] == 12
+PY
+}
+
+thumb_neg_active_pids=
+thumb_neg_active_modes=
+thumb_neg_active_count=0
+wait_thumb_negate_batch() {
+    failed=0
+    for pid in $thumb_neg_active_pids; do
+        if ! wait "$pid"; then
+            failed=1
+        fi
+    done
+    if [ "$failed" -ne 0 ]; then
+        for mode_opt in $thumb_neg_active_modes; do
+            cat "$root/target/gba020/$mode_opt-neg-worker.log" >&2
+        done
+        return 1
+    fi
+    for mode_opt in $thumb_neg_active_modes; do
+        cat "$root/target/gba020/$mode_opt-neg-worker.log"
+        rm -f "$root/target/gba020/$mode_opt-neg-worker.log"
+    done
+    thumb_neg_active_pids=
+    thumb_neg_active_modes=
+    thumb_neg_active_count=0
+}
+
+begin_group_timing thumb_negate_fixtures
+for mode in \
+    thumb-neg-zero-branch \
+    thumb-neg-negative-branch \
+    thumb-neg-alias-branch \
+    thumb-neg-maxpositive-branch \
+    thumb-neg-overflow-branch \
+    thumb-neg-ones-branch; do
+    neg_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$neg_rom" --mode "$mode"
+    case "$mode" in
+        thumb-neg-zero-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x08000090","cpsr":"0x6000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-neg-negative-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":4294967295,"r1":1,"pc":"0x08000088","cpsr":"0x8000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-neg-alias-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":4294967295,"pc":"0x08000088","cpsr":"0x8000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-neg-maxpositive-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":2147483649,"r1":2147483647,"pc":"0x08000088","cpsr":"0x8000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-neg-overflow-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":2147483648,"pc":"0x08000088","cpsr":"0x9000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-neg-ones-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":1,"r1":4294967295,"pc":"0x08000088","cpsr":"0x0000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+    esac
+    for optimization in O0 O2; do
+        mode_opt="$mode-$optimization"
+        worker_log="$root/target/gba020/$mode_opt-neg-worker.log"
+        (verify_thumb_negate_branch "$mode" "$optimization" "$expected") \
+            >"$worker_log" 2>&1 &
+        thumb_neg_active_pids="$thumb_neg_active_pids $!"
+        thumb_neg_active_modes="$thumb_neg_active_modes $mode_opt"
+        thumb_neg_active_count=$((thumb_neg_active_count + 1))
+        if [ "$thumb_neg_active_count" -ge "$gba020_jobs" ]; then
+            wait_thumb_negate_batch
+        fi
+    done
+done
+if [ "$thumb_neg_active_count" -gt 0 ]; then
+    wait_thumb_negate_batch
+fi
+end_group_timing
+
+thumb_neg_bad_rom="$root/target/gba020/thumb-neg-unsupported.gba"
+thumb_neg_bad_package="$root/target/gba020/thumb-neg-unsupported-package"
+thumb_neg_bad_output="$root/target/gba020/thumb-neg-unsupported.txt"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$thumb_neg_bad_rom" --mode thumb-neg-unsupported
+rm -rf "$thumb_neg_bad_package"
+if GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+    --rom "$thumb_neg_bad_rom" --out "$thumb_neg_bad_package" --opt O0 --steps 9 \
+    >"$thumb_neg_bad_output" 2>&1; then
+    echo "unsupported Thumb Format 4 suboperation unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$thumb_neg_bad_output"; then
+    cat "$thumb_neg_bad_output" >&2
+    echo "unsupported Thumb Format 4 suboperation did not report its source PC" >&2
+    exit 1
+fi
+if [ -e "$thumb_neg_bad_package" ]; then
+    echo "failed Thumb Format 4 compile left a partial package" >&2
+    exit 1
+fi
+
 verify_thumb_orr thumb-orr-zero '{"status":"budget_exhausted","steps":8,"r0":0,"r1":0,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_orr thumb-orr-positive-c0v0 '{"status":"budget_exhausted","steps":8,"r0":3,"r1":2,"pc":"0x08000086","cpsr":"0x0000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_orr thumb-orr-negative-c1v1 '{"status":"budget_exhausted","steps":8,"r0":2147483649,"r1":1,"pc":"0x08000086","cpsr":"0xB000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'

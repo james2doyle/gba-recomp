@@ -1503,6 +1503,20 @@ fn process_thumb_instruction(
                 total_states,
             )?;
         }
+        ThumbOperation::NegateRegister { rd, rs } => {
+            let result = AbstractValue::constant(0)
+                .wrapping_add_subtract(&state.registers[rs as usize], true);
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = result;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
         ThumbOperation::StoreHalfwordImmediate { rd, rb, imm5 } => {
             let mut next_state = state.clone();
             let address =
@@ -5101,6 +5115,156 @@ mod tests {
             .collect();
         assert_eq!(incoming[&successor].len(), 32);
         assert_eq!(overflow_pairs, expected_pairs);
+    }
+
+    #[test]
+    fn propagates_thumb_negate_with_limits_and_drops_stale_compare() {
+        let image = counter_rom();
+        let guest_pc = ROM_BASE + 0x84;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4248,
+            operation: ThumbOperation::NegateRegister { rd: 0, rs: 1 },
+        };
+        let successor = (IsaMode::Thumb, guest_pc + 2);
+        let source_values = BTreeSet::from([0, 1, 0x7FFF_FFFF, 0x8000_0000, u32::MAX]);
+        let mut state = AbstractState::unknown();
+        state.registers[1] = AbstractValue::Constants(source_values.clone());
+        state.set_constant(2, 0x0200_0000);
+        state.pending_compare = Some(CompareFact {
+            mode: IsaMode::Thumb,
+            guest_pc: guest_pc - 2,
+            register: 1,
+            immediate: 0,
+        });
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let result_pairs: BTreeSet<_> = incoming[&successor]
+            .iter()
+            .map(|next| (state_constant(next, 0), state_constant(next, 1)))
+            .collect();
+        let expected_pairs: BTreeSet<_> = source_values
+            .iter()
+            .map(|source| (0_u32.wrapping_sub(*source), *source))
+            .collect();
+        assert_eq!(result_pairs, expected_pairs);
+        assert_eq!(incoming[&successor].len(), 5);
+        assert!(
+            incoming[&successor]
+                .iter()
+                .all(|next| next.registers[2] == AbstractValue::constant(0x0200_0000))
+        );
+        assert!(
+            incoming[&successor]
+                .iter()
+                .all(|next| next.pending_compare.is_none())
+        );
+
+        let branch_pc = guest_pc + 2;
+        let branch_target = guest_pc + 12;
+        let branch = ThumbInstruction {
+            guest_pc: branch_pc,
+            encoding: 0xD003,
+            operation: ThumbOperation::ConditionalBranch {
+                condition: 0,
+                target: branch_target,
+                reachable_successors: 0b11,
+            },
+        };
+        let branch_state = incoming[&successor][0].clone();
+        incoming.clear();
+        pending.clear();
+        process_thumb_instruction(
+            &image,
+            branch,
+            &branch_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert!(incoming.contains_key(&(IsaMode::Thumb, branch_target)));
+        assert!(incoming.contains_key(&(IsaMode::Thumb, branch_pc + 2)));
+
+        let alias_instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4252,
+            operation: ThumbOperation::NegateRegister { rd: 2, rs: 2 },
+        };
+        let mut alias_state = AbstractState::unknown();
+        alias_state.set_constant(2, 1);
+        incoming.clear();
+        pending.clear();
+        process_thumb_instruction(
+            &image,
+            alias_instruction,
+            &alias_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            only_state(&incoming[&successor]).registers[2],
+            AbstractValue::constant(u32::MAX)
+        );
+
+        let mut unknown_state = AbstractState::unknown();
+        unknown_state.set_constant(0, 0xDEAD_BEEF);
+        unknown_state.set_constant(2, 0x1122_3344);
+        incoming.clear();
+        pending.clear();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &unknown_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let next = only_state(&incoming[&successor]);
+        assert_eq!(next.registers[0], AbstractValue::Unknown);
+        assert_eq!(next.registers[2], AbstractValue::constant(0x1122_3344));
+
+        let too_many_values: BTreeSet<_> = (0..=MAX_CONSTANT_TARGETS as u32).collect();
+        let mut overflow_state = AbstractState::unknown();
+        overflow_state.registers[1] = AbstractValue::Constants(too_many_values);
+        incoming.clear();
+        pending.clear();
+        let mut total_states = 0;
+        super::process_thumb_instruction(
+            &image,
+            instruction,
+            &overflow_state,
+            &mut pending,
+            &mut incoming,
+            &mut total_states,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(incoming[&successor].len(), MAX_CONSTANT_TARGETS + 1);
+        assert!(
+            incoming[&successor]
+                .iter()
+                .all(|next| next.registers[0] == AbstractValue::Unknown)
+        );
+        assert_eq!(
+            incoming[&successor]
+                .iter()
+                .map(|next| state_constant(next, 1))
+                .collect::<BTreeSet<_>>(),
+            (0..=MAX_CONSTANT_TARGETS as u32).collect()
+        );
     }
 
     #[test]
