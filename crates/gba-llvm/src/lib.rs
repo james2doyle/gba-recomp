@@ -1,5 +1,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
+// Provides the zstd symbols LLVM's Support library needs on Windows.
+#[cfg(windows)]
+use zstd_sys as _;
+
 use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr;

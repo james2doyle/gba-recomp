@@ -41,7 +41,7 @@ pub(super) fn package(i: &PackageInputs<'_>) -> Result<Packaged, String> {
     let clang = super::llvm_tool("clang")?;
     let mut command = Command::new(&clang);
     command
-        .args(["--target", &i.spec.triple])
+        .arg(format!("--target={}", i.spec.triple))
         .arg("-fuse-ld=lld")
         .args(i.objects)
         .arg(i.runtime)

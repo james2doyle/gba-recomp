@@ -103,6 +103,11 @@ fn emit_system_library(flag: &str) {
         return;
     }
     let path = PathBuf::from(flag);
+    if !path.is_file() && flag.ends_with("zstd_static.lib") {
+        // Path on the LLVM release build machine; the zstd-sys dependency
+        // provides the library instead.
+        return;
+    }
     if !path.is_file() {
         panic!("LLVM system library is missing or unsupported: {flag}");
     }
