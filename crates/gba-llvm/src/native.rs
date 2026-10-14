@@ -79,10 +79,14 @@ impl TargetSpec {
     }
 
     /// Symbol of the generated entry point: SDL owns `main` on iOS and
-    /// Android and calls `SDL_main` (SPEC-068).
+    /// Android and calls `SDL_main` (SPEC-068). On WebAssembly clang names
+    /// `int main(int, char **)` `__main_argc_argv`, which Emscripten's crt
+    /// calls with the arguments; a plain `main` is called with none.
     pub fn entry_symbol(&self) -> &'static str {
         if self.triple.contains("apple-ios") || self.triple.contains("android") {
             "SDL_main"
+        } else if self.triple.starts_with("wasm32") {
+            "__main_argc_argv"
         } else {
             "main"
         }

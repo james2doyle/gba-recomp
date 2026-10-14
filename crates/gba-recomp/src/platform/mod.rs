@@ -84,6 +84,15 @@ pub fn package(i: &PackageInputs<'_>) -> Result<Packaged, String> {
     }
 }
 
+/// Platform checks that must pass before profiling or emitting anything
+/// (SPEC-068 TGT-68-01): e.g. the Web target needs `emcc` and an embedded ROM.
+pub fn preflight(spec: &TargetSpec, embed: bool) -> Result<(), String> {
+    match Platform::of(spec) {
+        Platform::Web => web::preflight(embed),
+        _ => Ok(()),
+    }
+}
+
 /// Final path of the published package for `output`.
 pub fn published_path(spec: &TargetSpec, output: &Path, embed: bool) -> PathBuf {
     let platform = Platform::of(spec);

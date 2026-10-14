@@ -154,7 +154,7 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     let output = output.ok_or_else(usage)?;
     let optimization = optimization.ok_or_else(usage)?;
     println!("execution_mode: {}", mode.as_str());
-    require_available_mode(mode)?;
+    require_available_mode(mode, &profile.target, profile.runtime_lib.as_deref())?;
     if mode == ExecutionMode::AotCompatible {
         let report = compat::build_package(&rom_path, &output, optimization, &profile)?;
         println!("package: {}", report.path.display());
@@ -507,11 +507,20 @@ fn parse_execution_mode(value: &str) -> Result<ExecutionMode, String> {
 /// IAC-02/IAC-09: `aot-compatible` links the `gba-core` interpreter through
 /// the `gba-native-rt` runtime (SPEC-062). Without that library the mode is
 /// rejected before any work instead of degrading to `strict-aot`.
-fn require_available_mode(mode: ExecutionMode) -> Result<(), String> {
+/// The runtime checked is the one for the package target (SPEC-068): the
+/// explicit `--runtime-lib`, else the default location for `target`.
+fn require_available_mode(
+    mode: ExecutionMode,
+    target: &gba_llvm::native::TargetSpec,
+    runtime_lib: Option<&std::path::Path>,
+) -> Result<(), String> {
     match mode {
         ExecutionMode::StrictAot => Ok(()),
-        ExecutionMode::AotCompatible => compat::runtime_library()
-            .map(|_| ())
+        ExecutionMode::AotCompatible => match runtime_lib {
+            Some(path) if path.is_file() => Ok(()),
+            Some(path) => Err(format!("runtime library not found: {}", path.display())),
+            None => compat::runtime_library_for(target).map(|_| ()),
+        }
             .map_err(|e| format!("execution mode `aot-compatible` is not available: {e}; the mode was not changed to strict-aot")),
     }
 }
@@ -585,10 +594,11 @@ mod execution_mode_tests {
 
     #[test]
     fn compatible_mode_without_runtime_library_is_rejected_not_downgraded() {
-        assert!(require_available_mode(ExecutionMode::StrictAot).is_ok());
+        let host = gba_llvm::native::TargetSpec::host();
+        assert!(require_available_mode(ExecutionMode::StrictAot, &host, None).is_ok());
         // SAFETY of test env mutation: this test only reads its own variable.
         unsafe { std::env::set_var("GBA_NATIVE_RT_LIB", "/nonexistent/libgba_native_rt.a") };
-        let error = require_available_mode(ExecutionMode::AotCompatible).unwrap_err();
+        let error = require_available_mode(ExecutionMode::AotCompatible, &host, None).unwrap_err();
         unsafe { std::env::remove_var("GBA_NATIVE_RT_LIB") };
         assert!(error.contains("aot-compatible"), "{error}");
         assert!(error.contains("not changed to strict-aot"), "{error}");

@@ -4,7 +4,6 @@
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use gba_core::{BackupKind, Gba, GbaConfig, NativeExec, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -800,7 +799,7 @@ pub fn run_app(
                 }
             })?;
             report.presented += 1;
-            thread::sleep(frame_time);
+            crate::pace::sleep(frame_time);
             deadline = Instant::now();
             continue;
         }
@@ -903,12 +902,17 @@ pub fn run_app(
         let now = Instant::now();
         if fast_forward {
             deadline = now;
+            crate::pace::yield_now();
         } else {
             deadline += frame_time;
             if deadline > now {
-                thread::sleep(deadline - now);
-            } else if now - deadline > frame_time * MAX_LAG_FRAMES {
-                deadline = now;
+                crate::pace::sleep(deadline - now);
+            } else {
+                // Browser (SPEC-068): yield every frame even when late.
+                crate::pace::yield_now();
+                if now - deadline > frame_time * MAX_LAG_FRAMES {
+                    deadline = now;
+                }
             }
         }
     }

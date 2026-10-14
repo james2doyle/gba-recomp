@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- gba-recomp Web package (SPEC-068 TGT-68-02). ROM SHA-256 {{SHA}} -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{TITLE}}</title>
+<link rel="icon" href="logo.png">
+<style>
+  :root { --bg: #111; --fg: #eee; --muted: #9a9a9a; --accent: #f0c040; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; }
+  header { width: 100%; display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 8px 16px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  button { font: inherit; color: var(--fg); background: #2a2a2a; border: 1px solid #444;
+    border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover { background: #363636; }
+  #stage { position: relative; width: min(100vw - 32px, (100vh - 150px) * 1.5);
+    width: min(calc(100vw - 32px), calc((100vh - 150px) * 1.5)); aspect-ratio: 3 / 2;
+    background: #000; border-radius: 4px; overflow: hidden; }
+  #stage:fullscreen { width: 100vw; height: 100vh; border-radius: 0; display: flex;
+    align-items: center; justify-content: center; }
+  /* SDL sets inline sizes on the canvas; CSS scaling keeps it 3:2. */
+  #canvas { display: block; width: 100% !important; height: 100% !important;
+    object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+  #stage:fullscreen #canvas { width: min(100vw, 150vh) !important; height: min(100vh, 66.667vw) !important; }
+  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 16px; background: #000; cursor: pointer; text-align: center; padding: 16px; }
+  #overlay img { width: min(40%, 220px); height: auto; }
+  #overlay.hidden { display: none; }
+  #status { color: var(--accent); font-size: 16px; }
+  #help { max-width: 720px; padding: 12px 16px 24px; color: var(--muted); font-size: 13px; }
+  #help kbd { background: #2a2a2a; border: 1px solid #444; border-radius: 3px; padding: 0 4px;
+    color: var(--fg); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{TITLE}}</h1>
+  <button id="fullscreen" type="button" title="Tela cheia">Tela cheia</button>
+</header>
+<div id="stage">
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="overlay" role="button" tabindex="0" aria-label="Iniciar o jogo">
+    <img src="logo.png" alt="gba-recomp">
+    <div id="status">Carregando…</div>
+  </div>
+</div>
+<div id="help">
+  Teclado: setas = direcional, <kbd>Z</kbd> = A, <kbd>X</kbd> = B, <kbd>A</kbd> = L, <kbd>S</kbd> = R,
+  <kbd>Enter</kbd> = Start, <kbd>Backspace</kbd> = Select, <kbd>F1</kbd> = menu, <kbd>Tab</kbd> = acelerar.
+  Gamepads são reconhecidos ao pressionar um botão. O som começa depois do clique inicial (regra dos
+  navegadores). Saves ficam no armazenamento deste navegador (IndexedDB).
+  Código recompilado para WebAssembly por gba-recomp; não há party/rede na versão Web.
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('overlay');
+  var status = document.getElementById('status');
+  var canvas = document.getElementById('canvas');
+  var started = false, ready = false, waiting = false;
+  function setStatus(text) { status.textContent = text; }
+  function sync() {
+    try { Module.FS.syncfs(false, function (e) { if (e) console.warn('save sync', e); }); } catch (e) {}
+  }
+  function start() {
+    if (started || !ready) return;
+    started = true;
+    overlay.classList.add('hidden');
+    canvas.focus();
+    // The click is the user gesture browsers require before audio starts.
+    Module.removeRunDependency('gba-user-gesture');
+  }
+  window.Module = {
+    canvas: canvas,
+    arguments: ['--save', '{{SAVE}}', '--settings', '/save/settings.toml'],
+    preRun: [function () {
+      Module.addRunDependency('gba-user-gesture');
+      waiting = true;
+      var FS = Module.FS;
+      try { FS.mkdir('/save'); } catch (e) {}
+      FS.mount(FS.filesystems.IDBFS, {}, '/save');
+      Module.addRunDependency('gba-idbfs');
+      FS.syncfs(true, function (e) {
+        if (e) console.warn('save restore', e);
+        Module.removeRunDependency('gba-idbfs');
+      });
+      setInterval(sync, 5000);
+    }],
+    monitorRunDependencies: function (left) {
+      if (waiting && !started && left <= 1 && !ready) {
+        ready = true;
+        setStatus('Clique ou pressione uma tecla para jogar');
+      }
+    },
+    print: function (t) { console.log(t); },
+    printErr: function (t) { console.warn(t); },
+    onAbort: function (what) {
+      overlay.classList.remove('hidden');
+      setStatus('Erro: ' + what);
+    }
+  };
+  overlay.addEventListener('click', start);
+  window.addEventListener('keydown', function (e) {
+    if (!started && ready) { e.preventDefault(); start(); }
+  });
+  document.getElementById('fullscreen').addEventListener('click', function () {
+    var stage = document.getElementById('stage');
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (stage.requestFullscreen) stage.requestFullscreen();
+    canvas.focus();
+  });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) sync(); });
+  window.addEventListener('pagehide', sync);
+})();
+</script>
+<script async src="game.js"></script>
+</body>
+</html>
