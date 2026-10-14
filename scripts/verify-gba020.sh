@@ -23,7 +23,7 @@ case "$os/$arch" in
         exit 2
         ;;
 esac
-gba020_jobs=${GBA020_JOBS:-7}
+gba020_jobs=${GBA020_JOBS:-8}
 case "$gba020_jobs" in
     1)
         gba020_link_threads=${GBA020_LINK_THREADS:-10}
@@ -40,8 +40,11 @@ case "$gba020_jobs" in
     7)
         gba020_link_threads=${GBA020_LINK_THREADS:-1}
         ;;
+    8)
+        gba020_link_threads=${GBA020_LINK_THREADS:-1}
+        ;;
     *)
-        echo "GBA020_JOBS must be 1, 2, 4, 5, or 7" >&2
+        echo "GBA020_JOBS must be 1, 2, 4, 5, 7, or 8" >&2
         exit 2
         ;;
 esac
@@ -859,6 +862,52 @@ verify_thumb_multiple thumb-ldmia-rom-bx 9 10 \
 verify_thumb_multiple thumb-ldmia-iwram-bx 12 13 \
     '{"status":"budget_exhausted","steps":12,"r0":134217869,"r1":51,"pc":"0x080000F8","cpsr":"0x0000001F","guest_cycle":12,"ewram_word0":0,"iwram_word0":134217869}'
 
+verify_thumb_ldmia_rom_multibase() {
+    mode=$1
+    expected=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        compile_log="$root/target/gba020/$mode-$optimization.txt"
+        rm -rf "$package"
+        if ! GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 9 \
+            >"$compile_log" 2>&1; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode fixture failed to compile" >&2
+            exit 1
+        fi
+        if ! grep -Fxq 'instructions_aot: 13' "$compile_log"; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode fixture reported an unexpected AOT instruction count" >&2
+            exit 1
+        fi
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["ir_version"] == 2
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["instructions_aot"] == 13
+assert manifest["run_instruction_budget"] == 9
+PY
+    done
+}
+
+verify_thumb_ldmia_rom_multibase thumb-ldmia-rom-multibase-ne \
+    '{"status":"budget_exhausted","steps":9,"r0":2271560481,"r1":0,"pc":"0x08000090","cpsr":"0x0000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_ldmia_rom_multibase thumb-ldmia-rom-multibase-eq \
+    '{"status":"budget_exhausted","steps":9,"r0":305419896,"r1":0,"pc":"0x08000090","cpsr":"0x0000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+
 verify_thumb_multiple thumb-stmia-iwram-bx 8 9 \
     '{"status":"budget_exhausted","steps":8,"r0":305419896,"r1":134217861,"pc":"0x080000F8","cpsr":"0x0000001F","guest_cycle":8,"ewram_word0":0,"iwram_word0":305419896}'
 
@@ -1123,7 +1172,7 @@ verify_thumb_addsub() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        "$recomp_bin" compile \
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
             --rom "$thumb_addsub_rom" --out "$package" --opt "$optimization" --steps 8
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -1142,14 +1191,59 @@ assert manifest["abi_version"] == 4
 PY
     done
 }
-verify_thumb_addsub thumb-addsub-add-register '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483647,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_addsub thumb-addsub-sub-register '{"status":"budget_exhausted","steps":8,"r0":1,"r1":4294967295,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_addsub thumb-addsub-add-imm-zero '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_addsub thumb-addsub-add-imm-seven '{"status":"budget_exhausted","steps":8,"r0":4294967295,"r1":4294967288,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_addsub thumb-addsub-sub-imm-zero '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0xA000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_addsub thumb-addsub-sub-imm-seven '{"status":"budget_exhausted","steps":8,"r0":4294967295,"r1":6,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_addsub thumb-addsub-add-imm-carry '{"status":"budget_exhausted","steps":8,"r0":0,"r1":4294967295,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_addsub thumb-addsub-sub-imm-overflow '{"status":"budget_exhausted","steps":8,"r0":2147483647,"r1":2147483648,"pc":"0x08000086","cpsr":"0x3000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+
+addsub_active_pids=
+addsub_active_modes=
+addsub_active_count=0
+wait_addsub_batch() {
+    failed=0
+    for pid in $addsub_active_pids; do
+        if ! wait "$pid"; then
+            failed=1
+        fi
+    done
+    if [ "$failed" -ne 0 ]; then
+        for mode in $addsub_active_modes; do
+            cat "$root/target/gba020/$mode-addsub-worker.log" >&2
+        done
+        return 1
+    fi
+    for mode in $addsub_active_modes; do
+        cat "$root/target/gba020/$mode-addsub-worker.log"
+        rm -f "$root/target/gba020/$mode-addsub-worker.log"
+    done
+    addsub_active_pids=
+    addsub_active_modes=
+    addsub_active_count=0
+}
+schedule_thumb_addsub() {
+    mode=$1
+    expected=$2
+    if [ "$gba020_jobs" -eq 1 ]; then
+        verify_thumb_addsub "$mode" "$expected"
+        return
+    fi
+    log="$root/target/gba020/$mode-addsub-worker.log"
+    rm -f "$log"
+    (verify_thumb_addsub "$mode" "$expected") >"$log" 2>&1 &
+    addsub_active_pids="$addsub_active_pids $!"
+    addsub_active_modes="$addsub_active_modes $mode"
+    addsub_active_count=$((addsub_active_count + 1))
+    if [ "$addsub_active_count" -ge "$gba020_jobs" ]; then
+        wait_addsub_batch
+    fi
+}
+schedule_thumb_addsub thumb-addsub-add-register '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483647,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_addsub thumb-addsub-sub-register '{"status":"budget_exhausted","steps":8,"r0":1,"r1":4294967295,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_addsub thumb-addsub-add-imm-zero '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_addsub thumb-addsub-add-imm-seven '{"status":"budget_exhausted","steps":8,"r0":4294967295,"r1":4294967288,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_addsub thumb-addsub-sub-imm-zero '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0xA000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_addsub thumb-addsub-sub-imm-seven '{"status":"budget_exhausted","steps":8,"r0":4294967295,"r1":6,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_addsub thumb-addsub-add-imm-carry '{"status":"budget_exhausted","steps":8,"r0":0,"r1":4294967295,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_addsub thumb-addsub-sub-imm-overflow '{"status":"budget_exhausted","steps":8,"r0":2147483647,"r1":2147483648,"pc":"0x08000086","cpsr":"0x3000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
+if [ "$addsub_active_count" -gt 0 ]; then
+    wait_addsub_batch
+fi
 
 thumb_addsub_bx_rom="$root/target/gba020/thumb-addsub-literal-bx.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_addsub_bx_rom" --mode thumb-addsub-literal-bx

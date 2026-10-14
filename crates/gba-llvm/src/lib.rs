@@ -5,8 +5,10 @@ use std::path::Path;
 use std::ptr;
 
 use gba_ir::{
-    ArmInstruction, ArmOperation, ArmProgram, GbaIrBlock, ThumbInstruction, ThumbOperation,
+    ArmInstruction, ArmOperation, ArmProgram, GbaIrBlock, ThumbInstruction, ThumbLdmiaRomTable,
+    ThumbOperation,
 };
+use gba_runtime_abi::{EXIT_FAULT, EXIT_MISSING_CODE, GBA_MEMORY_FAULT_ROM_SPECIALIZATION_V3};
 use llvm_sys::LLVMIntPredicate;
 use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyModule};
 use llvm_sys::core::*;
@@ -794,6 +796,7 @@ unsafe fn build_arm_program_function(
                 runtime_v4,
                 hle_helper_type,
                 hle_helper,
+                &program.thumb_ldmia_rom_tables,
             )
         }?;
     }
@@ -1212,7 +1215,81 @@ unsafe fn lower_arm_instruction(
                 )
             }
         }
-        ArmOperation::Branch { target, link } => {
+        ArmOperation::Branch {
+            target,
+            link,
+            reachable_successors,
+        } => {
+            if reachable_successors == 0 || reachable_successors & !0b11 != 0 {
+                return Err(format!(
+                    "invalid ARM branch successor mask {reachable_successors:#04b} at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+            let taken_reachable = unsafe {
+                LLVMConstInt(
+                    LLVMInt1TypeInContext(context),
+                    u64::from(reachable_successors & 0b01 != 0),
+                    0,
+                )
+            };
+            let fallthrough_reachable = unsafe {
+                LLVMConstInt(
+                    LLVMInt1TypeInContext(context),
+                    u64::from(reachable_successors & 0b10 != 0),
+                    0,
+                )
+            };
+            let edge_reachable = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    taken_reachable,
+                    fallthrough_reachable,
+                    c"arm_branch_edge_reachable".as_ptr(),
+                )
+            };
+            let fallthrough_pc = instruction.guest_pc.wrapping_add(4);
+            let fault_pc = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition,
+                    LLVMConstInt(i32_type, u64::from(target), 0),
+                    LLVMConstInt(i32_type, u64::from(fallthrough_pc), 0),
+                    c"arm_branch_missing_edge_pc".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("arm_branch_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let missing = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("arm_branch_unreachable_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, edge_reachable, success, missing) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, missing) };
+            unsafe {
+                store_exit(
+                    builder,
+                    exit_type,
+                    exit,
+                    i32_type,
+                    u64::from(EXIT_MISSING_CODE),
+                    fault_pc,
+                );
+                LLVMBuildRet(
+                    builder,
+                    LLVMConstInt(i32_type, u64::from(EXIT_MISSING_CODE), 0),
+                );
+            }
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
             if link {
                 let lr_pointer =
                     unsafe { register_pointer(builder, context, runtime_type, runtime, 14) };
@@ -1234,7 +1311,7 @@ unsafe fn lower_arm_instruction(
                     builder,
                     condition,
                     LLVMConstInt(i32_type, u64::from(target), 0),
-                    LLVMConstInt(i32_type, u64::from(pc_plus_four), 0),
+                    LLVMConstInt(i32_type, u64::from(fallthrough_pc), 0),
                     c"branch_target".as_ptr(),
                 )
             }
@@ -1286,6 +1363,7 @@ unsafe fn lower_thumb_instruction(
     runtime_v4: LLVMValueRef,
     hle_helper_type: LLVMTypeRef,
     hle_helper: LLVMValueRef,
+    thumb_ldmia_rom_tables: &[ThumbLdmiaRomTable],
 ) -> Result<(), String> {
     let i8_type = unsafe { LLVMInt8TypeInContext(context) };
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
@@ -1974,7 +2052,11 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
-        ThumbOperation::ConditionalBranch { condition, target } => {
+        ThumbOperation::ConditionalBranch {
+            condition,
+            target,
+            reachable_successors,
+        } => {
             if condition > 13 {
                 return Err(format!(
                     "invalid Thumb conditional branch condition {condition} at 0x{:08X}",
@@ -1986,10 +2068,39 @@ unsafe fn lower_thumb_instruction(
             };
             let cpsr = unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
             let condition_met = unsafe { arm_condition_value(builder, context, cpsr, condition)? };
+            if reachable_successors == 0 || reachable_successors & !0b11 != 0 {
+                return Err(format!(
+                    "invalid Thumb conditional branch successor mask {reachable_successors:#04b} at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
             let fallthrough = unsafe {
                 LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
             };
             let target = unsafe { LLVMConstInt(i32_type, u64::from(target), 0) };
+            let taken_reachable = unsafe {
+                LLVMConstInt(
+                    LLVMInt1TypeInContext(context),
+                    u64::from(reachable_successors & 0b01 != 0),
+                    0,
+                )
+            };
+            let fallthrough_reachable = unsafe {
+                LLVMConstInt(
+                    LLVMInt1TypeInContext(context),
+                    u64::from(reachable_successors & 0b10 != 0),
+                    0,
+                )
+            };
+            let edge_reachable = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition_met,
+                    taken_reachable,
+                    fallthrough_reachable,
+                    c"thumb_conditional_branch_edge_reachable".as_ptr(),
+                )
+            };
             let next_pc = unsafe {
                 LLVMBuildSelect(
                     builder,
@@ -1999,6 +2110,43 @@ unsafe fn lower_thumb_instruction(
                     c"thumb_conditional_branch_next_pc".as_ptr(),
                 )
             };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!(
+                        "thumb_conditional_branch_success_{:08X}",
+                        instruction.guest_pc
+                    ),
+                )
+            };
+            let missing = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!(
+                        "thumb_conditional_branch_unreachable_{:08X}",
+                        instruction.guest_pc
+                    ),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, edge_reachable, success, missing) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, missing) };
+            unsafe {
+                store_exit(
+                    builder,
+                    exit_type,
+                    exit,
+                    i32_type,
+                    u64::from(EXIT_MISSING_CODE),
+                    next_pc,
+                );
+                LLVMBuildRet(
+                    builder,
+                    LLVMConstInt(i32_type, u64::from(EXIT_MISSING_CODE), 0),
+                );
+            }
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
             unsafe {
                 commit_thumb_instruction(
                     context,
@@ -2307,6 +2455,166 @@ unsafe fn lower_thumb_instruction(
                     next_pc,
                 )
             };
+        }
+        ThumbOperation::LoadRomMultipleIncrementAfterCases {
+            base_register,
+            register_list,
+            table_id,
+        } => {
+            if base_register > 7 || register_list == 0 || register_list & !0xff != 0 {
+                return Err(format!(
+                    "invalid Thumb ROM LDMIA registers at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+            let table_index = usize::try_from(table_id).map_err(|_| {
+                format!(
+                    "invalid Thumb ROM LDMIA table id {table_id} at 0x{:08X}",
+                    instruction.guest_pc
+                )
+            })?;
+            let table = thumb_ldmia_rom_tables.get(table_index).ok_or_else(|| {
+                format!(
+                    "missing Thumb ROM LDMIA table {table_id} at 0x{:08X}",
+                    instruction.guest_pc
+                )
+            })?;
+            if table.cases.is_empty() {
+                return Err(format!(
+                    "empty Thumb ROM LDMIA table {table_id} at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+
+            let base_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, base_register) };
+            let guest_base = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    base_pointer,
+                    c"thumb_rom_ldmia_base".as_ptr(),
+                )
+            };
+            let fault = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_rom_ldmia_fault_{:08X}", instruction.guest_pc),
+                )
+            };
+            let dispatch =
+                unsafe { LLVMBuildSwitch(builder, guest_base, fault, table.cases.len() as u32) };
+            let mut case_blocks = Vec::with_capacity(table.cases.len());
+            for (case_index, case) in table.cases.iter().enumerate() {
+                let block = unsafe {
+                    append_block(
+                        context,
+                        function,
+                        &format!(
+                            "thumb_rom_ldmia_case_{:08X}_{case_index}",
+                            instruction.guest_pc
+                        ),
+                    )
+                };
+                unsafe {
+                    LLVMAddCase(
+                        dispatch,
+                        LLVMConstInt(i32_type, u64::from(case.base_address), 0),
+                        block,
+                    )
+                };
+                case_blocks.push(block);
+            }
+
+            unsafe { LLVMPositionBuilderAtEnd(builder, fault) };
+            unsafe {
+                let reason_ptr =
+                    LLVMBuildStructGEP2(builder, exit_type, exit, 0, c"reason_ptr".as_ptr());
+                let next_pc_ptr =
+                    LLVMBuildStructGEP2(builder, exit_type, exit, 1, c"exit_pc_ptr".as_ptr());
+                let fault_address_ptr =
+                    LLVMBuildStructGEP2(builder, exit_type, exit, 2, c"fault_address_ptr".as_ptr());
+                let fault_code_ptr =
+                    LLVMBuildStructGEP2(builder, exit_type, exit, 3, c"fault_code_ptr".as_ptr());
+                LLVMBuildStore(
+                    builder,
+                    LLVMConstInt(i32_type, u64::from(EXIT_FAULT), 0),
+                    reason_ptr,
+                );
+                LLVMBuildStore(
+                    builder,
+                    LLVMConstInt(i32_type, u64::from(instruction.guest_pc), 0),
+                    next_pc_ptr,
+                );
+                LLVMBuildStore(builder, guest_base, fault_address_ptr);
+                LLVMBuildStore(
+                    builder,
+                    LLVMConstInt(
+                        i32_type,
+                        u64::from(GBA_MEMORY_FAULT_ROM_SPECIALIZATION_V3),
+                        0,
+                    ),
+                    fault_code_ptr,
+                );
+                LLVMBuildRet(builder, LLVMConstInt(i32_type, u64::from(EXIT_FAULT), 0));
+            }
+
+            for (case, block) in table.cases.iter().zip(case_blocks) {
+                unsafe { LLVMPositionBuilderAtEnd(builder, block) };
+                if register_list & (1 << base_register) == 0 {
+                    let writeback = case
+                        .base_address
+                        .wrapping_add(register_list.count_ones().wrapping_mul(4));
+                    unsafe {
+                        LLVMBuildStore(
+                            builder,
+                            LLVMConstInt(i32_type, u64::from(writeback), 0),
+                            base_pointer,
+                        )
+                    };
+                }
+                for register in 0..8 {
+                    if register_list & (1 << register) != 0 {
+                        let destination = unsafe {
+                            register_pointer(
+                                builder,
+                                context,
+                                runtime_type,
+                                runtime,
+                                register as u8,
+                            )
+                        };
+                        unsafe {
+                            LLVMBuildStore(
+                                builder,
+                                LLVMConstInt(
+                                    i32_type,
+                                    u64::from(case.values_by_register[register]),
+                                    0,
+                                ),
+                                destination,
+                            )
+                        };
+                    }
+                }
+                let next_pc = unsafe {
+                    LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+                };
+                unsafe {
+                    commit_thumb_instruction(
+                        context,
+                        builder,
+                        runtime_type,
+                        exit_type,
+                        runtime,
+                        exit,
+                        cycles,
+                        i32_type,
+                        next_pc,
+                    )
+                };
+            }
         }
         ThumbOperation::MovImmediate { rd, value } => {
             let destination_pointer =

@@ -20,6 +20,8 @@ pub const EXIT_FAULT: u32 = 4;
 pub const EXIT_INVALIDATED: u32 = 5;
 pub const EXIT_STOP: u32 = 6;
 
+pub const GBA_MEMORY_FAULT_ROM_SPECIALIZATION_V3: u32 = 7;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct GbaRuntimeV1 {

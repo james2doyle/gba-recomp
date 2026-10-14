@@ -106,6 +106,7 @@ pub fn decode_arm(guest_pc: u32, encoding: u32) -> Result<ArmInstruction, String
         ArmOperation::Branch {
             target,
             link: encoding & (1 << 24) != 0,
+            reachable_successors: 0b11,
         }
     } else if encoding & 0x0E00_0000 == 0x0200_0000 {
         let opcode = (encoding >> 21) & 0xF;
@@ -281,6 +282,7 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
                 operation: ThumbOperation::ConditionalBranch {
                     condition,
                     target: guest_pc.wrapping_add(4).wrapping_add(displacement),
+                    reachable_successors: 0b11,
                 },
             });
         }
@@ -462,7 +464,8 @@ mod tests {
             decode_arm(0x0800_00CC, 0x1AFF_FFFC).unwrap().operation,
             ArmOperation::Branch {
                 target: 0x0800_00C4,
-                link: false
+                link: false,
+                reachable_successors: 0b11,
             }
         );
         assert_eq!(
@@ -577,6 +580,7 @@ mod tests {
                     ThumbOperation::ConditionalBranch {
                         condition: condition as u8,
                         target: guest_pc.wrapping_add(4).wrapping_add(displacement as u32),
+                        reachable_successors: 0b11,
                     },
                     "condition 0x{condition:X}, immediate 0x{immediate:02X}"
                 );
@@ -588,6 +592,7 @@ mod tests {
             ThumbOperation::ConditionalBranch {
                 condition: 0xD,
                 target: 0x0800_0996,
+                reachable_successors: 0b11,
             }
         );
         assert_eq!(
@@ -595,6 +600,7 @@ mod tests {
             ThumbOperation::ConditionalBranch {
                 condition: 0,
                 target: 4,
+                reachable_successors: 0b11,
             }
         );
         assert_eq!(
@@ -602,6 +608,7 @@ mod tests {
             ThumbOperation::ConditionalBranch {
                 condition: 0,
                 target: 0xFFFF_FF04,
+                reachable_successors: 0b11,
             }
         );
     }

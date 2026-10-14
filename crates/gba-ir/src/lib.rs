@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-pub const GBA_IR_VERSION: u16 = 1;
+pub const GBA_IR_VERSION: u16 = 2;
 pub const REG_PC: u8 = 15;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -78,6 +78,8 @@ pub enum ArmOperation {
     Branch {
         target: u32,
         link: bool,
+        /// Discovery certificate: bit 0 is taken; bit 1 is conditional fallthrough.
+        reachable_successors: u8,
     },
 }
 
@@ -150,6 +152,12 @@ pub enum ThumbOperation {
         base_address: u32,
         values_by_register: [u32; 8],
     },
+    /// LDMIA resolved with a finite runtime base-to-ROM-word table.
+    LoadRomMultipleIncrementAfterCases {
+        base_register: u8,
+        register_list: u16,
+        table_id: u32,
+    },
     MovImmediate {
         rd: u8,
         value: u8,
@@ -166,6 +174,8 @@ pub enum ThumbOperation {
     ConditionalBranch {
         condition: u8,
         target: u32,
+        /// Discovery certificate: bit 0 is taken; bit 1 is fallthrough.
+        reachable_successors: u8,
     },
     MovRegister {
         rd: u8,
@@ -203,6 +213,18 @@ pub struct StaticBranchTarget {
     pub target_pc: u32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ThumbLdmiaRomTable {
+    pub cases: Vec<ThumbLdmiaRomCase>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ThumbLdmiaRomCase {
+    pub base_address: u32,
+    /// Values are indexed by register number. Unselected registers must be zero.
+    pub values_by_register: [u32; 8],
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ArmInstruction {
     pub guest_pc: u32,
@@ -217,6 +239,7 @@ pub struct ArmProgram {
     pub version: u16,
     pub instructions: Vec<ArmInstruction>,
     pub thumb_instructions: Vec<ThumbInstruction>,
+    pub thumb_ldmia_rom_tables: Vec<ThumbLdmiaRomTable>,
     pub branch_targets: Vec<StaticBranchTarget>,
 }
 
@@ -300,6 +323,25 @@ pub enum VerifyError {
     InvalidThumbByteLoadRegister(u8),
     InvalidThumbOrrRegister(u8),
     InvalidThumbBranchCondition(u8),
+    InvalidThumbBranchSuccessorMask(u8),
+    InvalidArmBranchSuccessorMask(u8),
+    InvalidThumbLdmiaRomTableCaseCount(usize),
+    UnorderedThumbLdmiaRomTable {
+        table_id: usize,
+        case_index: usize,
+    },
+    InvalidThumbLdmiaRomTableBase {
+        table_id: usize,
+        case_index: usize,
+        base_address: u32,
+    },
+    UnreferencedThumbLdmiaRomTable(usize),
+    NonzeroUnselectedThumbLdmiaRomValue {
+        table_id: usize,
+        case_index: usize,
+        register: u8,
+    },
+    InvalidThumbLdmiaRomTableId(u32),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -311,12 +353,21 @@ pub enum VerifyError {
     MisalignedThumbRomLiteral(u32),
     UnresolvedThumbRomLiteral(u32),
     DuplicateInstructionPc(u32),
-    BranchExchangeWithoutTargets { mode: IsaMode, pc: u32 },
-    BranchTargetSourceInvalid { mode: IsaMode, pc: u32 },
+    BranchExchangeWithoutTargets {
+        mode: IsaMode,
+        pc: u32,
+    },
+    BranchTargetSourceInvalid {
+        mode: IsaMode,
+        pc: u32,
+    },
     UnresolvedThumbBlSuffix(u32),
     InvalidThumbBlPair(u32),
     UnsupportedInstructionEncoding(u32),
-    MissingSuccessor { pc: u32, target: u32 },
+    MissingSuccessor {
+        pc: u32,
+        target: u32,
+    },
 }
 
 impl fmt::Display for VerifyError {
@@ -379,6 +430,47 @@ impl fmt::Display for VerifyError {
                 f,
                 "Thumb conditional branch condition {condition:#X} is outside 0x0..=0xD"
             ),
+            Self::InvalidThumbBranchSuccessorMask(mask) => write!(
+                f,
+                "Thumb conditional branch successor mask 0b{mask:08b} is empty or has reserved bits"
+            ),
+            Self::InvalidArmBranchSuccessorMask(mask) => write!(
+                f,
+                "ARM branch successor mask 0b{mask:08b} is empty or has reserved bits"
+            ),
+            Self::InvalidThumbLdmiaRomTableCaseCount(count) => write!(
+                f,
+                "Thumb ROM LDMIA table must contain 2..=16 cases, got {count}"
+            ),
+            Self::UnorderedThumbLdmiaRomTable {
+                table_id,
+                case_index,
+            } => write!(
+                f,
+                "Thumb ROM LDMIA table {table_id} case {case_index} is not strictly ordered by base address"
+            ),
+            Self::InvalidThumbLdmiaRomTableBase {
+                table_id,
+                case_index,
+                base_address,
+            } => write!(
+                f,
+                "Thumb ROM LDMIA table {table_id} case {case_index} base 0x{base_address:08X} is outside the GBA ROM window"
+            ),
+            Self::UnreferencedThumbLdmiaRomTable(table_id) => {
+                write!(f, "Thumb ROM LDMIA table {table_id} is not referenced")
+            }
+            Self::NonzeroUnselectedThumbLdmiaRomValue {
+                table_id,
+                case_index,
+                register,
+            } => write!(
+                f,
+                "Thumb ROM LDMIA table {table_id} case {case_index} has a value for unselected r{register}"
+            ),
+            Self::InvalidThumbLdmiaRomTableId(table_id) => {
+                write!(f, "Thumb ROM LDMIA references missing table {table_id}")
+            }
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
                 write!(f, "GBA-010 ALU slice accepts one instruction, got {count}")
@@ -460,6 +552,32 @@ impl ArmProgram {
         if self.instructions.is_empty() && self.thumb_instructions.is_empty() {
             return Err(VerifyError::EmptyBlock);
         }
+        for (table_id, table) in self.thumb_ldmia_rom_tables.iter().enumerate() {
+            if !(2..=16).contains(&table.cases.len()) {
+                return Err(VerifyError::InvalidThumbLdmiaRomTableCaseCount(
+                    table.cases.len(),
+                ));
+            }
+            for (case_index, case) in table.cases.iter().enumerate() {
+                if !(0x0800_0000..0x0A00_0000).contains(&case.base_address) {
+                    return Err(VerifyError::InvalidThumbLdmiaRomTableBase {
+                        table_id,
+                        case_index,
+                        base_address: case.base_address,
+                    });
+                }
+                if case_index == 0 {
+                    continue;
+                }
+                if table.cases[case_index - 1].base_address >= table.cases[case_index].base_address
+                {
+                    return Err(VerifyError::UnorderedThumbLdmiaRomTable {
+                        table_id,
+                        case_index,
+                    });
+                }
+            }
+        }
         let mut arm_pcs = std::collections::HashSet::with_capacity(self.instructions.len());
         for instruction in &self.instructions {
             if instruction.guest_pc & 3 != 0 {
@@ -509,9 +627,18 @@ impl ArmProgram {
                     verify_general_register(rn)?;
                 }
                 ArmOperation::BranchExchange { rm } => verify_operand_register(rm)?,
-                ArmOperation::Branch { target, .. } => {
+                ArmOperation::Branch {
+                    target,
+                    reachable_successors,
+                    ..
+                } => {
                     if target & 3 != 0 {
                         return Err(VerifyError::MisalignedBranchTarget(target));
+                    }
+                    if reachable_successors == 0 || reachable_successors & !0b11 != 0 {
+                        return Err(VerifyError::InvalidArmBranchSuccessorMask(
+                            reachable_successors,
+                        ));
                     }
                 }
             }
@@ -522,6 +649,7 @@ impl ArmProgram {
             .iter()
             .map(|instruction| (instruction.guest_pc, instruction))
             .collect::<std::collections::HashMap<_, _>>();
+        let mut referenced_thumb_ldmia_tables = vec![false; self.thumb_ldmia_rom_tables.len()];
         for instruction in &self.thumb_instructions {
             if instruction.guest_pc & 1 != 0 {
                 return Err(VerifyError::MisalignedThumbPc(instruction.guest_pc));
@@ -710,9 +838,18 @@ impl ArmProgram {
                         )));
                     }
                 }
-                ThumbOperation::ConditionalBranch { condition, target } => {
+                ThumbOperation::ConditionalBranch {
+                    condition,
+                    target,
+                    reachable_successors,
+                } => {
                     if condition > 0xD {
                         return Err(VerifyError::InvalidThumbBranchCondition(condition));
+                    }
+                    if reachable_successors == 0 || reachable_successors & !0b11 != 0 {
+                        return Err(VerifyError::InvalidThumbBranchSuccessorMask(
+                            reachable_successors,
+                        ));
                     }
                     let encoded_condition = ((instruction.encoding >> 8) & 0xF) as u8;
                     let immediate = i32::from(instruction.encoding as u8 as i8) << 1;
@@ -770,6 +907,11 @@ impl ArmProgram {
                     base_register,
                     register_list,
                     ..
+                }
+                | ThumbOperation::LoadRomMultipleIncrementAfterCases {
+                    base_register,
+                    register_list,
+                    ..
                 } => {
                     let encoding = instruction.encoding;
                     if base_register > 7 {
@@ -799,6 +941,32 @@ impl ArmProgram {
                                 return Err(VerifyError::UnsupportedInstructionEncoding(
                                     u32::from(encoding),
                                 ));
+                            }
+                        }
+                    }
+                    if let ThumbOperation::LoadRomMultipleIncrementAfterCases { table_id, .. } =
+                        instruction.operation
+                    {
+                        let table_index = usize::try_from(table_id)
+                            .ok()
+                            .filter(|index| *index < self.thumb_ldmia_rom_tables.len())
+                            .ok_or(VerifyError::InvalidThumbLdmiaRomTableId(table_id))?;
+                        referenced_thumb_ldmia_tables[table_index] = true;
+                        for (case_index, case) in self.thumb_ldmia_rom_tables[table_index]
+                            .cases
+                            .iter()
+                            .enumerate()
+                        {
+                            for register in 0..8 {
+                                if register_list & (1 << register) == 0
+                                    && case.values_by_register[register] != 0
+                                {
+                                    return Err(VerifyError::NonzeroUnselectedThumbLdmiaRomValue {
+                                        table_id: table_index,
+                                        case_index,
+                                        register: register as u8,
+                                    });
+                                }
                             }
                         }
                     }
@@ -876,6 +1044,12 @@ impl ArmProgram {
                 ThumbOperation::Swi { .. } => {}
             }
         }
+        if let Some(table_id) = referenced_thumb_ldmia_tables
+            .iter()
+            .position(|referenced| !referenced)
+        {
+            return Err(VerifyError::UnreferencedThumbLdmiaRomTable(table_id));
+        }
         for target in &self.branch_targets {
             let source_exists = match target.source_mode {
                 IsaMode::Arm => arm_pcs.contains(&target.source_pc),
@@ -920,14 +1094,21 @@ impl ArmProgram {
         for instruction in &self.instructions {
             let fallthrough = instruction.guest_pc.wrapping_add(4);
             match instruction.operation {
-                ArmOperation::Branch { target, link } => {
-                    if !arm_pcs.contains(&target) {
+                ArmOperation::Branch {
+                    target,
+                    link,
+                    reachable_successors,
+                } => {
+                    if reachable_successors & 0b01 != 0 && !arm_pcs.contains(&target) {
                         return Err(VerifyError::MissingSuccessor {
                             pc: instruction.guest_pc,
                             target,
                         });
                     }
-                    if (instruction.condition != 14 || link) && !arm_pcs.contains(&fallthrough) {
+                    if (reachable_successors & 0b10 != 0
+                        || (link && reachable_successors & 0b01 != 0))
+                        && !arm_pcs.contains(&fallthrough)
+                    {
                         return Err(VerifyError::MissingSuccessor {
                             pc: instruction.guest_pc,
                             target: fallthrough,
@@ -1063,6 +1244,7 @@ impl ArmProgram {
                 }
                 ThumbOperation::LoadMultipleIncrementAfter { .. }
                 | ThumbOperation::LoadRomMultipleIncrementAfter { .. }
+                | ThumbOperation::LoadRomMultipleIncrementAfterCases { .. }
                 | ThumbOperation::StoreMultipleIncrementAfter { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if fallthrough & 1 != 0 {
@@ -1086,9 +1268,15 @@ impl ArmProgram {
                         });
                     }
                 }
-                ThumbOperation::ConditionalBranch { target, .. } => {
-                    for successor in [target, instruction.guest_pc.wrapping_add(2)] {
-                        if !thumb_pcs.contains(&successor) {
+                ThumbOperation::ConditionalBranch {
+                    target,
+                    reachable_successors,
+                    ..
+                } => {
+                    for (edge_bit, successor) in
+                        [(0b01, target), (0b10, instruction.guest_pc.wrapping_add(2))]
+                    {
+                        if reachable_successors & edge_bit != 0 && !thumb_pcs.contains(&successor) {
                             return Err(VerifyError::MissingSuccessor {
                                 pc: instruction.guest_pc,
                                 target: successor,
@@ -1280,7 +1468,7 @@ pub fn execute_instruction(
                 state.guest_cycle += 1;
                 return Ok(());
             }
-            ArmOperation::Branch { target, link } => {
+            ArmOperation::Branch { target, link, .. } => {
                 if link {
                     state.r[14] = pc_after;
                 }
@@ -1430,6 +1618,7 @@ pub fn execute_thumb_instruction(
         ThumbOperation::Push { .. }
         | ThumbOperation::Pop { .. }
         | ThumbOperation::LoadMultipleIncrementAfter { .. }
+        | ThumbOperation::LoadRomMultipleIncrementAfterCases { .. }
         | ThumbOperation::StoreMultipleIncrementAfter { .. } => {
             return Err(StepFault::MemoryRuntimeRequired);
         }
@@ -1451,7 +1640,9 @@ pub fn execute_thumb_instruction(
                 | (u32::from(overflow) << 28);
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
-        ThumbOperation::ConditionalBranch { condition, target } => {
+        ThumbOperation::ConditionalBranch {
+            condition, target, ..
+        } => {
             let fallthrough = instruction.guest_pc.wrapping_add(2);
             state.r[REG_PC as usize] = if condition_passes(condition, state.cpsr) {
                 target
@@ -1595,6 +1786,7 @@ mod tests {
                     operation: ThumbOperation::ConditionalBranch {
                         condition,
                         target: guest_pc.wrapping_add(4),
+                        reachable_successors: 0b11,
                     },
                 },
                 ThumbInstruction {
@@ -1608,6 +1800,7 @@ mod tests {
                     operation: ThumbOperation::BranchExchange { rm: 0 },
                 },
             ],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![
                 StaticBranchTarget {
                     source_mode: IsaMode::Thumb,
@@ -1642,6 +1835,7 @@ mod tests {
                     operation: ThumbOperation::BranchExchange { rm: 0 },
                 },
             ],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![StaticBranchTarget {
                 source_mode: IsaMode::Thumb,
                 source_pc: fallthrough,
@@ -1668,6 +1862,7 @@ mod tests {
                     operation: ThumbOperation::BranchExchange { rm: 0 },
                 },
             ],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![StaticBranchTarget {
                 source_mode: IsaMode::Thumb,
                 source_pc: fallthrough,
@@ -1709,7 +1904,11 @@ mod tests {
             let instruction = ThumbInstruction {
                 guest_pc,
                 encoding: 0xD000 | (u16::from(condition) << 8),
-                operation: ThumbOperation::ConditionalBranch { condition, target },
+                operation: ThumbOperation::ConditionalBranch {
+                    condition,
+                    target,
+                    reachable_successors: 0b11,
+                },
             };
             for nzcv in 0..16 {
                 let mut cpu = state(guest_pc);
@@ -1757,6 +1956,7 @@ mod tests {
         mismatched_target.thumb_instructions[0].operation = ThumbOperation::ConditionalBranch {
             condition: 0,
             target: 0x0800_0106,
+            reachable_successors: 0b11,
         };
         assert_eq!(
             mismatched_target.verify(),
@@ -1767,6 +1967,7 @@ mod tests {
         invalid_condition.thumb_instructions[0].operation = ThumbOperation::ConditionalBranch {
             condition: 0xE,
             target: 0x0800_0104,
+            reachable_successors: 0b11,
         };
         assert_eq!(
             invalid_condition.verify(),
@@ -1797,6 +1998,176 @@ mod tests {
                 pc: 0x0800_0100,
                 target: 0x0800_0102,
             })
+        );
+
+        let mut invalid_empty_mask = conditional_branch_program(0);
+        let ThumbOperation::ConditionalBranch {
+            condition, target, ..
+        } = invalid_empty_mask.thumb_instructions[0].operation
+        else {
+            unreachable!();
+        };
+        invalid_empty_mask.thumb_instructions[0].operation = ThumbOperation::ConditionalBranch {
+            condition,
+            target,
+            reachable_successors: 0,
+        };
+        assert_eq!(
+            invalid_empty_mask.verify(),
+            Err(VerifyError::InvalidThumbBranchSuccessorMask(0))
+        );
+
+        let mut invalid_reserved_mask = conditional_branch_program(0);
+        let ThumbOperation::ConditionalBranch {
+            condition, target, ..
+        } = invalid_reserved_mask.thumb_instructions[0].operation
+        else {
+            unreachable!();
+        };
+        invalid_reserved_mask.thumb_instructions[0].operation = ThumbOperation::ConditionalBranch {
+            condition,
+            target,
+            reachable_successors: 0b100,
+        };
+        assert_eq!(
+            invalid_reserved_mask.verify(),
+            Err(VerifyError::InvalidThumbBranchSuccessorMask(0b100))
+        );
+
+        let mut omitted_unmarked_fallthrough = conditional_branch_program(0);
+        let ThumbOperation::ConditionalBranch {
+            condition, target, ..
+        } = omitted_unmarked_fallthrough.thumb_instructions[0].operation
+        else {
+            unreachable!();
+        };
+        omitted_unmarked_fallthrough.thumb_instructions[0].operation =
+            ThumbOperation::ConditionalBranch {
+                condition,
+                target,
+                reachable_successors: 0b01,
+            };
+        omitted_unmarked_fallthrough
+            .thumb_instructions
+            .retain(|instruction| instruction.guest_pc != 0x0800_0102);
+        omitted_unmarked_fallthrough.branch_targets = vec![StaticBranchTarget {
+            source_mode: IsaMode::Thumb,
+            source_pc: 0x0800_0104,
+            target_mode: IsaMode::Thumb,
+            target_pc: 0x0800_0104,
+        }];
+        assert!(omitted_unmarked_fallthrough.verify().is_ok());
+    }
+
+    fn thumb_rom_ldmia_cases_program() -> ArmProgram {
+        let mut program = thumb_ldmia_program(
+            0x0800_0200,
+            0xCB03,
+            ThumbOperation::LoadRomMultipleIncrementAfterCases {
+                base_register: 3,
+                register_list: 0x03,
+                table_id: 0,
+            },
+        );
+        program.thumb_ldmia_rom_tables = vec![ThumbLdmiaRomTable {
+            cases: vec![
+                ThumbLdmiaRomCase {
+                    base_address: 0x0800_0100,
+                    values_by_register: [0x1234_5678, 0x2345_6789, 0, 0, 0, 0, 0, 0],
+                },
+                ThumbLdmiaRomCase {
+                    base_address: 0x0800_0120,
+                    values_by_register: [0x3456_789A, 0x4567_89AB, 0, 0, 0, 0, 0, 0],
+                },
+            ],
+        }];
+        program
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_rom_ldmia_tables() {
+        assert!(thumb_rom_ldmia_cases_program().verify().is_ok());
+
+        let mut too_few_cases = thumb_rom_ldmia_cases_program();
+        too_few_cases.thumb_ldmia_rom_tables[0].cases.pop();
+        assert_eq!(
+            too_few_cases.verify(),
+            Err(VerifyError::InvalidThumbLdmiaRomTableCaseCount(1))
+        );
+
+        let mut empty_table = thumb_rom_ldmia_cases_program();
+        empty_table.thumb_ldmia_rom_tables[0].cases.clear();
+        assert_eq!(
+            empty_table.verify(),
+            Err(VerifyError::InvalidThumbLdmiaRomTableCaseCount(0))
+        );
+
+        let mut too_many_cases = thumb_rom_ldmia_cases_program();
+        let repeated_case = too_many_cases.thumb_ldmia_rom_tables[0].cases[0];
+        for _ in 0..15 {
+            too_many_cases.thumb_ldmia_rom_tables[0]
+                .cases
+                .push(repeated_case);
+        }
+        assert_eq!(
+            too_many_cases.verify(),
+            Err(VerifyError::InvalidThumbLdmiaRomTableCaseCount(17))
+        );
+
+        let mut unordered_bases = thumb_rom_ldmia_cases_program();
+        unordered_bases.thumb_ldmia_rom_tables[0].cases[1].base_address = 0x0800_0100;
+        assert_eq!(
+            unordered_bases.verify(),
+            Err(VerifyError::UnorderedThumbLdmiaRomTable {
+                table_id: 0,
+                case_index: 1,
+            })
+        );
+
+        let mut non_rom_base = thumb_rom_ldmia_cases_program();
+        non_rom_base.thumb_ldmia_rom_tables[0].cases[0].base_address = 0x0200_0000;
+        assert_eq!(
+            non_rom_base.verify(),
+            Err(VerifyError::InvalidThumbLdmiaRomTableBase {
+                table_id: 0,
+                case_index: 0,
+                base_address: 0x0200_0000,
+            })
+        );
+
+        let mut nonzero_unselected_word = thumb_rom_ldmia_cases_program();
+        nonzero_unselected_word.thumb_ldmia_rom_tables[0].cases[0].values_by_register[2] =
+            0xDEAD_BEEF;
+        assert_eq!(
+            nonzero_unselected_word.verify(),
+            Err(VerifyError::NonzeroUnselectedThumbLdmiaRomValue {
+                table_id: 0,
+                case_index: 0,
+                register: 2,
+            })
+        );
+
+        let mut invalid_table_id = thumb_rom_ldmia_cases_program();
+        invalid_table_id.thumb_instructions[0].operation =
+            ThumbOperation::LoadRomMultipleIncrementAfterCases {
+                base_register: 3,
+                register_list: 0x03,
+                table_id: 1,
+            };
+        assert_eq!(
+            invalid_table_id.verify(),
+            Err(VerifyError::InvalidThumbLdmiaRomTableId(1))
+        );
+
+        let mut unreferenced_table = thumb_rom_ldmia_cases_program();
+        unreferenced_table.thumb_instructions[0].operation =
+            ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 0x03,
+            };
+        assert_eq!(
+            unreferenced_table.verify(),
+            Err(VerifyError::UnreferencedThumbLdmiaRomTable(0))
         );
     }
 
@@ -2070,6 +2441,7 @@ mod tests {
                     operation: ThumbOperation::ConditionalBranch {
                         condition: 0xD,
                         target: 0x0800_0996,
+                        reachable_successors: 0b11,
                     },
                 },
                 ThumbInstruction {
@@ -2083,6 +2455,7 @@ mod tests {
                     operation: ThumbOperation::BranchExchange { rm: 0 },
                 },
             ],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![
                 StaticBranchTarget {
                     source_mode: IsaMode::Thumb,
@@ -2126,6 +2499,7 @@ mod tests {
             operation: ArmOperation::Branch {
                 target: 0x0800_0100,
                 link: true,
+                reachable_successors: 0b11,
             },
         };
         let mut cpu = state(instruction.guest_pc);
@@ -2928,6 +3302,7 @@ mod tests {
                 encoding: 0x2000,
                 operation: ThumbOperation::MovImmediate { rd: 8, value: 0 },
             }],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -2984,6 +3359,7 @@ mod tests {
                     operation: ArmOperation::Branch {
                         target: arm_pc,
                         link: false,
+                        reachable_successors: 0b01,
                     },
                 }],
                 thumb_instructions: vec![
@@ -2994,6 +3370,7 @@ mod tests {
                         operation: ThumbOperation::BranchExchange { rm: 0 },
                     },
                 ],
+                thumb_ldmia_rom_tables: vec![],
                 branch_targets: vec![StaticBranchTarget {
                     source_mode: IsaMode::Thumb,
                     source_pc: bx_pc,
@@ -3122,6 +3499,7 @@ mod tests {
             version: GBA_IR_VERSION,
             instructions: vec![],
             thumb_instructions: vec![cases[2]],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -3143,6 +3521,7 @@ mod tests {
                 encoding: 0x04C9,
                 operation: ThumbOperation::LslImmediate { rd, rs, amount },
             }],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -3183,6 +3562,7 @@ mod tests {
             version: GBA_IR_VERSION,
             instructions: vec![],
             thumb_instructions: vec![instruction, bx],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![StaticBranchTarget {
                 source_mode: IsaMode::Thumb,
                 source_pc: guest_pc + 2,
@@ -3241,6 +3621,7 @@ mod tests {
             version: GBA_IR_VERSION,
             instructions: vec![],
             thumb_instructions: vec![instruction],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -3273,6 +3654,7 @@ mod tests {
             operation: ArmOperation::Branch {
                 target: 0x0800_0080,
                 link: false,
+                reachable_successors: 0b01,
             },
         };
         let bx = ThumbInstruction {
@@ -3284,6 +3666,7 @@ mod tests {
             version: GBA_IR_VERSION,
             instructions: vec![arm_loop],
             thumb_instructions: vec![instruction, bx],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![StaticBranchTarget {
                 source_mode: IsaMode::Thumb,
                 source_pc: guest_pc + 2,
@@ -3406,6 +3789,7 @@ mod tests {
                     operation: ThumbOperation::BranchExchange { rm: 0 },
                 },
             ],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![StaticBranchTarget {
                 source_mode: IsaMode::Thumb,
                 source_pc: guest_pc + 2,
@@ -3488,6 +3872,7 @@ mod tests {
             version: GBA_IR_VERSION,
             instructions: vec![],
             thumb_instructions: vec![store],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -3522,6 +3907,7 @@ mod tests {
                     operation: ThumbOperation::BranchExchange { rm: 0 },
                 },
             ],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![StaticBranchTarget {
                 source_mode: IsaMode::Thumb,
                 source_pc: guest_pc + 2,
@@ -3604,6 +3990,7 @@ mod tests {
             version: GBA_IR_VERSION,
             instructions: vec![],
             thumb_instructions: vec![store],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -3638,6 +4025,7 @@ mod tests {
                     operation: ThumbOperation::BranchExchange { rm: 0 },
                 },
             ],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![StaticBranchTarget {
                 source_mode: IsaMode::Thumb,
                 source_pc: guest_pc + 2,
@@ -3720,6 +4108,7 @@ mod tests {
             version: GBA_IR_VERSION,
             instructions: vec![],
             thumb_instructions: vec![load],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -3744,6 +4133,7 @@ mod tests {
                     operation: ArmOperation::Branch {
                         target: 0x0800_0090,
                         link: false,
+                        reachable_successors: 0b01,
                     },
                 }],
                 thumb_instructions: vec![
@@ -3758,6 +4148,7 @@ mod tests {
                         operation: ThumbOperation::BranchExchange { rm: 1 },
                     },
                 ],
+                thumb_ldmia_rom_tables: vec![],
                 branch_targets: vec![StaticBranchTarget {
                     source_mode: IsaMode::Thumb,
                     source_pc: bx_pc,
@@ -3888,6 +4279,7 @@ mod tests {
                 encoding: 0xF800,
                 operation: ThumbOperation::BlSuffix { immediate: 0 },
             }],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -3977,6 +4369,7 @@ mod tests {
                 },
             }],
             thumb_instructions: vec![],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert_eq!(
@@ -4018,9 +4411,11 @@ mod tests {
                 operation: ArmOperation::Branch {
                     target: 0x0800_0000,
                     link: false,
+                    reachable_successors: 0b11,
                 },
             }],
             thumb_instructions: vec![],
+            thumb_ldmia_rom_tables: vec![],
             branch_targets: vec![],
         };
         assert!(matches!(
@@ -4030,5 +4425,29 @@ mod tests {
                 target: 0x0800_0004
             })
         ));
+    }
+
+    #[test]
+    fn program_verifier_rejects_invalid_arm_branch_successor_mask() {
+        let program = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![ArmInstruction {
+                guest_pc: 0x0800_0000,
+                encoding: 0xEAFF_FFFE,
+                condition: 14,
+                operation: ArmOperation::Branch {
+                    target: 0x0800_0000,
+                    link: false,
+                    reachable_successors: 0b100,
+                },
+            }],
+            thumb_instructions: vec![],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![],
+        };
+        assert_eq!(
+            program.verify(),
+            Err(VerifyError::InvalidArmBranchSuccessorMask(0b100))
+        );
     }
 }

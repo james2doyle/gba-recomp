@@ -5,15 +5,15 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
 if [ "$#" -ne 2 ]; then
-    echo "usage: verify-gba020-lsl.sh <jobs: 1|2|4|5|7> <lld-threads: 1..10>" >&2
+    echo "usage: verify-gba020-lsl.sh <jobs: 1|2|4|5|7|8> <lld-threads: 1..10>" >&2
     exit 2
 fi
 gba020_jobs=$1
 gba020_link_threads=$2
 case "$gba020_jobs" in
-    1|2|4|5|7) ;;
+    1|2|4|5|7|8) ;;
     *)
-        echo "GBA020_JOBS must be 1, 2, 4, 5, or 7" >&2
+        echo "GBA020_JOBS must be 1, 2, 4, 5, 7, or 8" >&2
         exit 2
         ;;
 esac

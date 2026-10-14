@@ -110,6 +110,8 @@ def generate(mode: str = "valid") -> bytes:
         )
     elif mode in (
         "thumb-ldmia-rom-bx",
+        "thumb-ldmia-rom-multibase-ne",
+        "thumb-ldmia-rom-multibase-eq",
         "thumb-ldmia-iwram-bx",
         "thumb-ldmia-rom-out-of-range",
         "thumb-ldmia-empty-unsupported",
@@ -117,6 +119,43 @@ def generate(mode: str = "valid") -> bytes:
         "thumb-stmia-empty-unsupported",
         "thumb-stmia-base-unpredictable",
     ):
+        if mode in (
+            "thumb-ldmia-rom-multibase-ne",
+            "thumb-ldmia-rom-multibase-eq",
+        ):
+            branch_encoding = (
+                0xD101
+                if mode == "thumb-ldmia-rom-multibase-ne"
+                else 0xD001
+            )  # Both edges are statically reachable; runtime CPSR picks one.
+            image[0x84:0x96] = struct.pack(
+                "<9H",
+                branch_encoding,  # BNE/BEQ 0x0800008A, fallthrough 0x08000086.
+                0x4B06,  # Fallthrough: LDR r3,[PC,#0x18] -> base A at 0xA0.
+                0x4740,  # BX r8 -> common LDMIA at 0x0800008E.
+                0x4B06,  # Taken: LDR r3,[PC,#0x18] -> base B at 0xA4.
+                0x4740,  # BX r8 -> common LDMIA at 0x0800008E.
+                0xCB01,  # LDMIA r3!,{r0}; each incoming state has a distinct base.
+                0x4710,  # BX r2 -> ARM loop.
+                0x46C0,
+                0x46C0,
+            )
+            image[0xA0:0xA8] = struct.pack("<2I", 0x080000F0, 0x080000F4)
+            image[0xC0:0xD0] = struct.pack(
+                "<4I",
+                0xE59F2008,  # LDR r2,[PC,#8] -> ARM loop at 0xD0.
+                0xE59F8008,  # LDR r8,[PC,#8] -> common Thumb target at 0xD4.
+                0xE59FC008,  # LDR r12,[PC,#8] -> Thumb entry at 0xD8.
+                0xE12FFF1C,  # BX r12.
+            )
+            image[0xD0:0xDC] = struct.pack(
+                "<3I", 0x080000E8, 0x0800008F, 0x08000085
+            )
+            image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+            image[0xF0:0xF8] = struct.pack("<2I", 0x12345678, 0x87654321)
+            image[0xBD] = header_checksum(image)
+            return bytes(image)
+
         encoding = {
             "thumb-ldmia-rom-bx": 0xCB01,
             "thumb-ldmia-iwram-bx": 0xCB01,
@@ -956,6 +995,8 @@ def main() -> None:
             "thumb-swi-unsupported",
             "thumb-push",
             "thumb-ldmia-rom-bx",
+            "thumb-ldmia-rom-multibase-ne",
+            "thumb-ldmia-rom-multibase-eq",
             "thumb-ldmia-iwram-bx",
             "thumb-ldmia-rom-out-of-range",
             "thumb-ldmia-empty-unsupported",

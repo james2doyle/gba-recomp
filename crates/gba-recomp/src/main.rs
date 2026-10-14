@@ -439,7 +439,45 @@ fn usage() -> String {
 
 #[cfg(test)]
 mod link_thread_tests {
-    use super::parse_lld_threads;
+    use super::{Optimization, build_native_package, parse_lld_threads};
+    use crate::rom::{ROM_BASE, RomImage, header_checksum};
+    use gba_ir::{
+        ArmInstruction, ArmOperation, ArmProgram, GBA_IR_VERSION, ThumbInstruction,
+        ThumbLdmiaRomCase, ThumbLdmiaRomTable, ThumbOperation,
+    };
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_image() -> RomImage {
+        let mut bytes = vec![0; 256];
+        bytes[0..4].copy_from_slice(&0xEAFF_FFFE_u32.to_le_bytes());
+        bytes[0xA0..0xAC].copy_from_slice(b"AOT TEST ROM");
+        bytes[0xAC..0xB0].copy_from_slice(b"TEST");
+        bytes[0xB0..0xB2].copy_from_slice(b"00");
+        bytes[0xB2] = 0x96;
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
+    fn run_program(program: &ArmProgram, label: &str, expected: &str) {
+        let image = test_image();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let output_path =
+            std::env::temp_dir().join(format!("gba-recomp-{label}-{}-{stamp}", std::process::id()));
+        let package =
+            build_native_package(&image, program, Optimization::O0, 8, &output_path).unwrap();
+        let output = Command::new(package.join("game")).output().unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        std::fs::remove_dir_all(&package).unwrap();
+        assert!(!output.status.success(), "guest unexpectedly completed");
+        assert!(
+            stderr.contains(expected),
+            "expected {expected:?} in stderr, got {stderr:?}"
+        );
+    }
 
     #[test]
     fn lld_thread_count_defaults_and_enforces_host_budget() {
@@ -450,5 +488,147 @@ mod link_thread_tests {
         assert!(parse_lld_threads(Some("0")).is_err());
         assert!(parse_lld_threads(Some("11")).is_err());
         assert!(parse_lld_threads(Some("fast")).is_err());
+    }
+
+    #[test]
+    fn arm_branch_guard_rejects_unmarked_edge_even_when_pc_has_another_predecessor() {
+        let program = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![
+                ArmInstruction {
+                    guest_pc: ROM_BASE,
+                    encoding: 0x0A00_0002,
+                    condition: 0,
+                    operation: ArmOperation::Branch {
+                        target: ROM_BASE + 0x10,
+                        link: false,
+                        reachable_successors: 0b01,
+                    },
+                },
+                ArmInstruction {
+                    guest_pc: ROM_BASE + 4,
+                    encoding: 0xEAFF_FFFE,
+                    condition: 14,
+                    operation: ArmOperation::Branch {
+                        target: ROM_BASE + 4,
+                        link: false,
+                        reachable_successors: 0b01,
+                    },
+                },
+                ArmInstruction {
+                    guest_pc: ROM_BASE + 0x10,
+                    encoding: 0xEAFF_FFFB,
+                    condition: 14,
+                    operation: ArmOperation::Branch {
+                        target: ROM_BASE + 4,
+                        link: false,
+                        reachable_successors: 0b01,
+                    },
+                },
+            ],
+            thumb_instructions: vec![],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![],
+        };
+
+        run_program(
+            &program,
+            "arm-branch-edge-guard",
+            "guest stopped: reason=3 pc=0x08000000",
+        );
+    }
+
+    #[test]
+    fn thumb_ldmia_table_miss_faults_at_guest_base_without_fallback() {
+        let table = ThumbLdmiaRomTable {
+            cases: vec![
+                ThumbLdmiaRomCase {
+                    base_address: ROM_BASE + 0xF0,
+                    values_by_register: [0x1234_5678, 0, 0, 0, 0, 0, 0, 0],
+                },
+                ThumbLdmiaRomCase {
+                    base_address: ROM_BASE + 0xF4,
+                    values_by_register: [0x8765_4321, 0, 0, 0, 0, 0, 0, 0],
+                },
+            ],
+        };
+        let program = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![
+                ArmInstruction {
+                    guest_pc: ROM_BASE,
+                    encoding: 0xE59F_3018,
+                    condition: 14,
+                    operation: ArmOperation::LoadRomLiteral {
+                        rd: 3,
+                        guest_address: ROM_BASE + 0x20,
+                        value: ROM_BASE + 0x100,
+                    },
+                },
+                ArmInstruction {
+                    guest_pc: ROM_BASE + 4,
+                    encoding: 0xE59F_2018,
+                    condition: 14,
+                    operation: ArmOperation::LoadRomLiteral {
+                        rd: 2,
+                        guest_address: ROM_BASE + 0x24,
+                        value: ROM_BASE + 0x85,
+                    },
+                },
+                ArmInstruction {
+                    guest_pc: ROM_BASE + 8,
+                    encoding: 0xE12F_FF12,
+                    condition: 14,
+                    operation: ArmOperation::BranchExchange { rm: 2 },
+                },
+                ArmInstruction {
+                    guest_pc: ROM_BASE + 0x0C,
+                    encoding: 0xEAFF_FFFE,
+                    condition: 14,
+                    operation: ArmOperation::Branch {
+                        target: ROM_BASE + 0x0C,
+                        link: false,
+                        reachable_successors: 0b01,
+                    },
+                },
+            ],
+            thumb_instructions: vec![
+                ThumbInstruction {
+                    guest_pc: ROM_BASE + 0x84,
+                    encoding: 0xCB01,
+                    operation: ThumbOperation::LoadRomMultipleIncrementAfterCases {
+                        base_register: 3,
+                        register_list: 1,
+                        table_id: 0,
+                    },
+                },
+                ThumbInstruction {
+                    guest_pc: ROM_BASE + 0x86,
+                    encoding: 0x4710,
+                    operation: ThumbOperation::BranchExchange { rm: 2 },
+                },
+            ],
+            thumb_ldmia_rom_tables: vec![table],
+            branch_targets: vec![
+                gba_ir::StaticBranchTarget {
+                    source_mode: gba_ir::IsaMode::Arm,
+                    source_pc: ROM_BASE + 8,
+                    target_mode: gba_ir::IsaMode::Thumb,
+                    target_pc: ROM_BASE + 0x84,
+                },
+                gba_ir::StaticBranchTarget {
+                    source_mode: gba_ir::IsaMode::Thumb,
+                    source_pc: ROM_BASE + 0x86,
+                    target_mode: gba_ir::IsaMode::Arm,
+                    target_pc: ROM_BASE + 0x0C,
+                },
+            ],
+        };
+
+        run_program(
+            &program,
+            "thumb-ldmia-table-miss",
+            "guest stopped: reason=4 pc=0x08000084 address=0x08000100 fault_code=7",
+        );
     }
 }
