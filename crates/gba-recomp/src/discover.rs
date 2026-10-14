@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 use gba_ir::{
     ArmInstruction, ArmOperation, ArmProgram, GBA_IR_VERSION, IsaMode, REG_PC, StaticBranchTarget,
@@ -9,6 +10,7 @@ use crate::rom::{ROM_BASE, RomImage};
 
 const MAX_DISCOVERED_INSTRUCTIONS: usize = 1_000_000;
 const MAX_CONSTANT_TARGETS: usize = 16;
+const MAX_ABSTRACT_MEMORY_WORDS: usize = 64;
 const MAX_ANALYSIS_UPDATES: usize = MAX_DISCOVERED_INSTRUCTIONS * 32;
 
 pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
@@ -245,12 +247,14 @@ impl AbstractValue {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct AbstractState {
     registers: [AbstractValue; REG_PC as usize],
+    memory_words: Arc<BTreeMap<u32, AbstractValue>>,
 }
 
 impl AbstractState {
     fn unknown() -> Self {
         Self {
             registers: std::array::from_fn(|_| AbstractValue::Unknown),
+            memory_words: Arc::new(BTreeMap::new()),
         }
     }
 
@@ -260,6 +264,26 @@ impl AbstractState {
             let merged = current.merged(incoming);
             if *current != merged {
                 *current = merged;
+                changed = true;
+            }
+        }
+        let addresses = self.memory_words.keys().copied().collect::<Vec<_>>();
+        for address in addresses {
+            let Some(incoming_value) = other.memory_words.get(&address) else {
+                Arc::make_mut(&mut self.memory_words).remove(&address);
+                changed = true;
+                continue;
+            };
+            let current = self
+                .memory_words
+                .get(&address)
+                .expect("address came from this state's memory map");
+            let merged = current.merged(incoming_value);
+            if merged == AbstractValue::Unknown {
+                Arc::make_mut(&mut self.memory_words).remove(&address);
+                changed = true;
+            } else if *current != merged {
+                Arc::make_mut(&mut self.memory_words).insert(address, merged);
                 changed = true;
             }
         }
@@ -274,6 +298,180 @@ impl AbstractState {
 
     fn invalidate_all(&mut self) {
         self.registers.fill(AbstractValue::Unknown);
+        self.clear_memory();
+    }
+
+    fn clear_memory(&mut self) {
+        self.memory_words = Arc::new(BTreeMap::new());
+    }
+
+    fn set_memory_word(&mut self, address: u32, value: AbstractValue) {
+        match value {
+            AbstractValue::Unknown => {
+                Arc::make_mut(&mut self.memory_words).remove(&address);
+            }
+            AbstractValue::Constants(values) if !values.is_empty() => {
+                Arc::make_mut(&mut self.memory_words)
+                    .insert(address, AbstractValue::Constants(values));
+            }
+            AbstractValue::Constants(_) => {
+                Arc::make_mut(&mut self.memory_words).remove(&address);
+            }
+        }
+        if self.memory_words.len() > MAX_ABSTRACT_MEMORY_WORDS {
+            self.clear_memory();
+        }
+    }
+
+    fn push_words(&mut self, old_sp: &AbstractValue, values: &[AbstractValue]) {
+        let Some(stack_pointers) = old_sp.values() else {
+            self.clear_memory();
+            return;
+        };
+        if stack_pointers.len() != 1 || values.is_empty() {
+            self.clear_memory();
+            return;
+        }
+
+        let old_sp = *stack_pointers.iter().next().expect("one SP value");
+        let Some(byte_count) = u32::try_from(values.len())
+            .ok()
+            .and_then(|count| count.checked_mul(4))
+        else {
+            self.clear_memory();
+            return;
+        };
+        let Some(new_sp) = old_sp.checked_sub(byte_count) else {
+            self.clear_memory();
+            return;
+        };
+        if old_sp & 3 != 0 || !supported_ram_interval(new_sp, byte_count) {
+            self.clear_memory();
+            return;
+        }
+
+        self.invalidate_word_bytes(new_sp, byte_count);
+        let known_values = values
+            .iter()
+            .filter(|value| !matches!(value, AbstractValue::Unknown))
+            .count();
+        if self.memory_words.len().saturating_add(known_values) > MAX_ABSTRACT_MEMORY_WORDS {
+            self.clear_memory();
+            return;
+        }
+        for (index, value) in values.iter().enumerate() {
+            let address = new_sp + (index as u32 * 4);
+            self.set_memory_word(address, value.clone());
+        }
+    }
+
+    fn pop_word(&self, stack_pointers: &AbstractValue, offset: u32) -> AbstractValue {
+        let Some(stack_pointers) = stack_pointers.values() else {
+            return AbstractValue::Unknown;
+        };
+        let mut result: Option<AbstractValue> = None;
+        for stack_pointer in stack_pointers {
+            let Some(address) = stack_pointer.checked_add(offset) else {
+                return AbstractValue::Unknown;
+            };
+            if address & 3 != 0 || !supported_ram_interval(address, 4) {
+                return AbstractValue::Unknown;
+            }
+            let Some(value) = self.memory_words.get(&address) else {
+                return AbstractValue::Unknown;
+            };
+            result = Some(match result {
+                Some(current) => current.merged(value),
+                None => value.clone(),
+            });
+        }
+        result.unwrap_or(AbstractValue::Unknown)
+    }
+
+    fn forget_popped_words(&mut self, stack_pointers: &AbstractValue, byte_count: u32) {
+        let Some(stack_pointers) = stack_pointers.values() else {
+            return;
+        };
+        let mut addresses = BTreeSet::new();
+        for stack_pointer in stack_pointers {
+            for offset in (0..byte_count).step_by(4) {
+                if let Some(address) = stack_pointer.checked_add(offset) {
+                    addresses.insert(address);
+                }
+            }
+        }
+        let memory_words = Arc::make_mut(&mut self.memory_words);
+        for address in addresses {
+            memory_words.remove(&address);
+        }
+    }
+
+    fn invalidate_store(&mut self, addresses: &AbstractValue, byte_count: u32, align_mask: u32) {
+        let Some(addresses) = addresses.values() else {
+            self.clear_memory();
+            return;
+        };
+        if addresses.is_empty() || addresses.len() > MAX_CONSTANT_TARGETS {
+            self.clear_memory();
+            return;
+        }
+
+        let mut overwritten_words = BTreeSet::new();
+        for raw_address in addresses {
+            let address = raw_address & !align_mask;
+            if (byte_count == 4 && address & 3 != 0) || !supported_ram_interval(address, byte_count)
+            {
+                self.clear_memory();
+                return;
+            }
+            for offset in 0..byte_count {
+                overwritten_words.insert(address.wrapping_add(offset) & !3);
+            }
+        }
+        let memory_words = Arc::make_mut(&mut self.memory_words);
+        for address in overwritten_words {
+            memory_words.remove(&address);
+        }
+    }
+
+    fn invalidate_word_bytes(&mut self, address: u32, byte_count: u32) {
+        let memory_words = Arc::make_mut(&mut self.memory_words);
+        for offset in 0..byte_count {
+            memory_words.remove(&(address.wrapping_add(offset) & !3));
+        }
+    }
+}
+
+fn supported_ram_interval(address: u32, byte_count: u32) -> bool {
+    if byte_count == 0 {
+        return false;
+    }
+    let Some(end) = address.checked_add(byte_count) else {
+        return false;
+    };
+    (address >= 0x0200_0000 && end <= 0x0204_0000) || (address >= 0x0300_0000 && end <= 0x0300_8000)
+}
+
+fn effective_store_address(base: &AbstractValue, offset: u32, add: bool) -> AbstractValue {
+    let Some(bases) = base.values() else {
+        return AbstractValue::Unknown;
+    };
+    let mut addresses = BTreeSet::new();
+    for base in bases {
+        let address = if add {
+            base.checked_add(offset)
+        } else {
+            base.checked_sub(offset)
+        };
+        let Some(address) = address else {
+            return AbstractValue::Unknown;
+        };
+        addresses.insert(address);
+    }
+    if addresses.len() > MAX_CONSTANT_TARGETS {
+        AbstractValue::Unknown
+    } else {
+        AbstractValue::Constants(addresses)
     }
 }
 
@@ -321,6 +519,11 @@ fn transfer_arm(instruction: ArmInstruction, incoming: &AbstractState) -> Abstra
             result.set_constant(rd, instruction.guest_pc.wrapping_add(8).wrapping_add(value));
         }
         ArmOperation::LoadRomLiteral { rd, value, .. } => result.set_constant(rd, value),
+        ArmOperation::StoreWord { rn, offset, up, .. } => {
+            let address =
+                effective_store_address(&incoming.registers[rn as usize], u32::from(offset), up);
+            result.invalidate_store(&address, 4, 0);
+        }
         ArmOperation::MsrCpsrRegister { field_mask, .. } if field_mask & 1 != 0 => {
             // CPSR mode writes can swap the FIQ and SP/LR banks. The analyzer
             // does not assume that banked values are identical.
@@ -494,20 +697,28 @@ fn process_thumb_instruction(
                 incoming,
             );
         }
-        ThumbOperation::StoreHalfwordImmediate { .. } => {
+        ThumbOperation::StoreHalfwordImmediate { rb, imm5, .. } => {
+            let mut next_state = state.clone();
+            let address =
+                effective_store_address(&state.registers[rb as usize], u32::from(imm5) * 2, true);
+            next_state.invalidate_store(&address, 2, 1);
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
-                state.clone(),
+                next_state,
                 pending,
                 incoming,
             );
         }
-        ThumbOperation::StoreByteImmediate { .. } => {
+        ThumbOperation::StoreByteImmediate { rb, imm5, .. } => {
+            let mut next_state = state.clone();
+            let address =
+                effective_store_address(&state.registers[rb as usize], u32::from(imm5), true);
+            next_state.invalidate_store(&address, 1, 0);
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
-                state.clone(),
+                next_state,
                 pending,
                 incoming,
             );
@@ -624,10 +835,12 @@ fn process_thumb_instruction(
                     instruction.guest_pc
                 ));
             }
+            let mut next_state = state.clone();
+            next_state.clear_memory();
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
-                state.clone(),
+                next_state,
                 pending,
                 incoming,
             );
@@ -635,6 +848,16 @@ fn process_thumb_instruction(
         ThumbOperation::Push { register_list } => {
             let bytes = register_list.count_ones().wrapping_mul(4);
             let mut next_state = state.clone();
+            let mut values = Vec::new();
+            for register in 0..8 {
+                if register_list & (1 << register) != 0 {
+                    values.push(state.registers[register].clone());
+                }
+            }
+            if register_list & (1 << 8) != 0 {
+                values.push(state.registers[14].clone());
+            }
+            next_state.push_words(&state.registers[13], &values);
             next_state.registers[13] = state.registers[13].wrapping_add(0_u32.wrapping_sub(bytes));
             enqueue_state(
                 IsaMode::Thumb,
@@ -646,12 +869,16 @@ fn process_thumb_instruction(
         }
         ThumbOperation::Pop { register_list } => {
             let mut next_state = state.clone();
+            let stack_pointer = &state.registers[13];
+            let mut offset = 0_u32;
             for register in 0..8 {
                 if register_list & (1 << register) != 0 {
-                    next_state.registers[register] = AbstractValue::Unknown;
+                    next_state.registers[register] = state.pop_word(stack_pointer, offset);
+                    offset = offset.wrapping_add(4);
                 }
             }
             let bytes = register_list.count_ones().wrapping_mul(4);
+            next_state.forget_popped_words(stack_pointer, bytes);
             next_state.registers[13] = state.registers[13].wrapping_add(bytes);
             enqueue_state(
                 IsaMode::Thumb,
@@ -852,6 +1079,45 @@ mod tests {
         bytes[0xC8..0xCC].copy_from_slice(&0xEAFF_FFFE_u32.to_le_bytes());
         bytes[0xD0..0xD4].copy_from_slice(&0x0800_0085_u32.to_le_bytes());
         bytes[0xD8..0xDC].copy_from_slice(&0x0800_00C8_u32.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
+    fn thumb_stack_return_rom(known_lr: bool) -> RomImage {
+        let mut bytes = counter_rom().bytes().to_vec();
+        let arm = [
+            0xE59F_001C_u32, // LDR r0,[pc,#0x1C] -> stack pointer at 0x080000E4.
+            0xE1A0_D000,     // MOV sp,r0.
+            if known_lr { 0xE59F_E010 } else { 0xE1A0_0000 }, // Load a fixed return address, or preserve unknown LR.
+            0xE59F_1008, // LDR r1,[pc,#8] -> Thumb entry at 0x08000085.
+            0xE59F_2010, // LDR r2,[pc,#0x10] -> return loop at 0x080000A1.
+            0xE12F_FF11, // BX r1.
+            0xEAFF_FFFE, // B self; unreachable from this entry.
+        ];
+        for (index, word) in arm.into_iter().enumerate() {
+            let offset = 0xC0 + index * 4;
+            bytes[offset..offset + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        bytes[0xDC..0xE0].copy_from_slice(&0x0800_0085_u32.to_le_bytes());
+        bytes[0xE0..0xE4].copy_from_slice(&0x0800_0099_u32.to_le_bytes());
+        bytes[0xE4..0xE8].copy_from_slice(&0x0200_0100_u32.to_le_bytes());
+        bytes[0xE8..0xEC].copy_from_slice(&0x0800_00A1_u32.to_le_bytes());
+
+        let thumb = [
+            0xB501_u16, // PUSH {r0,lr}.
+            0x20FF,     // MOVS r0,#0xFF.
+            0x4669,     // MOV r1,sp.
+            0x7008,     // STRB r0,[r1].
+            0xBC08,     // POP {r3}; this slot was partially overwritten.
+            0xBC01,     // POP {r0}; restores the saved LR.
+            0x4700,     // BX r0.
+        ];
+        for (index, halfword) in thumb.into_iter().enumerate() {
+            let offset = 0x84 + index * 2;
+            bytes[offset..offset + 2].copy_from_slice(&halfword.to_le_bytes());
+        }
+        bytes[0x98..0x9A].copy_from_slice(&0x4710_u16.to_le_bytes()); // BX r2 to return loop.
+        bytes[0xA0..0xA2].copy_from_slice(&0x4710_u16.to_le_bytes()); // BX r2 to self.
         bytes[0xBD] = header_checksum(&bytes);
         RomImage::from_bytes(bytes).unwrap()
     }
@@ -1286,6 +1552,227 @@ mod tests {
         assert_eq!(program.thumb_instructions[0].guest_pc, ROM_BASE + 0x84);
         assert_eq!(program.thumb_instructions[1].guest_pc, ROM_BASE + 0x86);
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn tracks_saved_lr_across_partial_stack_store_and_closes_bx() {
+        let program = discover_arm_program(&thumb_stack_return_rom(true)).unwrap();
+        assert!(program.branch_targets.contains(&StaticBranchTarget {
+            source_mode: IsaMode::Thumb,
+            source_pc: ROM_BASE + 0x90,
+            target_mode: IsaMode::Thumb,
+            target_pc: ROM_BASE + 0x98,
+        }));
+        assert!(program.thumb_instructions.iter().any(|instruction| {
+            instruction.guest_pc == ROM_BASE + 0x90
+                && instruction.operation == ThumbOperation::BranchExchange { rm: 0 }
+        }));
+        assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn unknown_saved_lr_still_rejects_indirect_branch() {
+        let error = discover_arm_program(&thumb_stack_return_rom(false)).unwrap_err();
+        assert!(error.contains("bx_target_unresolved at 0x08000090: r0 is not statically bounded"));
+    }
+
+    #[test]
+    fn abstract_memory_merge_requires_a_slot_on_every_path() {
+        let address = 0x0200_0100;
+        let mut left = AbstractState::unknown();
+        left.set_memory_word(address, AbstractValue::constant(0x0800_0085));
+        let mut right = left.clone();
+        right.set_memory_word(address, AbstractValue::constant(0x0800_0099));
+        assert!(left.merge_from(&right));
+        assert_eq!(
+            left.memory_words[&address],
+            AbstractValue::Constants(BTreeSet::from([0x0800_0085, 0x0800_0099]))
+        );
+
+        let missing = AbstractState::unknown();
+        assert!(left.merge_from(&missing));
+        assert!(!left.memory_words.contains_key(&address));
+    }
+
+    #[test]
+    fn thumb_byte_store_invalidates_only_its_overlapping_word() {
+        let address = 0x0200_0100;
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x7088,
+            operation: ThumbOperation::StoreByteImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 2,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(1, address);
+        state.set_memory_word(address, AbstractValue::constant(0x0800_0085));
+        state.set_memory_word(address + 4, AbstractValue::constant(0x0800_0099));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = &incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)];
+        assert!(!successor.memory_words.contains_key(&address));
+        assert_eq!(
+            successor.memory_words[&(address + 4)],
+            AbstractValue::constant(0x0800_0099)
+        );
+    }
+
+    #[test]
+    fn unknown_memory_write_clears_all_abstract_slots() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x7008,
+            operation: ThumbOperation::StoreByteImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_memory_word(0x0200_0100, AbstractValue::constant(0x0800_0085));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]
+                .memory_words
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn thumb_halfword_store_aligns_and_invalidates_only_overlapping_word() {
+        let address = 0x0200_0100;
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x8008,
+            operation: ThumbOperation::StoreHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(1, address + 3);
+        state.set_memory_word(address, AbstractValue::constant(0x0800_0085));
+        state.set_memory_word(address + 4, AbstractValue::constant(0x0800_0099));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = &incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)];
+        assert!(!successor.memory_words.contains_key(&address));
+        assert_eq!(
+            successor.memory_words[&(address + 4)],
+            AbstractValue::constant(0x0800_0099)
+        );
+    }
+
+    #[test]
+    fn conditional_arm_store_forgets_maybe_overwritten_word() {
+        let address = 0x0200_0100;
+        let instruction = ArmInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x1581_0000,
+            condition: 1,
+            operation: ArmOperation::StoreWord {
+                rd: 0,
+                rn: 1,
+                offset: 0,
+                up: true,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(1, address);
+        state.set_memory_word(address, AbstractValue::constant(0x0800_0085));
+        state.set_memory_word(address + 4, AbstractValue::constant(0x0800_0099));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_arm_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = &incoming[&(IsaMode::Arm, ROM_BASE + 0x88)];
+        assert!(!successor.memory_words.contains_key(&address));
+        assert_eq!(
+            successor.memory_words[&(address + 4)],
+            AbstractValue::constant(0x0800_0099)
+        );
+    }
+
+    #[test]
+    fn register_ram_reset_invalidates_abstract_memory() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0xDF01,
+            operation: ThumbOperation::Swi { immediate: 1 },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_memory_word(0x0200_0100, AbstractValue::constant(0x0800_0085));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert!(
+            incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]
+                .memory_words
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn abstract_memory_growth_is_bounded_by_clearing_the_shadow() {
+        let mut state = AbstractState::unknown();
+        for index in 0..MAX_ABSTRACT_MEMORY_WORDS {
+            state.set_memory_word(
+                0x0200_0100 + index as u32 * 4,
+                AbstractValue::constant(index as u32),
+            );
+        }
+        state.push_words(
+            &AbstractValue::constant(0x0200_1004),
+            &[AbstractValue::constant(0x0800_0085)],
+        );
+        assert!(state.memory_words.is_empty());
     }
 
     #[test]

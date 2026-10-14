@@ -23,6 +23,33 @@ case "$os/$arch" in
         exit 2
         ;;
 esac
+gba020_jobs=${GBA020_JOBS:-4}
+case "$gba020_jobs" in
+    1)
+        gba020_link_threads=${GBA020_LINK_THREADS:-10}
+        ;;
+    2)
+        gba020_link_threads=${GBA020_LINK_THREADS:-4}
+        ;;
+    4)
+        gba020_link_threads=${GBA020_LINK_THREADS:-2}
+        ;;
+    *)
+        echo "GBA020_JOBS must be 1, 2, or 4" >&2
+        exit 2
+        ;;
+esac
+case "$gba020_link_threads" in
+    1|2|3|4|5|6|7|8|9|10) ;;
+    *)
+        echo "GBA020_LINK_THREADS must be an integer from 1 to 10" >&2
+        exit 2
+        ;;
+esac
+if [ "$((gba020_jobs * gba020_link_threads))" -gt 10 ]; then
+    echo "GBA020_JOBS times GBA020_LINK_THREADS cannot exceed 10" >&2
+    exit 2
+fi
 
 cargo build --locked -p gba-recomp
 recomp_bin="$root/target/debug/gba-recomp"
@@ -779,6 +806,66 @@ verify_thumb_pop_reject() {
 verify_thumb_pop_reject thumb-pop-empty-unsupported
 verify_thumb_pop_reject thumb-pop-pc-unsupported
 
+stack_return_rom="$root/target/gba020/thumb-stack-return.gba"
+python3 fixtures/tiny-counter/make_rom.py --out "$stack_return_rom" --mode thumb-stack-return
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-stack-return-package-$optimization"
+    compile_log="$root/target/gba020/thumb-stack-return-$optimization.txt"
+    rm -rf "$package"
+    if ! "$recomp_bin" compile \
+        --rom "$stack_return_rom" --out "$package" --opt "$optimization" --steps 14 \
+        >"$compile_log" 2>&1; then
+        cat "$compile_log" >&2
+        echo "$optimization stack return fixture failed to compile" >&2
+        exit 1
+    fi
+    if ! grep -Fxq 'instructions_aot: 16' "$compile_log"; then
+        cat "$compile_log" >&2
+        echo "$optimization stack return fixture reported an unexpected AOT instruction count" >&2
+        exit 1
+    fi
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":14,"r0":134217881,"r1":33554680,"pc":"0x08000098","cpsr":"0x0000003F","guest_cycle":14,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization stack return fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["instructions_aot"] == 16
+assert manifest["run_instruction_budget"] == 14
+PY
+done
+
+stack_return_unknown_rom="$root/target/gba020/thumb-stack-return-unknown.gba"
+stack_return_unknown_package="$root/target/gba020/thumb-stack-return-unknown-package"
+stack_return_unknown_log="$root/target/gba020/thumb-stack-return-unknown.txt"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$stack_return_unknown_rom" --mode thumb-stack-return-unknown
+rm -rf "$stack_return_unknown_package"
+if "$recomp_bin" compile \
+    --rom "$stack_return_unknown_rom" --out "$stack_return_unknown_package" --opt O2 --steps 14 \
+    >"$stack_return_unknown_log" 2>&1; then
+    echo "unknown stack return unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -Fq 'bx_target_unresolved at 0x08000090: r0 is not statically bounded' \
+    "$stack_return_unknown_log"; then
+    cat "$stack_return_unknown_log" >&2
+    echo "unknown stack return did not report the unresolved BX" >&2
+    exit 1
+fi
+if [ -e "$stack_return_unknown_package" ]; then
+    echo "unknown stack return failure left a partial package" >&2
+    exit 1
+fi
+
 push_rom="$root/target/gba020/thumb-push.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$push_rom" --mode thumb-push
 for optimization in O0 O2; do
@@ -914,41 +1001,7 @@ if [ -e "$thumb_format3_bad_package" ]; then
     exit 1
 fi
 
-verify_thumb_lsl() {
-    mode=$1
-    expected=$2
-    steps=$3
-    thumb_lsl_rom="$root/target/gba020/$mode.gba"
-    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_lsl_rom" --mode "$mode"
-    for optimization in O0 O2; do
-        package="$root/target/gba020/$mode-package-$optimization"
-        rm -rf "$package"
-        "$recomp_bin" compile \
-            --rom "$thumb_lsl_rom" --out "$package" --opt "$optimization" --steps "$steps"
-        actual=$("$package/game")
-        if [ "$actual" != "$expected" ]; then
-            echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
-            exit 1
-        fi
-        python3 - "$package/manifest.json" "$optimization" <<'PY'
-import json
-import pathlib
-import sys
-
-manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert manifest["execution_mode"] == "strict-aot"
-assert manifest["optimization"] == sys.argv[2]
-assert manifest["abi_version"] == 4
-PY
-    done
-}
-verify_thumb_lsl thumb-lsl-zero-carry-clear '{"status":"budget_exhausted","steps":8,"r0":0,"r1":2147483648,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
-verify_thumb_lsl thumb-lsl-zero-carry-set '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":0,"pc":"0x08000086","cpsr":"0x7000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
-verify_thumb_lsl thumb-lsl-one-carry '{"status":"budget_exhausted","steps":8,"r0":0,"r1":2,"pc":"0x08000086","cpsr":"0x2000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
-verify_thumb_lsl thumb-lsl-nineteen '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
-verify_thumb_lsl thumb-lsl-thirtyone '{"status":"budget_exhausted","steps":8,"r0":0,"r1":0,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
-verify_thumb_lsl thumb-lsl-nonalias '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":4096,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
-verify_thumb_lsl thumb-lsl-bx '{"status":"budget_exhausted","steps":6,"r0":67108980,"r1":134217960,"pc":"0x080000E8","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}' 6
+scripts/verify-gba020-lsl.sh "$gba020_jobs" "$gba020_link_threads"
 
 for mode in thumb-lsr-unsupported thumb-asr-unsupported thumb-lsl-register-unsupported; do
     thumb_shift_rom="$root/target/gba020/$mode.gba"

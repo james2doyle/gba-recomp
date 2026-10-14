@@ -163,6 +163,33 @@ def generate(mode: str = "valid") -> bytes:
             0xE1A0100D,  # MOV r1,sp to expose POP writeback.
             branch(0xFC, 0xFC),  # B finished.
         )
+    elif mode in ("thumb-stack-return", "thumb-stack-return-unknown"):
+        known_lr = mode == "thumb-stack-return"
+        image[0x84:0x92] = struct.pack(
+            "<7H",
+            0xB501,  # PUSH {r0,lr}.
+            0x20FF,  # MOVS r0,#0xFF.
+            0x4669,  # MOV r1,sp.
+            0x7008,  # STRB r0,[r1].
+            0xBC08,  # POP {r3}; the top slot was partially overwritten.
+            0xBC01,  # POP {r0}; restore LR.
+            0x4700,  # BX r0.
+        )
+        image[0x98:0x9A] = struct.pack("<H", 0x4710)  # BX r2 to return loop.
+        image[0xA0:0xA2] = struct.pack("<H", 0x4710)  # BX r2 to self.
+        image[0xC0:0xDC] = struct.pack(
+            "<7I",
+            0xE59F001C,  # LDR r0,[pc,#0x1C] -> EWRAM stack top at 0xE4.
+            0xE1A0D000,  # MOV sp,r0.
+            0xE59FE010 if known_lr else 0xE1A00000,
+            0xE59F1008,  # LDR r1,[pc,#8] -> Thumb entry | 1 at 0xDC.
+            0xE59F2010,  # LDR r2,[pc,#0x10] -> return loop at 0xE8.
+            0xE12FFF11,  # BX r1.
+            0xEAFFFFFE,  # B self; unreachable from this entry.
+        )
+        image[0xDC:0xEC] = struct.pack(
+            "<4I", 0x08000085, 0x08000099, 0x02000100, 0x080000A1
+        )
     elif mode in ("thumb-pop-empty-unsupported", "thumb-pop-pc-unsupported"):
         pop = 0xBC00 if mode == "thumb-pop-empty-unsupported" else 0xBD08
         image[0x84:0x88] = struct.pack(
@@ -858,6 +885,8 @@ def main() -> None:
             "thumb-push",
             "thumb-pop-r3",
             "thumb-pop-multiple",
+            "thumb-stack-return",
+            "thumb-stack-return-unknown",
             "thumb-pop-empty-unsupported",
             "thumb-pop-pc-unsupported",
             "bx-interwork",

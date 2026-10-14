@@ -246,16 +246,11 @@ fn link_runner(
         ));
     }
     let clang = prefix.join("bin/clang");
+    let lld_threads = parse_lld_threads(env::var("GBA_RECOMP_LINK_THREADS").ok().as_deref())?;
     let mut command = Command::new(&clang);
     command
-        .args([
-            "-std=c11",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            "-fuse-ld=lld",
-            "-Wl,--threads=10",
-        ])
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror", "-fuse-ld=lld"])
+        .arg(format!("-Wl,--threads={lld_threads}"))
         .arg("-I")
         .arg(header.parent().expect("header has package directory"))
         .arg(runner_source)
@@ -291,6 +286,19 @@ fn link_runner(
         ));
     }
     Ok(())
+}
+
+fn parse_lld_threads(value: Option<&str>) -> Result<u8, String> {
+    let Some(value) = value else {
+        return Ok(10);
+    };
+    let threads = value
+        .parse::<u8>()
+        .map_err(|_| "GBA_RECOMP_LINK_THREADS must be an integer from 1 to 10".to_owned())?;
+    if !(1..=10).contains(&threads) {
+        return Err("GBA_RECOMP_LINK_THREADS must be from 1 to 10".to_owned());
+    }
+    Ok(threads)
 }
 
 #[cfg(target_os = "macos")]
@@ -427,4 +435,20 @@ fn usage() -> String {
         "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--steps N]\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
         target.triple
     )
+}
+
+#[cfg(test)]
+mod link_thread_tests {
+    use super::parse_lld_threads;
+
+    #[test]
+    fn lld_thread_count_defaults_and_enforces_host_budget() {
+        assert_eq!(parse_lld_threads(None).unwrap(), 10);
+        assert_eq!(parse_lld_threads(Some("1")).unwrap(), 1);
+        assert_eq!(parse_lld_threads(Some("4")).unwrap(), 4);
+        assert_eq!(parse_lld_threads(Some("10")).unwrap(), 10);
+        assert!(parse_lld_threads(Some("0")).is_err());
+        assert!(parse_lld_threads(Some("11")).is_err());
+        assert!(parse_lld_threads(Some("fast")).is_err());
+    }
 }
