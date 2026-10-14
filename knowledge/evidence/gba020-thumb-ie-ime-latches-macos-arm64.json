@@ -1,0 +1,139 @@
+{
+  "record": "GBA-020 SPEC-045 implementation, fixture verification, and LeafGreen frontier",
+  "date": "2026-10-14",
+  "source_categories": {
+    "source_observation": "mGBA semantics are recorded in KNO-001 SRC-41 at fixed source commit 143adf5aa2a60c6036810b0cd72445e13d74b0e6.",
+    "fixture_execution": "The synthetic B48-B6A package was compiled and run in O0 and O2 on macOS arm64.",
+    "static_inference": "LeafGreen result is compiler discovery output and encoding analysis only; it is not guest execution or decompilation."
+  },
+  "commits": {
+    "contract": "83ebe2c2dcdbcc2b83094738a46e03bbecc567d6",
+    "decision": "341bb73322743673449ca4eac6eb4783dd92cc36",
+    "implementation": "4003a1ae9206b7acdb8d78fd97fd26d3e931d681"
+  },
+  "environment": {
+    "host": "Mac mini M4",
+    "os": "macOS 15.3.1 (24D70)",
+    "architecture": "arm64",
+    "logical_cpus": 10,
+    "rust_toolchain": "1.99.0, locked in toolchain.lock.toml",
+    "llvm": "23.1.3",
+    "target": "aarch64-apple-darwin"
+  },
+  "workspace_tests": {
+    "command": "cargo test --locked --workspace --jobs 10",
+    "status": "passed",
+    "gba_ir": {
+      "passed": 64,
+      "failed": 0
+    },
+    "gba_recomp": {
+      "passed": 91,
+      "failed": 0
+    },
+    "log": "knowledge/evidence/cargo-test-spec045-macos-arm64.log",
+    "log_sha256": "c191b26ee6a928803c9a5e36e6f31162cec3755dbbc439b281404e53a7815f53"
+  },
+  "gate": {
+    "command": "CARGO_BUILD_JOBS=10 GBA020_JOBS=10 GBA020_LINK_THREADS=1 scripts/verify-gba020.sh",
+    "status": "passed",
+    "host": "Darwin/arm64",
+    "configured_concurrency": {
+      "cargo_jobs": 10,
+      "fixture_workers": 10,
+      "lld_threads_per_worker": 1,
+      "maximum_configured_slots": 10
+    },
+    "timing_seconds": {
+      "wall": 140.59,
+      "user": 497.28,
+      "system": 18.47,
+      "derived_average_logical_cpus": 3.67
+    },
+    "cpu_measurement_note": "The 3.67 value is derived from (user + system) / wall for the whole gate. It is not per-process or instantaneous telemetry and does not establish sustained saturation. No before/after throughput comparison was run in this record.",
+    "parallel_fixture_groups_wall_ms": {
+      "thumb_ldrword": 3413.3,
+      "thumb_ldrh": 3043.9,
+      "thumb_format3": 3642.0,
+      "thumb_lsl_lsr": 4979.7,
+      "thumb_addsub": 2999.2
+    },
+    "log": "knowledge/evidence/gba020-thumb-ie-ime-latches-macos-arm64.log",
+    "log_sha256": "c24f9b46b7e2ef495d7e6cd7e84ae6c93359ab9ce02eae00ee717190a69e5bd6"
+  },
+  "synthetic_fixture": {
+    "mode": "thumb-ie-ime-section",
+    "rom": "target/gba020/thumb-ie-ime-section.gba",
+    "rom_sha256": "2bfefce1ae1fcaf7ddbdbb8cf70dbe385fef8c9af1a4fd735f85320f4ce52bfb",
+    "execution_mode": "strict-aot",
+    "instructions_aot": 27,
+    "run_instruction_budget": 26,
+    "manifest_profile": {
+      "interrupt_model": "none",
+      "io_initialization": "all-zero"
+    },
+    "observed_output_both_o0_o2": {
+      "status": "budget_exhausted",
+      "steps": 26,
+      "r0": 134217980,
+      "r1": 0,
+      "pc": "0x080000FC",
+      "cpsr": "0x6000001F",
+      "guest_cycle": 26,
+      "ewram_word0": 0,
+      "iwram_word0": 0,
+      "io_ie": 0,
+      "io_if": 0,
+      "io_ime": 0
+    },
+    "packages": {
+      "O0": {
+        "game_sha256": "8e73607194821a34902eb3c67c928634027d9087424bf36c52efca2ef6161048",
+        "manifest_sha256": "52de11aca201a9aa51cfb5d438b3b104d74ab722c1e42095dd31b1c7c8e76f15"
+      },
+      "O2": {
+        "game_sha256": "bfa6ae6af5cff1937dccc2eac0c0e1b6cf19eb047f9c929834c737045584baf4",
+        "manifest_sha256": "f993890f0a88f3457b5d0d56b564e6a43c466bc67ec8085aca7e5f93b956a811"
+      }
+    },
+    "c_harness": {
+      "source": "crates/gba-runtime-abi/tests/runtime_hle_v1_test.c",
+      "executable": "target/gba020/runtime-hle-v1-test",
+      "executable_sha256": "9a6a94f5ec6e7cc2a21e45565ffffee4dada96863cd675cf6ba63321cd4221fe",
+      "coverage": [
+        "IE, IF, and IME halfword reads",
+        "physical RAM helper delegation",
+        "odd-address halfword rotation and original fault address",
+        "IE and IME masks with IF zero",
+        "atomic fault when IF is pending",
+        "unsupported MMIO destinations",
+        "invalid ABI and null output pointer edges"
+      ]
+    }
+  },
+  "leafgreen_static_attempt": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "compiler": "target/debug/gba-recomp",
+    "compiler_sha256": "3f880224817c4bddb3f39614d7fc91d824ef25da6d6bc60a0ed70bb736856ee0",
+    "command": "GBA_RECOMP_LINK_THREADS=10 /usr/bin/time -p target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-spec045-20261014-O2 --opt O2 --steps 100",
+    "exit_code": 1,
+    "diagnostic": "bx_target_unresolved at 0x08000B6A: r0 is not statically bounded",
+    "timing_seconds": {
+      "wall": 0.61,
+      "user": 0.59,
+      "system": 0.0
+    },
+    "package_created": false,
+    "rom_executed": false,
+    "rea_decompilation": false,
+    "log": "target/leafgreen-after-spec045-20261014-O2.log",
+    "log_sha256": "c26f8a8493ef9e04f7f02980a6d3f36a8a2c24909fd612849eddba1e0f21d3b8"
+  },
+  "limits": [
+    "The fixtures prove only the contracted synthetic cases and macOS arm64 execution.",
+    "This model has no IRQ delivery or event sources; nonzero initial latches from direct external block callers are outside the contract.",
+    "LeafGreen discovery stops before LLVM emission and native linking, so this attempt did not use the configured link threads.",
+    "CFG discovery and LLVM module emission for one ROM remain serial in the current compile path.",
+    "Linux x86-64 is not verified."
+  ]
+}

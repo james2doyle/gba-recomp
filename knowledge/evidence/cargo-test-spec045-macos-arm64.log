@@ -1,0 +1,187 @@
+   Compiling gba-recomp v0.1.0 (/Users/celsoinacio/projects/gba-recomp/crates/gba-recomp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 13s
+     Running unittests src/lib.rs (target/debug/deps/gba_ir-3ec63c6cc3d987b5)
+
+running 64 tests
+test tests::arm_program_verifier_accepts_leafgreen_thumb_le_branch_encoding ... ok
+test tests::arm_program_verifier_checks_thumb_lsl_encoding_fields_and_alignment ... ok
+test tests::arm_program_verifier_checks_thumb_ldrh_fields_and_fallthrough ... ok
+test tests::arm_program_verifier_checks_thumb_ldrb_fields_and_fallthrough ... ok
+test tests::arm_program_verifier_checks_thumb_ldmia_fields_and_successor ... ok
+test tests::arm_bx_to_arm_clears_t_and_word_aligns_target ... ok
+test tests::arm_bx_switches_to_thumb_and_masks_only_bit_zero ... ok
+test tests::arm_program_verifier_checks_thumb_addsub_fields_alignment_and_fallthrough ... ok
+test tests::arm_program_verifier_checks_thumb_ldr_word_fields_and_fallthrough ... ok
+test tests::arm_program_verifier_checks_thumb_format3_variants_and_fields ... ok
+test tests::arm_program_verifier_checks_thumb_lsr_immediate_fields_registers_and_successor ... ok
+test tests::arm_program_verifier_checks_thumb_orr_fields_registers_alignment_and_successor ... ok
+test tests::arm_program_verifier_checks_thumb_pop_encoding_list_and_successor ... ok
+test tests::arm_program_verifier_checks_thumb_rom_ldmia_tables ... ok
+test tests::arm_program_verifier_checks_thumb_rom_literal_resolution_and_fields ... ok
+test tests::arm_program_verifier_checks_thumb_stmia_fields_and_successor ... ok
+test tests::arm_program_verifier_checks_thumb_str_fields_and_fallthrough ... ok
+test tests::arm_program_verifier_checks_thumb_strb_fields_and_fallthrough ... ok
+test tests::arm_program_verifier_checks_thumb_strh_fields_and_fallthrough ... ok
+test tests::arm_program_verifier_rejects_high_destination_for_thumb_immediate_mov ... ok
+test tests::arm_program_verifier_rejects_unresolved_thumb_bl_suffix ... ok
+test tests::arm_program_verifier_closes_thumb_conditional_branch_successors ... ok
+test tests::cmp_sets_zero_and_no_borrow_carry_without_changing_control_bits ... ok
+test tests::cycle_overflow_does_not_mutate_guest_state ... ok
+test tests::executed_guest_store_requires_runtime_and_fails_atomically ... ok
+test tests::failed_pc_relative_add_predicate_preserves_destination_and_flags ... ok
+test tests::failed_predicate_advances_pc_without_writing_link_or_flags ... ok
+test tests::false_arm_bx_preserves_mode_and_advances_pc ... ok
+test tests::false_predicate_preserves_mov_register_destination_and_flags ... ok
+test tests::false_predicate_skips_guest_store_without_memory_runtime ... ok
+test tests::mov_register_reads_pipeline_pc_and_preserves_flags ... ok
+test tests::pc_relative_add_uses_pipeline_pc_without_changing_flags ... ok
+test tests::program_verifier_rejects_invalid_arm_branch_successor_mask ... ok
+test tests::program_verifier_rejects_missing_conditional_fallthrough ... ok
+test tests::program_verifier_rejects_unresolved_pc_relative_literals ... ok
+test tests::resolved_rom_literal_load_commits_only_when_condition_passes ... ok
+test tests::resolved_thumb_rom_ldmia_loads_values_and_obeys_base_overlap ... ok
+test tests::thumb_adds_subs_immediate_set_nzcv_and_write_wrapping_result ... ok
+test tests::thumb_addsub_format2_sets_all_nzcv_flags_and_preserves_control_bits ... ok
+test tests::thumb_bl_halves_set_and_validate_link_register_before_static_dispatch ... ok
+test tests::thumb_bl_suffix_rejects_a_different_incoming_lr ... ok
+test tests::thumb_bx_switches_back_to_arm_and_word_aligns_target ... ok
+test tests::thumb_byte_load_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_byte_store_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_cmp_immediate_sets_nzcv_without_writing_registers ... ok
+test tests::thumb_format3_operations_reject_arm_mode_atomically ... ok
+test tests::thumb_halfword_load_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_conditional_branch_matches_all_conditions_and_nzcv_combinations ... ok
+test tests::thumb_halfword_store_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_high_mov_copies_registers_and_preserves_cpsr ... ok
+test tests::thumb_high_mov_reads_pc_as_instruction_address_plus_four ... ok
+test tests::thumb_lsl_immediate_updates_flags_with_armv4t_zero_shift_carry_rules ... ok
+test tests::thumb_lsr_immediate_updates_result_flags_and_preserves_v_control_and_alias ... ok
+test tests::thumb_mov_immediate_updates_nz_and_preserves_cv_and_mode ... ok
+test tests::thumb_orr_register_alias_uses_the_old_value_and_requires_thumb_mode ... ok
+test tests::thumb_orr_register_sets_nz_and_preserves_cv_and_other_cpsr_bits ... ok
+test tests::thumb_pop_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_push_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_rom_literal_loads_constant_without_changing_flags ... ok
+test tests::thumb_stmia_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_swi_requires_the_explicit_hle_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_word_load_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::thumb_word_store_requires_memory_runtime_without_mutating_cpu_state ... ok
+test tests::unresolved_thumb_rom_literal_fails_without_mutating_cpu_state ... ok
+
+test result: ok. 64 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/gba_recomp-32cd3e02266283e3)
+
+running 91 tests
+test decoder::tests::decodes_thumb_bl_halves_and_sign_extends_the_prefix_offset ... ok
+test decoder::tests::decodes_all_thumb_add_sub_format_2_variants ... ok
+test decoder::tests::decodes_only_thumb_orr_register_format_4 ... ok
+test decoder::tests::decodes_all_thumb_format3_immediate_operations ... ok
+test decoder::tests::decodes_only_preindexed_immediate_word_stores_without_writeback ... ok
+test decoder::tests::decodes_thumb_branch_exchange_and_movs_immediate ... ok
+test decoder::tests::decodes_homebrew_subset_and_sign_extends_branch ... ok
+test decoder::tests::decodes_only_thumb_high_register_mov_without_pc_destination ... ok
+test decoder::tests::decodes_thumb_ldmia_and_stmia_and_rejects_unpredictable_forms ... ok
+test decoder::tests::decodes_thumb_conditional_branch_formats_conditions_offsets_and_wrapping_pc ... ok
+test decoder::tests::decodes_thumb_ldr_literal_with_aligned_pipeline_pc_and_checked_address ... ok
+test decoder::tests::decodes_thumb_ldr_word_immediate_format_9_and_rejects_other_word_forms ... ok
+test decoder::tests::decodes_thumb_ldrb_immediate_format_9_and_rejects_other_byte_forms ... ok
+test decoder::tests::decodes_thumb_ldrh_immediate_format_10_and_rejects_register_form ... ok
+test decoder::tests::decodes_thumb_lsl_immediate_and_rejects_other_shift_formats ... ok
+test decoder::tests::decodes_thumb_lsr_immediate_format_1_and_rejects_other_shift_forms ... ok
+test decoder::tests::decodes_thumb_pop_low_register_list_and_rejects_pc_or_empty_list ... ok
+test decoder::tests::decodes_thumb_push_register_list_and_rejects_empty_list ... ok
+test decoder::tests::decodes_thumb_str_immediate_format_9_and_rejects_other_word_forms ... ok
+test decoder::tests::decodes_thumb_strb_immediate_format_9_and_rejects_other_byte_forms ... ok
+test decoder::tests::decodes_thumb_strh_immediate_format_10_and_rejects_other_halfword_forms ... ok
+test decoder::tests::decodes_thumb_swi_immediate_and_keeps_the_undefined_range_undefined ... ok
+test decoder::tests::preserves_thumb_conditional_branch_undefined_and_swi_classifications ... ok
+test decoder::tests::rejects_unimplemented_and_undefined_encodings_with_source_pc ... ok
+test discover::tests::abstract_memory_facts_remain_exact_across_disjunctive_paths ... ok
+test discover::tests::arm_cmp_refines_arm_branch_edges_and_unknown_states_keep_both ... ok
+test discover::tests::conditional_arm_store_forgets_maybe_overwritten_word ... ok
+test discover::tests::abstract_memory_growth_is_bounded_by_clearing_the_shadow ... ok
+test discover::tests::discovers_and_verifies_arm_thumb_arm_bx_interworking ... ok
+test discover::tests::discovers_thumb_bl_call_and_bx_lr_return_without_host_abi_clobbers ... ok
+test discover::tests::cmp_refines_branch_masks_and_unknown_predecessors_keep_both_edges ... ok
+test discover::tests::discovers_entry_branch_loop_and_fallthrough ... ok
+test discover::tests::discovers_thumb_push_fallthrough_and_preserves_bx_target_registers ... ok
+test discover::tests::discovers_thumb_conditional_branch_target_and_fallthrough ... ok
+test discover::tests::discovers_thumb_register_ram_reset_as_aot_and_tracks_fallthrough ... ok
+test discover::tests::out_of_rom_branch_is_rejected_during_discovery ... ok
+test discover::tests::out_of_rom_thumb_literal_is_rejected_during_discovery ... ok
+test discover::tests::out_of_rom_literal_is_rejected_during_discovery ... ok
+test discover::tests::propagates_thumb_movs_immediate_to_the_next_guest_state ... ok
+test discover::tests::propagates_thumb_lsl_constants_and_invalidates_unknown_destinations ... ok
+test discover::tests::propagates_thumb_lsr_immediate_constants_and_preserves_unknowns ... ok
+test discover::tests::register_ram_reset_invalidates_abstract_memory ... ok
+test discover::tests::register_ram_reset_without_io_flag_preserves_abstract_latches ... ok
+test discover::tests::propagates_thumb_pop_register_and_wrapping_stack_effects ... ok
+test discover::tests::propagates_thumb_format3_constants_and_preserves_registers_for_cmp ... ok
+test discover::tests::enqueues_both_thumb_conditional_successors_with_identical_abstract_state ... ok
+test discover::tests::rejects_other_thumb_swi_immediates_during_discovery ... ok
+test discover::tests::rejects_branch_exchange_when_target_is_not_statically_bounded ... ok
+test discover::tests::rejects_statically_known_branch_exchange_target_outside_rom ... ok
+test discover::tests::rejects_thumb_bl_suffix_when_incoming_lr_does_not_match_its_prefix ... ok
+test discover::tests::resolves_pc_relative_word_from_rom_into_a_constant ... ok
+test discover::tests::thumb_byte_store_invalidates_only_its_overlapping_word ... ok
+test discover::tests::resolves_thumb_literal_and_closes_bx_target_from_immutable_rom ... ok
+test discover::tests::thumb_addsub_constant_propagation_invalidates_unknown_inputs ... ok
+test discover::tests::thumb_addsub_zero_immediate_propagates_literal_to_valid_bx_target ... ok
+test discover::tests::rejects_broken_unpaired_and_out_of_rom_thumb_bl_pairs ... ok
+test discover::tests::thumb_halfword_store_aligns_and_invalidates_only_overlapping_word ... ok
+test discover::tests::thumb_halfword_store_to_ime_zero_preserves_saved_return_shadow ... ok
+test discover::tests::thumb_halfword_store_to_ime_preserves_shadow_when_if_is_zero ... ok
+test discover::tests::thumb_halfword_store_to_ime_clears_shadow_when_if_is_not_proven_zero ... ok
+test discover::tests::thumb_ldmia_reads_known_ram_shadow_and_preserves_memory_facts ... ok
+test discover::tests::thumb_ldmia_keeps_register_and_rom_base_correlation ... ok
+test discover::tests::thumb_ldmia_resolves_singleton_rom_base_to_aot_values ... ok
+test discover::tests::thumb_ldr_word_marks_only_destination_unknown_and_enqueues_pc_plus_two ... ok
+test discover::tests::thumb_ldrb_marks_only_destination_unknown_and_enqueues_pc_plus_two ... ok
+test discover::tests::thumb_ldrh_marks_only_destination_unknown_and_enqueues_pc_plus_two ... ok
+test discover::tests::thumb_pop_preserves_unknown_stack_pointer_abstract_value ... ok
+test discover::tests::thumb_ldmia_rom_tables_are_finite_bounded_and_reject_mixed_bases ... ok
+test discover::tests::thumb_stmia_clears_memory_shadow_for_unknown_or_unsupported_base ... ok
+test discover::tests::thumb_stmia_shadow_stores_old_base_when_base_is_lowest_member ... ok
+test discover::tests::thumb_stmia_unknown_source_invalidates_only_its_shadow_slot ... ok
+test discover::tests::thumb_stmia_updates_known_ram_shadow_and_base_writeback ... ok
+test discover::tests::thumb_strb_preserves_abstract_registers_and_enqueues_pc_plus_two ... ok
+test discover::tests::thumb_strh_preserves_abstract_registers_and_enqueues_pc_plus_two ... ok
+test discover::tests::thumb_word_store_invalidates_its_target_word_and_preserves_neighbors ... ok
+test discover::tests::thumb_word_store_with_unknown_address_clears_abstract_memory ... ok
+test discover::tests::propagates_thumb_orr_as_exact_disjunctive_states_with_limits ... ok
+test discover::tests::thumb_stmia_clears_shadow_instead_of_repopulating_after_capacity_overflow ... ok
+test discover::tests::unknown_memory_write_clears_all_abstract_slots ... ok
+test link_thread_tests::lld_thread_count_defaults_and_enforces_host_budget ... ok
+test discover::tests::tracks_saved_lr_across_partial_stack_store_and_closes_bx ... ok
+test rom::tests::guest_address_mapping_checks_bounds_and_alignment ... ok
+test rom::tests::image_identity_covers_all_bytes_and_header_is_parsed ... ok
+test discover::tests::tracks_thumb_high_mov_constants_into_an_indirect_branch ... ok
+test rom::tests::rejects_short_non_power_of_two_and_bad_checksum_images ... ok
+test discover::tests::unknown_saved_lr_still_rejects_indirect_branch ... ok
+test rom::tests::reads_little_endian_thumb_halfwords_with_alignment_and_bounds_checks ... ok
+test discover::tests::abstract_state_limits_reject_the_next_alternative_and_global_state ... ok
+test discover::tests::discovers_96_state_thumb_loop_and_keeps_exact_counter_values ... ok
+test link_thread_tests::arm_branch_guard_rejects_unmarked_edge_even_when_pc_has_another_predecessor ... ok
+test link_thread_tests::thumb_ldmia_table_miss_faults_at_guest_base_without_fallback ... ok
+
+test result: ok. 91 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running unittests src/lib.rs (target/debug/deps/gba_runtime_abi-42c8fd6894d0a17e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gba_ir
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gba_runtime_abi
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
