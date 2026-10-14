@@ -323,12 +323,17 @@ fn render_runner(step_limit: u64) -> String {
     format!(
         r#"#include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "gba_abi_v4.h"
 
 static uint32_t read_le32(const uint8_t *bytes) {{
     return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |
            ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+}}
+
+static uint16_t read_le16(const uint8_t *bytes) {{
+    return (uint16_t)bytes[0] | ((uint16_t)bytes[1] << 8);
 }}
 
 int main(void) {{
@@ -358,7 +363,13 @@ int main(void) {{
             return 4;
         }}
     }}
-    printf("{{\"status\":\"budget_exhausted\",\"steps\":%" PRIu64 ",\"r0\":%u,\"r1\":%u,\"pc\":\"0x%08X\",\"cpsr\":\"0x%08X\",\"guest_cycle\":%" PRIu64 ",\"ewram_word0\":%u,\"iwram_word0\":%u}}\n", executed, runtime.base.cpu.r[0], runtime.base.cpu.r[1], runtime.base.cpu.r[15], runtime.base.cpu.cpsr, runtime.base.cpu.guest_cycle, read_le32(machine.memory.ewram), read_le32(machine.memory.iwram));
+    printf("{{\"status\":\"budget_exhausted\",\"steps\":%" PRIu64 ",\"r0\":%u,\"r1\":%u,\"pc\":\"0x%08X\",\"cpsr\":\"0x%08X\",\"guest_cycle\":%" PRIu64 ",\"ewram_word0\":%u,\"iwram_word0\":%u", executed, runtime.base.cpu.r[0], runtime.base.cpu.r[1], runtime.base.cpu.r[15], runtime.base.cpu.cpsr, runtime.base.cpu.guest_cycle, read_le32(machine.memory.ewram), read_le32(machine.memory.iwram));
+    if (getenv("GBA_RECOMP_DUMP_IO") != NULL) {{
+        printf(",\"io_ie\":%u,\"io_if\":%u,\"io_ime\":%u",
+               read_le16(&machine.io[0x200]), read_le16(&machine.io[0x202]),
+               read_le16(&machine.io[0x208]));
+    }}
+    puts("}}");
     return 0;
 }}
 "#
@@ -373,7 +384,7 @@ fn render_manifest(
     emit_info: &gba_llvm::EmitInfo,
 ) -> String {
     format!(
-        "{{\n  \"format_version\": 1,\n  \"rom_sha256\": \"{}\",\n  \"rom_size\": {},\n  \"game_code\": \"{}\",\n  \"rom_header_version\": {},\n  \"entrypoint\": \"0x{:08X}\",\n  \"ir_version\": {},\n  \"abi_version\": {},\n  \"machine_state_version\": {},\n  \"bios_hle_version\": {},\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"execution_mode\": \"strict-aot\",\n  \"timing_model\": \"one abstract unit per instruction\",\n  \"instructions_aot\": {},\n  \"run_instruction_budget\": {}\n}}\n",
+        "{{\n  \"format_version\": 1,\n  \"rom_sha256\": \"{}\",\n  \"rom_size\": {},\n  \"game_code\": \"{}\",\n  \"rom_header_version\": {},\n  \"entrypoint\": \"0x{:08X}\",\n  \"ir_version\": {},\n  \"abi_version\": {},\n  \"machine_state_version\": {},\n  \"bios_hle_version\": {},\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"execution_mode\": \"strict-aot\",\n  \"timing_model\": \"one abstract unit per instruction\",\n  \"interrupt_model\": \"none\",\n  \"io_initialization\": \"all-zero\",\n  \"instructions_aot\": {},\n  \"run_instruction_budget\": {}\n}}\n",
         image.sha256,
         image.size(),
         json_escape(&image.header.game_code),

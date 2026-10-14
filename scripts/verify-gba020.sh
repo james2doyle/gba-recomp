@@ -516,6 +516,35 @@ assert manifest["run_instruction_budget"] == 11
 PY
 done
 
+thumb_io_rom="$root/target/gba020/thumb-ie-ime-section.gba"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$thumb_io_rom" --mode thumb-ie-ime-section
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-ie-ime-section-package-$optimization"
+    rm -rf "$package"
+    "$recomp_bin" compile \
+        --rom "$thumb_io_rom" --out "$package" \
+        --opt "$optimization" --steps 26
+    actual=$(GBA_RECOMP_DUMP_IO=1 "$package/game")
+    expected='{"status":"budget_exhausted","steps":26,"r0":134217980,"r1":0,"pc":"0x080000FC","cpsr":"0x6000001F","guest_cycle":26,"ewram_word0":0,"iwram_word0":0,"io_ie":0,"io_if":0,"io_ime":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb IE/IME section fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["instructions_aot"] == 27
+assert manifest["interrupt_model"] == "none"
+assert manifest["io_initialization"] == "all-zero"
+PY
+done
+
 thumb_strh_invalid_rom="$root/target/gba020/thumb-strh-invalid-odd.gba"
 thumb_strh_invalid_package="$root/target/gba020/thumb-strh-invalid-odd-package"
 thumb_strh_invalid_output="$root/target/gba020/thumb-strh-invalid-odd.txt"

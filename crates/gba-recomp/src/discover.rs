@@ -15,6 +15,9 @@ const MAX_ABSTRACT_STATES: usize = 100_000;
 const MAX_ROM_LDMIA_CASES: usize = 16;
 const MAX_ABSTRACT_MEMORY_WORDS: usize = 64;
 const MAX_ANALYSIS_UPDATES: usize = MAX_DISCOVERED_INSTRUCTIONS * 32;
+const IO_IE: u32 = 0x0400_0200;
+const IO_IF: u32 = 0x0400_0202;
+const IO_IME: u32 = 0x0400_0208;
 
 pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
     discover_arm_program_with_states(image).map(|(program, _)| program)
@@ -262,6 +265,34 @@ impl AbstractValue {
         Self::Constants(values)
     }
 
+    fn bitwise_and(&self, other: &Self) -> Self {
+        let (Self::Constants(left), Self::Constants(right)) = (self, other) else {
+            return Self::Unknown;
+        };
+        let mut values = BTreeSet::new();
+        for lhs in left {
+            for rhs in right {
+                values.insert(*lhs & *rhs);
+                if values.len() > MAX_CONSTANT_TARGETS {
+                    return Self::Unknown;
+                }
+            }
+        }
+        Self::Constants(values)
+    }
+
+    fn rotate_odd_halfword(&self) -> Self {
+        match self {
+            Self::Unknown => Self::Unknown,
+            Self::Constants(values) => Self::Constants(
+                values
+                    .iter()
+                    .map(|value| (value >> 8) | (value << 24))
+                    .collect(),
+            ),
+        }
+    }
+
     fn values(&self) -> Option<&BTreeSet<u32>> {
         match self {
             Self::Unknown => None,
@@ -274,6 +305,7 @@ impl AbstractValue {
 struct AbstractState {
     registers: [AbstractValue; REG_PC as usize],
     memory_words: Arc<BTreeMap<u32, AbstractValue>>,
+    io_halfwords: Arc<BTreeMap<u32, AbstractValue>>,
     pending_compare: Option<CompareFact>,
 }
 
@@ -290,6 +322,11 @@ impl AbstractState {
         Self {
             registers: std::array::from_fn(|_| AbstractValue::Unknown),
             memory_words: Arc::new(BTreeMap::new()),
+            io_halfwords: Arc::new(BTreeMap::from([
+                (IO_IE, AbstractValue::constant(0)),
+                (IO_IF, AbstractValue::constant(0)),
+                (IO_IME, AbstractValue::constant(0)),
+            ])),
             pending_compare: None,
         }
     }
@@ -303,10 +340,96 @@ impl AbstractState {
     fn invalidate_all(&mut self) {
         self.registers.fill(AbstractValue::Unknown);
         self.clear_memory();
+        self.clear_io();
     }
 
     fn clear_memory(&mut self) {
         self.memory_words = Arc::new(BTreeMap::new());
+    }
+
+    fn clear_io(&mut self) {
+        self.io_halfwords = Arc::new(BTreeMap::new());
+    }
+
+    fn io_halfword(&self, address: u32) -> AbstractValue {
+        self.io_halfwords
+            .get(&address)
+            .cloned()
+            .unwrap_or(AbstractValue::Unknown)
+    }
+
+    fn load_io_halfword(&self, addresses: &AbstractValue) -> AbstractValue {
+        let Some(addresses) = addresses.values() else {
+            return AbstractValue::Unknown;
+        };
+        let mut result: Option<AbstractValue> = None;
+        for raw_address in addresses {
+            let address = raw_address & !1;
+            let mut value = self.io_halfword(address);
+            if matches!(value, AbstractValue::Unknown) {
+                return AbstractValue::Unknown;
+            }
+            if raw_address & 1 != 0 {
+                value = value.rotate_odd_halfword();
+            }
+            result = Some(match result {
+                Some(current) => current.merged(&value),
+                None => value,
+            });
+        }
+        result.unwrap_or(AbstractValue::Unknown)
+    }
+
+    fn set_io_halfword(&mut self, address: u32, value: AbstractValue) {
+        let values = Arc::make_mut(&mut self.io_halfwords);
+        match value {
+            AbstractValue::Unknown => {
+                values.remove(&address);
+            }
+            AbstractValue::Constants(_) => {
+                values.insert(address, value);
+            }
+        }
+    }
+
+    fn store_io_halfword(&mut self, address: u32, value: &AbstractValue) {
+        match address {
+            IO_IE => {
+                self.set_io_halfword(IO_IE, value.bitwise_and(&AbstractValue::constant(0xFFFF)))
+            }
+            IO_IME => self.set_io_halfword(IO_IME, value.bitwise_and(&AbstractValue::constant(1))),
+            _ => self.set_io_halfword(address, AbstractValue::Unknown),
+        }
+    }
+
+    fn reset_io_after_register_ram_reset(&mut self, flags: &AbstractValue) {
+        let (may_reset, may_preserve) = match flags.values() {
+            Some(values) => (
+                values.iter().any(|value| value & 0x80 != 0),
+                values.iter().any(|value| value & 0x80 == 0),
+            ),
+            None => (true, true),
+        };
+        for address in [IO_IE, IO_IME] {
+            if may_reset {
+                let reset_value = AbstractValue::constant(0);
+                let next_value = if may_preserve {
+                    self.io_halfword(address).merged(&reset_value)
+                } else {
+                    reset_value
+                };
+                self.set_io_halfword(address, next_value);
+            }
+        }
+        if may_reset {
+            let reset_value = AbstractValue::constant(0);
+            let next_if = if may_preserve {
+                self.io_halfword(IO_IF).merged(&reset_value)
+            } else {
+                reset_value
+            };
+            self.set_io_halfword(IO_IF, next_if);
+        }
     }
 
     fn set_memory_word(&mut self, address: u32, value: AbstractValue) {
@@ -423,10 +546,12 @@ impl AbstractState {
     fn invalidate_store(&mut self, addresses: &AbstractValue, byte_count: u32, align_mask: u32) {
         let Some(addresses) = addresses.values() else {
             self.clear_memory();
+            self.clear_io();
             return;
         };
         if addresses.is_empty() || addresses.len() > MAX_CONSTANT_TARGETS {
             self.clear_memory();
+            self.clear_io();
             return;
         }
 
@@ -436,6 +561,7 @@ impl AbstractState {
             if (byte_count == 4 && address & 3 != 0) || !supported_ram_interval(address, byte_count)
             {
                 self.clear_memory();
+                self.invalidate_io_for_unmodeled_store(address, byte_count);
                 return;
             }
             for offset in 0..byte_count {
@@ -445,6 +571,27 @@ impl AbstractState {
         let memory_words = Arc::make_mut(&mut self.memory_words);
         for address in overwritten_words {
             memory_words.remove(&address);
+        }
+    }
+
+    fn invalidate_io_for_unmodeled_store(&mut self, address: u32, byte_count: u32) {
+        let Some(end) = address.checked_add(byte_count) else {
+            self.clear_io();
+            return;
+        };
+        if address < 0x0400_0000 || end > 0x0400_0400 {
+            self.clear_io();
+            return;
+        }
+        let mut overlaps_tracked_latch = false;
+        for latch in [IO_IE, IO_IF, IO_IME] {
+            if address < latch + 2 && end > latch {
+                overlaps_tracked_latch = true;
+                self.set_io_halfword(latch, AbstractValue::Unknown);
+            }
+        }
+        if !overlaps_tracked_latch {
+            self.clear_io();
         }
     }
 
@@ -1066,9 +1213,11 @@ fn process_thumb_instruction(
                 total_states,
             )?;
         }
-        ThumbOperation::LoadHalfwordImmediate { rd, .. } => {
+        ThumbOperation::LoadHalfwordImmediate { rd, rb, imm5 } => {
             let mut next_state = state.clone();
-            next_state.registers[rd as usize] = AbstractValue::Unknown;
+            let address =
+                effective_store_address(&state.registers[rb as usize], u32::from(imm5) * 2, true);
+            next_state.registers[rd as usize] = state.load_io_halfword(&address);
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
@@ -1123,9 +1272,17 @@ fn process_thumb_instruction(
             let mut next_state = state.clone();
             let address =
                 effective_store_address(&state.registers[rb as usize], u32::from(imm5) * 2, true);
-            let ime_disable = address == AbstractValue::constant(0x0400_0208)
-                && state.registers[rd as usize] == AbstractValue::constant(0);
-            if !ime_disable {
+            let exact_address = address.values().and_then(|values| {
+                (values.len() == 1).then(|| *values.iter().next().expect("one address"))
+            });
+            let store_keeps_irq_quiescent = matches!(exact_address, Some(IO_IE | IO_IME))
+                && state.io_halfword(IO_IF) == AbstractValue::constant(0);
+            if store_keeps_irq_quiescent {
+                next_state.store_io_halfword(
+                    exact_address.expect("matched exact IE/IME address") & !1,
+                    &state.registers[rd as usize],
+                );
+            } else {
                 next_state.invalidate_store(&address, 2, 1);
             }
             enqueue_state(
@@ -1176,6 +1333,7 @@ fn process_thumb_instruction(
 
             let Some(base_values) = old_base.values() else {
                 next_state.clear_memory();
+                next_state.clear_io();
                 enqueue_state(
                     IsaMode::Thumb,
                     instruction.guest_pc.wrapping_add(2),
@@ -1188,6 +1346,7 @@ fn process_thumb_instruction(
             };
             if base_values.len() != 1 {
                 next_state.clear_memory();
+                next_state.clear_io();
                 enqueue_state(
                     IsaMode::Thumb,
                     instruction.guest_pc.wrapping_add(2),
@@ -1202,6 +1361,7 @@ fn process_thumb_instruction(
             let aligned_start = *base_values.iter().next().expect("one base value") & !3;
             if !supported_ram_interval(aligned_start, transfer_bytes) {
                 next_state.clear_memory();
+                next_state.clear_io();
             } else {
                 next_state.invalidate_word_bytes(aligned_start, transfer_bytes);
                 let known_values = (0_u8..8)
@@ -1404,6 +1564,7 @@ fn process_thumb_instruction(
             }
             let mut next_state = state.clone();
             next_state.clear_memory();
+            next_state.reset_io_after_register_ram_reset(&state.registers[0]);
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
@@ -3041,7 +3202,7 @@ mod tests {
     }
 
     #[test]
-    fn thumb_halfword_store_to_ime_unknown_or_enabled_clears_shadow() {
+    fn thumb_halfword_store_to_ime_preserves_shadow_when_if_is_zero() {
         let instruction = ThumbInstruction {
             guest_pc: ROM_BASE + 0x84,
             encoding: 0x8004,
@@ -3057,6 +3218,41 @@ mod tests {
             if let Some(value) = value {
                 state.set_constant(4, value);
             }
+            state.set_memory_word(0x0300_0018, AbstractValue::constant(0x0800_0085));
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &counter_rom(),
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+            let successor = only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]);
+            assert_eq!(
+                successor.memory_words[&0x0300_0018],
+                AbstractValue::constant(0x0800_0085)
+            );
+        }
+    }
+
+    #[test]
+    fn thumb_halfword_store_to_ime_clears_shadow_when_if_is_not_proven_zero() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x8004,
+            operation: ThumbOperation::StoreHalfwordImmediate {
+                rd: 4,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        for if_value in [AbstractValue::Unknown, AbstractValue::constant(1)] {
+            let mut state = AbstractState::unknown();
+            state.set_constant(0, 0x0400_0208);
+            state.set_io_halfword(IO_IF, if_value);
             state.set_memory_word(0x0300_0018, AbstractValue::constant(0x0800_0085));
             let mut pending = VecDeque::new();
             let mut incoming = BTreeMap::new();
@@ -3205,6 +3401,10 @@ mod tests {
             operation: ThumbOperation::Swi { immediate: 1 },
         };
         let mut state = AbstractState::unknown();
+        state.set_constant(0, 0x80);
+        state.set_io_halfword(IO_IE, AbstractValue::constant(0x1234));
+        state.set_io_halfword(IO_IF, AbstractValue::constant(0x0005));
+        state.set_io_halfword(IO_IME, AbstractValue::constant(1));
         state.set_memory_word(0x0200_0100, AbstractValue::constant(0x0800_0085));
         let mut pending = VecDeque::new();
         let mut incoming = BTreeMap::new();
@@ -3222,6 +3422,45 @@ mod tests {
                 .memory_words
                 .is_empty()
         );
+        let reset_state = only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]);
+        assert_eq!(reset_state.io_halfword(IO_IE), AbstractValue::constant(0));
+        assert_eq!(reset_state.io_halfword(IO_IF), AbstractValue::constant(0));
+        assert_eq!(reset_state.io_halfword(IO_IME), AbstractValue::constant(0));
+    }
+
+    #[test]
+    fn register_ram_reset_without_io_flag_preserves_abstract_latches() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0xDF01,
+            operation: ThumbOperation::Swi { immediate: 1 },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(0, 0);
+        state.set_io_halfword(IO_IE, AbstractValue::constant(0x1234));
+        state.set_io_halfword(IO_IF, AbstractValue::constant(0x0005));
+        state.set_io_halfword(IO_IME, AbstractValue::constant(1));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let next_state = only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]);
+        assert_eq!(
+            next_state.io_halfword(IO_IE),
+            AbstractValue::constant(0x1234)
+        );
+        assert_eq!(
+            next_state.io_halfword(IO_IF),
+            AbstractValue::constant(0x0005)
+        );
+        assert_eq!(next_state.io_halfword(IO_IME), AbstractValue::constant(1));
     }
 
     #[test]

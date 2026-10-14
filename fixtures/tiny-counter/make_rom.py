@@ -19,7 +19,7 @@ def header_checksum(image: bytearray) -> int:
 
 
 def generate(mode: str = "valid") -> bytes:
-    image = bytearray(256)
+    image = bytearray(0x1000 if mode == "thumb-ie-ime-section" else 256)
     entry = branch(0, 0xC0 if mode != "out-of-range" else 0x1C0)
     image[0:4] = struct.pack("<I", entry)
     image[0xA0:0xAC] = b"TINY COUNTER"
@@ -709,6 +709,45 @@ def generate(mode: str = "valid") -> bytes:
             "<4I", 0x04000208, 0x03000020, 0x08000085, 0x080000F0
         )
         image[0xF0:0xF4] = struct.pack("<I", branch(0xF0, 0xF0))
+    elif mode == "thumb-ie-ime-section":
+        image[0xB48:0xB6C] = struct.pack(
+            "<18H",
+            0xB530,  # PUSH {r4,r5,lr}
+            0x4D08,  # LDR r5, =0x030000C1
+            0x7828,  # LDRB r0,[r5]
+            0x2800,  # CMP r0,#0
+            0xD009,  # BLE 0x08000B66
+            0x4A07,  # LDR r2, =IME
+            0x8811,  # LDRH r1,[r2]
+            0x2400,  # MOVS r4,#0
+            0x8014,  # STRH r4,[r2]
+            0x4B06,  # LDR r3, =IE
+            0x4806,  # LDR r0, =0x030000C2
+            0x8800,  # LDRH r0,[r0]
+            0x8018,  # STRH r0,[r3]
+            0x8011,  # STRH r1,[r2]
+            0x702C,  # STRB r4,[r5]
+            0xBC30,  # POP {r4,r5}
+            0xBC01,  # POP {r0}
+            0x4700,  # BX r0
+        )
+        image[0xB6C:0xB7C] = struct.pack(
+            "<4I", 0x030000C1, 0x04000208, 0x04000200, 0x030000C2
+        )
+        image[0xC0:0xDC] = struct.pack(
+            "<7I",
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> 0x030000C0 at 0xE0.
+            0xE3A01C01,  # MOV r1,#0x100; make LDRB at C1 nonzero.
+            0xE5801000,  # STR r1,[r0]
+            0xE59FD010,  # LDR sp,[pc,#0x10] -> stack at 0xE4.
+            0xE59F8010,  # LDR r8,[pc,#0x10] -> Thumb entry at 0xE8.
+            0xE59FE010,  # LDR lr,[pc,#0x10] -> ARM return at 0xEC.
+            0xE12FFF18,  # BX r8.
+        )
+        image[0xE0:0xF0] = struct.pack(
+            "<4I", 0x030000C0, 0x03000020, 0x08000B49, 0x080000FC
+        )
+        image[0xFC:0x100] = struct.pack("<I", branch(0xFC, 0xFC))
     elif mode in (
         "thumb-strh-ewram-zero-even",
         "thumb-strh-ewram-thirtyone-odd-alias",
@@ -1255,6 +1294,7 @@ def main() -> None:
             "thumb-strh-iwram-thirtyone-even",
             "thumb-strh-invalid-odd",
             "thumb-strh-ime-clear",
+            "thumb-ie-ime-section",
             "thumb-ldrh-ewram-zero",
             "thumb-ldrh-ewram-odd",
             "thumb-ldrh-ewram-thirtyone",

@@ -409,11 +409,11 @@ unsafe fn build_arm_program_function(
             0,
         )
     };
-    let store16_helper_name = CString::new("gba_store16_v4").expect("static name contains no NUL");
+    let store16_helper_name = CString::new("gba_store16_v5").expect("static name contains no NUL");
     let store16_helper =
         unsafe { LLVMAddFunction(module, store16_helper_name.as_ptr(), store16_helper_type) };
     if store16_helper.is_null() {
-        return Err("LLVMAddFunction for gba_store16_v4 returned null".to_owned());
+        return Err("LLVMAddFunction for gba_store16_v5 returned null".to_owned());
     }
     let mut store8_parameters = unsafe {
         [
@@ -483,7 +483,7 @@ unsafe fn build_arm_program_function(
     }
     let mut load16_parameters = unsafe {
         [
-            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(runtime_v4_type, 0),
             LLVMPointerType(exit_type, 0),
             i32_type,
             LLVMPointerType(i32_type, 0),
@@ -497,11 +497,11 @@ unsafe fn build_arm_program_function(
             0,
         )
     };
-    let load16_helper_name = CString::new("gba_load16_v3").expect("static name contains no NUL");
+    let load16_helper_name = CString::new("gba_load16_v4").expect("static name contains no NUL");
     let load16_helper =
         unsafe { LLVMAddFunction(module, load16_helper_name.as_ptr(), load16_helper_type) };
     if load16_helper.is_null() {
-        return Err("LLVMAddFunction for gba_load16_v3 returned null".to_owned());
+        return Err("LLVMAddFunction for gba_load16_v4 returned null".to_owned());
     }
     let mut push_parameters = unsafe {
         [
@@ -2236,7 +2236,7 @@ unsafe fn lower_thumb_instruction(
             let host_value_out = unsafe {
                 LLVMBuildAlloca(builder, i32_type, c"thumb_ldrh_host_value_out".as_ptr())
             };
-            let mut arguments = [runtime, exit, guest_ea, host_value_out];
+            let mut arguments = [runtime_v4, exit, guest_ea, host_value_out];
             let status = unsafe {
                 LLVMBuildCall2(
                     builder,

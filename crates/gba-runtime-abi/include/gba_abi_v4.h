@@ -45,7 +45,11 @@ typedef enum GbaMemoryFaultV4 {
 
 uint32_t gba_block_v4(GbaRuntimeV4 *rt, GbaExitV3 *out);
 uint32_t gba_validate_runtime_v4(GbaRuntimeV4 *rt, GbaExitV3 *out);
+uint32_t gba_load16_v4(GbaRuntimeV4 *rt, GbaExitV3 *out,
+                       uint32_t guest_ea, uint32_t *host_value_out);
 uint32_t gba_store16_v4(GbaRuntimeV4 *rt, GbaExitV3 *out,
+                        uint32_t guest_ea, uint32_t value);
+uint32_t gba_store16_v5(GbaRuntimeV4 *rt, GbaExitV3 *out,
                         uint32_t guest_ea, uint32_t value);
 uint32_t gba_register_ram_reset_v1(GbaRuntimeV4 *rt, GbaExitV3 *out,
                                    uint32_t immediate);

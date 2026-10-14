@@ -347,6 +347,166 @@ static void test_store16_v4_rejects_invalid_versions_before_mutation(void) {
     assert_store16_v4_validation_fault(GBA_HLE_FAULT_MACHINE_ABI_V1);
 }
 
+static void test_load16_v4_reads_ie_if_ime_and_delegates_ram(void) {
+    reset_fixture(0);
+    runtime.base.cpu.r[15] = UINT32_C(0x08000100);
+    store_io16(0x200, UINT16_C(0x1234));
+    store_io16(0x202, UINT16_C(0x0005));
+    store_io16(0x208, UINT16_C(0x0001));
+    const GbaRuntimeV2 before = runtime.base.cpu;
+    uint32_t value = UINT32_C(0xDEADBEEF);
+
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000200), &value) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(value == UINT32_C(0x1234));
+    assert(exit_state.reason == GBA_EXIT_CONTINUE_V2);
+    assert(exit_state.next_pc == UINT32_C(0x08000100));
+    assert(exit_state.fault_address == 0);
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000201), &value) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(value == UINT32_C(0x34000012));
+
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000203), &value) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(value == UINT32_C(0x05000000));
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000208), &value) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(value == UINT32_C(1));
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000209), &value) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(value == UINT32_C(0x01000000));
+
+    machine.memory.ewram[0] = 0xCD;
+    machine.memory.ewram[1] = 0xAB;
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x02000000), &value) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(value == UINT32_C(0xABCD));
+    assert_cpu_unchanged(before);
+}
+
+static void test_load16_v4_faults_without_mutating_output(void) {
+    reset_fixture(0);
+    runtime.base.cpu.r[15] = UINT32_C(0x08000104);
+    uint32_t value = UINT32_C(0xDEADBEEF);
+    const GbaRuntimeV2 before = runtime.base.cpu;
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000204), &value) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.reason == GBA_EXIT_FAULT_V2);
+    assert(exit_state.next_pc == UINT32_C(0x08000104));
+    assert(exit_state.fault_address == UINT32_C(0x04000204));
+    assert(exit_state.fault_code == GBA_MEMORY_FAULT_REGION_V3);
+    assert(value == UINT32_C(0xDEADBEEF));
+    assert_cpu_unchanged(before);
+
+    const GbaExitV3 before_null_output = exit_state;
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000200), NULL) ==
+           GBA_EXIT_FAULT_V2);
+    assert(memcmp(&exit_state, &before_null_output, sizeof(exit_state)) == 0);
+    const GbaExitV3 before_null_exit = exit_state;
+    value = UINT32_C(0xAABBCCDD);
+    assert(gba_load16_v4(&runtime, NULL, UINT32_C(0x04000200), &value) ==
+           GBA_EXIT_FAULT_V2);
+    assert(value == UINT32_C(0xAABBCCDD));
+    assert(memcmp(&exit_state, &before_null_exit, sizeof(exit_state)) == 0);
+    assert_cpu_unchanged(before);
+}
+
+static void test_store16_v5_writes_ie_and_masks_ime_when_if_is_clear(void) {
+    reset_fixture(0);
+    runtime.base.cpu.r[15] = UINT32_C(0x08000108);
+    store_io16(0x202, 0);
+    const GbaRuntimeV2 before = runtime.base.cpu;
+
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000200),
+                          UINT32_C(0x12345678)) == GBA_EXIT_CONTINUE_V2);
+    assert(load_io16(0x200) == UINT16_C(0x5678));
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000201),
+                          UINT32_C(0x89ABCDEF)) == GBA_EXIT_CONTINUE_V2);
+    assert(load_io16(0x200) == UINT16_C(0xCDEF));
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000208), 3) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(load_io16(0x208) == 1);
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000209), 2) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(load_io16(0x208) == 0);
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000208), 2) ==
+           GBA_EXIT_CONTINUE_V2);
+    assert(load_io16(0x208) == 0);
+    assert(load_io16(0x202) == 0);
+    assert_cpu_unchanged(before);
+
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x02000001),
+                          UINT32_C(0x0000ABCD)) == GBA_EXIT_CONTINUE_V2);
+    assert(machine.memory.ewram[0] == 0xCD);
+    assert(machine.memory.ewram[1] == 0xAB);
+}
+
+static void test_store16_v5_faults_on_pending_if_and_unsupported_io(void) {
+    reset_fixture(0);
+    runtime.base.cpu.r[15] = UINT32_C(0x0800010C);
+    store_io16(0x200, UINT16_C(0x1234));
+    store_io16(0x202, 1);
+    store_io16(0x208, 1);
+    const GbaRuntimeV2 before = runtime.base.cpu;
+    const uint16_t ie_before = load_io16(0x200);
+    const uint16_t if_before = load_io16(0x202);
+    const uint16_t ime_before = load_io16(0x208);
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000200), 0) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.fault_code == GBA_MEMORY_FAULT_IO_EFFECT_V4);
+    assert(exit_state.fault_address == UINT32_C(0x04000200));
+    assert(load_io16(0x200) == ie_before);
+    assert(load_io16(0x202) == if_before);
+    assert(load_io16(0x208) == ime_before);
+    assert_cpu_unchanged(before);
+
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000209), 0) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.fault_code == GBA_MEMORY_FAULT_IO_EFFECT_V4);
+    assert(load_io16(0x208) == ime_before);
+
+    store_io16(0x202, 0);
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000203), 1) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.fault_code == GBA_MEMORY_FAULT_IO_EFFECT_V4);
+    assert(load_io16(0x202) == 0);
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000204), 1) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.fault_code == GBA_MEMORY_FAULT_REGION_V3);
+    assert(exit_state.fault_address == UINT32_C(0x04000204));
+    assert(load_io16(0x200) == ie_before);
+    assert(load_io16(0x208) == ime_before);
+    assert_cpu_unchanged(before);
+}
+
+static void test_load16_v4_and_store16_v5_reject_invalid_runtime_abi(void) {
+    reset_fixture(0);
+    store_io16(0x200, UINT16_C(0x1234));
+    runtime.abi_version++;
+    uint32_t value = UINT32_C(0xDEADBEEF);
+    const GbaRuntimeV2 before = runtime.base.cpu;
+    assert(gba_load16_v4(&runtime, &exit_state, UINT32_C(0x04000200), &value) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.reason == GBA_EXIT_FAULT_V2);
+    assert(exit_state.fault_address == UINT32_C(0x04000200));
+    assert(exit_state.fault_code == GBA_HLE_FAULT_RUNTIME_ABI_V1);
+    assert(value == UINT32_C(0xDEADBEEF));
+    assert(load_io16(0x200) == UINT16_C(0x1234));
+    assert_cpu_unchanged(before);
+
+    reset_fixture(0);
+    store_io16(0x200, UINT16_C(0x1234));
+    runtime.abi_version++;
+    const GbaRuntimeV2 store_before = runtime.base.cpu;
+    assert(gba_store16_v5(&runtime, &exit_state, UINT32_C(0x04000200), 0) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.reason == GBA_EXIT_FAULT_V2);
+    assert(exit_state.fault_address == UINT32_C(0x04000200));
+    assert(exit_state.fault_code == GBA_HLE_FAULT_RUNTIME_ABI_V1);
+    assert(load_io16(0x200) == UINT16_C(0x1234));
+    assert_cpu_unchanged(store_before);
+}
+
 int main(void) {
     reset_fixture(0);
     invoke_reset();
@@ -365,5 +525,10 @@ int main(void) {
     test_store16_v4_delegates_ram_and_faults_other_io();
     test_store16_v4_validates_machine_before_io_mutation();
     test_store16_v4_rejects_invalid_versions_before_mutation();
+    test_load16_v4_reads_ie_if_ime_and_delegates_ram();
+    test_load16_v4_faults_without_mutating_output();
+    test_store16_v5_writes_ie_and_masks_ime_when_if_is_clear();
+    test_store16_v5_faults_on_pending_if_and_unsupported_io();
+    test_load16_v4_and_store16_v5_reject_invalid_runtime_abi();
     return 0;
 }
