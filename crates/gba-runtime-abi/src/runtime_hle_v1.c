@@ -52,7 +52,9 @@ static void store_io16(GbaMachineStateV1 *machine, uint32_t offset,
     if (offset == IO_VCOUNT) {
         return;
     }
-    if (offset == IO_DISPSTAT) {
+    if (offset == IO_IME) {
+        value &= UINT16_C(0x0001);
+    } else if (offset == IO_DISPSTAT) {
         const uint16_t old_status = load_le16(&machine->io[offset]) & 0x0003;
         const uint16_t vcount = load_le16(&machine->io[IO_VCOUNT]);
         const uint16_t compare = (value >> 8) & 0x00FF;
@@ -109,6 +111,52 @@ uint32_t gba_validate_runtime_v4(GbaRuntimeV4 *rt, GbaExitV3 *out) {
     out->next_pc = rt->base.cpu.r[15];
     out->fault_address = 0;
     out->fault_code = GBA_HLE_FAULT_NONE_V1;
+    return GBA_EXIT_CONTINUE_V2;
+}
+
+static uint32_t fail_store16_v4(GbaRuntimeV4 *rt, GbaExitV3 *out,
+                                uint32_t guest_ea, uint32_t fault_code) {
+    if (out != NULL) {
+        out->reason = GBA_EXIT_FAULT_V2;
+        out->next_pc = rt == NULL ? 0 : rt->base.cpu.r[15];
+        out->fault_address = guest_ea;
+        out->fault_code = fault_code;
+    }
+    return GBA_EXIT_FAULT_V2;
+}
+
+uint32_t gba_store16_v4(GbaRuntimeV4 *rt, GbaExitV3 *out,
+                        uint32_t guest_ea, uint32_t value) {
+    const uint32_t validation = gba_validate_runtime_v4(rt, out);
+    if (validation != GBA_EXIT_CONTINUE_V2) {
+        if (out != NULL) {
+            out->fault_address = guest_ea;
+        }
+        return validation;
+    }
+
+    const uint32_t aligned_ea = guest_ea & ~UINT32_C(1);
+    if ((aligned_ea >= UINT32_C(0x02000000) &&
+         aligned_ea <= UINT32_C(0x0203FFFE)) ||
+        (aligned_ea >= UINT32_C(0x03000000) &&
+         aligned_ea <= UINT32_C(0x03007FFE))) {
+        return gba_store16_v3(&rt->base, out, guest_ea, value);
+    }
+
+    if (aligned_ea != UINT32_C(0x04000208)) {
+        return fail_store16_v4(rt, out, guest_ea,
+                               GBA_MEMORY_FAULT_REGION_V3);
+    }
+    if ((value & UINT32_C(1)) != 0) {
+        return fail_store16_v4(rt, out, guest_ea,
+                               GBA_MEMORY_FAULT_IO_EFFECT_V4);
+    }
+
+    store_io16(rt->machine, IO_IME, (uint16_t)value);
+    out->reason = GBA_EXIT_CONTINUE_V2;
+    out->next_pc = rt->base.cpu.r[15];
+    out->fault_address = 0;
+    out->fault_code = GBA_MEMORY_FAULT_NONE_V3;
     return GBA_EXIT_CONTINUE_V2;
 }
 

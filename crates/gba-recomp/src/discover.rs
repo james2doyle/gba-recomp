@@ -1119,11 +1119,15 @@ fn process_thumb_instruction(
                 total_states,
             )?;
         }
-        ThumbOperation::StoreHalfwordImmediate { rb, imm5, .. } => {
+        ThumbOperation::StoreHalfwordImmediate { rd, rb, imm5 } => {
             let mut next_state = state.clone();
             let address =
                 effective_store_address(&state.registers[rb as usize], u32::from(imm5) * 2, true);
-            next_state.invalidate_store(&address, 2, 1);
+            let ime_disable = address == AbstractValue::constant(0x0400_0208)
+                && state.registers[rd as usize] == AbstractValue::constant(0);
+            if !ime_disable {
+                next_state.invalidate_store(&address, 2, 1);
+            }
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
@@ -2996,6 +3000,81 @@ mod tests {
             successor.memory_words[&(address + 4)],
             AbstractValue::constant(0x0800_0099)
         );
+    }
+
+    #[test]
+    fn thumb_halfword_store_to_ime_zero_preserves_saved_return_shadow() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x8004,
+            operation: ThumbOperation::StoreHalfwordImmediate {
+                rd: 4,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(0, 0x0400_0208);
+        state.set_constant(4, 0);
+        state.set_memory_word(0x0300_0018, AbstractValue::constant(0));
+        state.set_memory_word(0x0300_001C, AbstractValue::constant(0x0800_00F0));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]);
+        assert_eq!(
+            successor.memory_words[&0x0300_0018],
+            AbstractValue::constant(0)
+        );
+        assert_eq!(
+            successor.memory_words[&0x0300_001C],
+            AbstractValue::constant(0x0800_00F0)
+        );
+    }
+
+    #[test]
+    fn thumb_halfword_store_to_ime_unknown_or_enabled_clears_shadow() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x8004,
+            operation: ThumbOperation::StoreHalfwordImmediate {
+                rd: 4,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        for value in [None, Some(1)] {
+            let mut state = AbstractState::unknown();
+            state.set_constant(0, 0x0400_0208);
+            if let Some(value) = value {
+                state.set_constant(4, value);
+            }
+            state.set_memory_word(0x0300_0018, AbstractValue::constant(0x0800_0085));
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &counter_rom(),
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+            assert!(
+                only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)])
+                    .memory_words
+                    .is_empty()
+            );
+        }
     }
 
     #[test]

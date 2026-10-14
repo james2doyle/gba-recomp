@@ -181,12 +181,14 @@ if [ "$os" = Darwin ]; then
         -I crates/gba-runtime-abi/include \
         crates/gba-runtime-abi/tests/runtime_hle_v1_test.c \
         crates/gba-runtime-abi/src/runtime_hle_v1.c \
+        crates/gba-runtime-abi/src/runtime_v3.c \
         -o "$runtime_hle_test"
 else
     "$LLVM_SYS_231_PREFIX/bin/clang" -std=c11 -Wall -Wextra -Werror \
         -I crates/gba-runtime-abi/include \
         crates/gba-runtime-abi/tests/runtime_hle_v1_test.c \
         crates/gba-runtime-abi/src/runtime_hle_v1.c \
+        crates/gba-runtime-abi/src/runtime_v3.c \
         -o "$runtime_hle_test"
 fi
 "$runtime_hle_test"
@@ -482,6 +484,37 @@ verify_thumb_strh thumb-strh-iwram-zero-odd \
     '{"status":"budget_exhausted","steps":10,"r0":48879,"r1":50331649,"pc":"0x080000EC","cpsr":"0x6000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":48879}'
 verify_thumb_strh thumb-strh-iwram-thirtyone-even \
     '{"status":"budget_exhausted","steps":10,"r0":4951,"r1":50331586,"pc":"0x080000EC","cpsr":"0x6000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":4951}'
+
+thumb_strh_ime_rom="$root/target/gba020/thumb-strh-ime-clear.gba"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$thumb_strh_ime_rom" --mode thumb-strh-ime-clear
+for optimization in O0 O2; do
+    package="$root/target/gba020/thumb-strh-ime-clear-package-$optimization"
+    rm -rf "$package"
+    "$recomp_bin" compile \
+        --rom "$thumb_strh_ime_rom" --out "$package" \
+        --opt "$optimization" --steps 11
+    actual=$("$package/game")
+    expected='{"status":"budget_exhausted","steps":11,"r0":0,"r1":134217968,"pc":"0x080000F0","cpsr":"0x0000001F","guest_cycle":11,"ewram_word0":0,"iwram_word0":0}'
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization Thumb STRH IME fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 12
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == 11
+PY
+done
 
 thumb_strh_invalid_rom="$root/target/gba020/thumb-strh-invalid-odd.gba"
 thumb_strh_invalid_package="$root/target/gba020/thumb-strh-invalid-odd-package"

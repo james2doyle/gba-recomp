@@ -395,7 +395,7 @@ unsafe fn build_arm_program_function(
     }
     let mut store16_parameters = unsafe {
         [
-            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(runtime_v4_type, 0),
             LLVMPointerType(exit_type, 0),
             i32_type,
             i32_type,
@@ -409,11 +409,11 @@ unsafe fn build_arm_program_function(
             0,
         )
     };
-    let store16_helper_name = CString::new("gba_store16_v3").expect("static name contains no NUL");
+    let store16_helper_name = CString::new("gba_store16_v4").expect("static name contains no NUL");
     let store16_helper =
         unsafe { LLVMAddFunction(module, store16_helper_name.as_ptr(), store16_helper_type) };
     if store16_helper.is_null() {
-        return Err("LLVMAddFunction for gba_store16_v3 returned null".to_owned());
+        return Err("LLVMAddFunction for gba_store16_v4 returned null".to_owned());
     }
     let mut store8_parameters = unsafe {
         [
@@ -1818,7 +1818,7 @@ unsafe fn lower_thumb_instruction(
             let guest_ea = unsafe {
                 LLVMBuildAdd(builder, base, byte_offset, c"thumb_strh_guest_ea".as_ptr())
             };
-            let mut arguments = [runtime, exit, guest_ea, value];
+            let mut arguments = [runtime_v4, exit, guest_ea, value];
             let status = unsafe {
                 LLVMBuildCall2(
                     builder,

@@ -691,6 +691,24 @@ def generate(mode: str = "valid") -> bytes:
         )
     elif mode == "mov-register-shift":
         image[0xC0:0xC4] = struct.pack("<I", 0xE1A00081)  # MOV r0, r1, LSL #1
+    elif mode == "thumb-strh-ime-clear":
+        image[0x84:0x8C] = struct.pack(
+            "<4H", 0xB510, 0x8004, 0xBC03, 0x4708
+        )  # PUSH {r4,lr}; STRH r4,[r0]; POP {r0,r1}; BX r1.
+        image[0xC0:0xDC] = struct.pack(
+            "<7I",
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> IME address at 0xE0.
+            0xE3A04000,  # MOV r4,#0; write only disables IME.
+            0xE59FD014,  # LDR sp,[pc,#0x14] -> IWRAM stack top at 0xE4.
+            0xE59F8014,  # LDR r8,[pc,#0x14] -> Thumb entry | 1 at 0xE8.
+            0xE59FE014,  # LDR lr,[pc,#0x14] -> ARM return at 0xEC.
+            0xE12FFF18,  # BX r8.
+            0xEAFFFFFE,  # Unreached self-loop.
+        )
+        image[0xE0:0xF0] = struct.pack(
+            "<4I", 0x04000208, 0x03000020, 0x08000085, 0x080000F0
+        )
+        image[0xF0:0xF4] = struct.pack("<I", branch(0xF0, 0xF0))
     elif mode in (
         "thumb-strh-ewram-zero-even",
         "thumb-strh-ewram-thirtyone-odd-alias",
@@ -1236,6 +1254,7 @@ def main() -> None:
             "thumb-strh-iwram-zero-odd",
             "thumb-strh-iwram-thirtyone-even",
             "thumb-strh-invalid-odd",
+            "thumb-strh-ime-clear",
             "thumb-ldrh-ewram-zero",
             "thumb-ldrh-ewram-odd",
             "thumb-ldrh-ewram-thirtyone",

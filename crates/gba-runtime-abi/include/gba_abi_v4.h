@@ -39,8 +39,14 @@ typedef enum GbaHleFaultV1 {
     GBA_HLE_FAULT_UNSUPPORTED_SWI_V1 = 22
 } GbaHleFaultV1;
 
+typedef enum GbaMemoryFaultV4 {
+    GBA_MEMORY_FAULT_IO_EFFECT_V4 = 8
+} GbaMemoryFaultV4;
+
 uint32_t gba_block_v4(GbaRuntimeV4 *rt, GbaExitV3 *out);
 uint32_t gba_validate_runtime_v4(GbaRuntimeV4 *rt, GbaExitV3 *out);
+uint32_t gba_store16_v4(GbaRuntimeV4 *rt, GbaExitV3 *out,
+                        uint32_t guest_ea, uint32_t value);
 uint32_t gba_register_ram_reset_v1(GbaRuntimeV4 *rt, GbaExitV3 *out,
                                    uint32_t immediate);
 
