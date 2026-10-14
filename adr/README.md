@@ -38,3 +38,4 @@
 - [ADR-036-thumb-and-register](ADR-036-thumb-and-register.md)
 - [ADR-037-thumb-negate-register](ADR-037-thumb-negate-register.md)
 - [ADR-038-thumb-asr-immediate](ADR-038-thumb-asr-immediate.md)
+- [ADR-039-thumb-cmp-register](ADR-039-thumb-cmp-register.md)
