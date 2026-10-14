@@ -6,7 +6,8 @@
 | Emissão, verificação e link da fixture funcionam com a toolchain fixada nos dois hosts? | macOS arm64 nativo passou; falta relatório Linux x86-64 com hashes, linker/sysroot, objeto e execução | GBA-010 |
 | Qual precisão de bus/prefetch/pipeline basta para cada título? | Suites e traces, depois hardware quando houver divergência | GBA-030/040 |
 | Quais overlays/SMC escapam ao AOT? | Cobertura observada e writes por origem | GBA-025; unknown REA |
-| Qual cobertura AOT e quais recursos de hardware LeafGreen exige? | Matriz por etapa em [KNO-005](KNO-005-isa-coverage.md); análise estática alcança Thumb SWI #1 em `0x081E3BCC`; HLE, periféricos e execução do jogo continuam sem prova | GBA-090 |
+| Qual cobertura AOT e quais recursos de hardware LeafGreen exige? | Matriz por etapa em [KNO-005](KNO-005-isa-coverage.md); observação histórica de descoberta chegou a Thumb SWI #1 em `0x081E3BCC`, mas a tentativa mais recente para no BX r0 em `0x080009BE` porque o alvo não está limitado; HLE, periféricos e execução do jogo continuam sem prova | GBA-090 |
+| Como limitar os destinos do BX r0 em `0x080009BE` sem fallback? | Rastrear a origem abstrata de r0 e demonstrar um conjunto finito de alvos em todos os caminhos; a análise atual torna leituras de RAM desconhecidas | GBA-025 |
 | Quais SWIs são necessários à primeira fixture? | Grafo + execução controlada | GBA-045 |
 | Qual adaptador desktop e biblioteca de menu? | Slice acessível teclado/gamepad e comportamento sem GPU/áudio | GBA-070 |
 | Limites de compilação e tamanho por ROM? | Medidas por shard/target e orçamento de memória | GBA-050 |

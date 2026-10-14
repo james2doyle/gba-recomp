@@ -122,6 +122,12 @@ No commit local `eabe929ad677245faecebda7508bc681f6ce6902`, `cargo test --locked
 
 Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-bcond-20261013 --opt O2 --steps 100` para a ROM de SHA-256 acima, a descoberta estática passou pelo branch em `0x080009A6` (`0xDDF6`) e parou em `0x080009B6`, raw `0xBC08`, com `unsupported_thumb_instruction`. Os campos inferem Thumb POP `{r3}`; SRC-34 corrobora a regra de leitura e incremento de SP nas fontes fixadas. Nenhum SP, valor lido ou caminho dinâmico foi observado. A saída de pacote não foi criada. A tentativa de REA desta retomada falhou com `Transport closed`, sem Evidence ID ou decompilação; a nova fronteira deriva apenas da descoberta estática local.
 
+## Tentativa após SPEC-033 — POP Thumb
+
+No commit `57156d4949ce31bac2de5d72316e05d2195dd409`, POP Thumb de r0–r7 foi implementado em strict-AOT por helper ABI v3. `cargo test --locked --workspace --jobs 10` passou com 50 testes em `gba-ir` e 52 em `gba-recomp`; `scripts/verify-gba020.sh` passou em Darwin/arm64 com harness C ABI, fixtures O0/O2 para POP `{r3}` e lista múltipla, e rejeições de lista vazia/POP com PC sem pacote parcial. Os hashes de ROM, executáveis e manifestos estão em [gba020-thumb-pop-macos-arm64.json](evidence/gba020-thumb-pop-macos-arm64.json).
+
+Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-pop-20261013 --opt O2 --steps 100` para a ROM SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta estática passou pelo POP em `0x080009B6` (raw `0xBC08`) e parou em `0x080009BE`, raw `0x4700`, com `bx_target_unresolved: r0 is not statically bounded`. `0x4700` é inferido como Thumb `BX r0`; o destino de r0 não foi observado nem limitado estaticamente. A pasta de saída não foi criada, nenhum pacote LeafGreen foi produzido e a ROM não foi executada. REA falhou com `Transport closed`, sem Evidence ID ou decompilação. O registro descreve apenas a nova fronteira da descoberta estática.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

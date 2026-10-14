@@ -34,3 +34,7 @@ O caminho AOT de POP fica concentrado em uma chamada ABI, com commits de registr
 ## Referências
 
 [SPEC-033](../specs/SPEC-033-thumb-pop.md), [SPEC-019](../specs/SPEC-019-thumb-push.md), [ADR-009](ADR-009-versioned-bus-context.md), [SRC-34/KNO-001](../knowledge/KNO-001-evidence.md).
+
+## Implementação registrada
+
+A implementação strict-AOT deste contrato está no commit `57156d4949ce31bac2de5d72316e05d2195dd409`. O gate, hashes de pacotes O0/O2, harness ABI e limites observados estão em [gba020-thumb-pop-macos-arm64.json](../knowledge/evidence/gba020-thumb-pop-macos-arm64.json).

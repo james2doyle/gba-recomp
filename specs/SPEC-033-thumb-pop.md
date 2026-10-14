@@ -1,6 +1,6 @@
 # SPEC-033 — POP Thumb de registradores baixos em AOT estrito
 
-Estado do documento: Accepted. Implementação pendente; progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementada em `57156d4949ce31bac2de5d72316e05d2195dd409`; verificação e limites registrados em [evidência POP](../knowledge/evidence/gba020-thumb-pop-macos-arm64.json) e [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 
@@ -43,6 +43,10 @@ Esta tranche aceita POP Thumb com uma lista não vazia somente de r0–r7. O bit
 Adicionar testes de decoder/verificador para lista vazia, `{r0}`, `{r3}`, lista cheia, bit PC, encoding vizinho, PC desalinhado, sucessor ausente e campos adulterados. O teste C da ABI deve cobrir EWRAM/IWRAM, little-endian, múltiplos destinos, SP final, alinhamento, limites exatos, região não coberta, cada fault, `out == NULL`, ABI inválida e atomicidade quando o intervalo cruza uma fronteira. Discovery deve testar invalidação apenas dos registradores lidos e SP constante/desconhecido. O gate GBA-020 MUST emitir e executar fixtures O0/O2 com leitura de memória conhecida e validar manifestos strict-AOT; instruções POP com PC e lista vazia devem falhar sem pacote parcial. Após o gate, repetir a descoberta estática LeafGreen e registrar somente a nova fronteira alcançada.
 
 Fixtures sintéticas confirmam somente os casos e valores iniciais declarados. Não demonstram valor de SP ou conteúdo de stack durante a execução de LeafGreen.
+
+## Resultado registrado
+
+O workspace passou com 50 testes em `gba-ir` e 52 em `gba-recomp`; o gate GBA-020 passou em Darwin/arm64 com harness C ABI, fixtures strict-AOT O0/O2 para POP `{r3}` e lista múltipla, e rejeições sem pacote para lista vazia e POP com PC. A descoberta estática LeafGreen avançou de `0x080009B6` para `0x080009BE`, onde `BX r0` é inferido pelo halfword `0x4700`; o destino não está estaticamente limitado. A ROM não foi executada e REA não produziu decompilação. Os hashes e detalhes ficam no arquivo de evidência linkado acima.
 
 ## Relação com specs e referências
 
