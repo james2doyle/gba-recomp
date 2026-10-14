@@ -116,7 +116,12 @@ pub fn finalize(
 pub fn default_runtime(spec: &TargetSpec) -> Result<PathBuf, String> {
     let name = Platform::of(spec).runtime_lib_name();
     if let Some(path) = env::var_os("GBA_NATIVE_RT_LIB") {
-        return Ok(PathBuf::from(path));
+        let path = PathBuf::from(path);
+        return if path.is_file() {
+            Ok(path)
+        } else {
+            Err(format!("GBA_NATIVE_RT_LIB does not exist: {}", path.display()))
+        };
     }
     let exe = env::current_exe().map_err(|e| e.to_string())?;
     let dir = exe.parent().ok_or("gba-recomp has no parent directory")?;
