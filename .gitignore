@@ -4,3 +4,4 @@ roms/
 .DS_Store
 .claude/worktrees/
 out/
+dist/

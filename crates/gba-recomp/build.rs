@@ -9,6 +9,10 @@ fn main() {
     println!("cargo:rerun-if-env-changed=GBA_RECOMP_CARGO_LINK_THREADS");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").expect("Cargo sets CARGO_CFG_TARGET_OS");
+    if target_os == "windows" {
+        // MSVC link.exe (or lld-link via the toolchain) needs no extra flags.
+        return;
+    }
     println!("cargo:rustc-link-arg=-fuse-ld=lld");
     println!(
         "cargo:rustc-link-arg=-Wl,--threads={}",

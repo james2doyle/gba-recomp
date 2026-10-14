@@ -54,6 +54,7 @@ impl Platform {
 }
 
 /// Everything an adapter needs to link and lay out a package in `dir`.
+#[allow(dead_code)] // rom/sha_hex/embed are used by the iOS, Android and Web adapters.
 pub struct PackageInputs<'a> {
     pub spec: &'a TargetSpec,
     pub objects: &'a [PathBuf],
@@ -88,7 +89,10 @@ pub fn published_path(spec: &TargetSpec, output: &Path, embed: bool) -> PathBuf 
     let platform = Platform::of(spec);
     let wants_app = (platform == Platform::MacOs && embed) || platform == Platform::Ios;
     if wants_app && !output.extension().is_some_and(|e| e == "app") {
-        output.with_extension("app")
+        // Append (names like `game-v3.00` contain dots).
+        let mut name = output.as_os_str().to_owned();
+        name.push(".app");
+        PathBuf::from(name)
     } else {
         output.to_path_buf()
     }
@@ -120,7 +124,10 @@ pub fn default_runtime(spec: &TargetSpec) -> Result<PathBuf, String> {
         return if path.is_file() {
             Ok(path)
         } else {
-            Err(format!("GBA_NATIVE_RT_LIB does not exist: {}", path.display()))
+            Err(format!(
+                "GBA_NATIVE_RT_LIB does not exist: {}",
+                path.display()
+            ))
         };
     }
     let exe = env::current_exe().map_err(|e| e.to_string())?;

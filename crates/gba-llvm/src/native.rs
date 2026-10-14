@@ -2296,7 +2296,11 @@ fn build_table(
         let native_main = LLVMAddFunction(module, c"gba_native_main".as_ptr(), native_main_t);
         let mut mp = [e.t.i32, e.t.ptr];
         let main_t = LLVMFunctionType(e.t.i32, mp.as_mut_ptr(), 2, 0);
-        let main = LLVMAddFunction(module, CString::new(entry).expect("no NUL").as_ptr(), main_t);
+        let main = LLVMAddFunction(
+            module,
+            CString::new(entry).expect("no NUL").as_ptr(),
+            main_t,
+        );
         let bb = LLVMAppendBasicBlockInContext(context, main, EMPTY);
         e.at(bb);
         let mut args = [

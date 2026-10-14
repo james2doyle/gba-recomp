@@ -63,11 +63,46 @@ pub const fn native_target() -> NativeTarget {
     }
 }
 
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub const fn native_target() -> NativeTarget {
+    NativeTarget {
+        triple: "x86_64-apple-darwin",
+        cpu: "x86-64",
+        features: "",
+        object_format: "Mach-O 64-bit",
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+pub const fn native_target() -> NativeTarget {
+    NativeTarget {
+        triple: "aarch64-unknown-linux-gnu",
+        cpu: "generic",
+        features: "",
+        object_format: "ELF64",
+    }
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+pub const fn native_target() -> NativeTarget {
+    NativeTarget {
+        triple: "x86_64-pc-windows-msvc",
+        cpu: "x86-64",
+        features: "",
+        object_format: "COFF",
+    }
+}
+
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
-    all(target_os = "macos", target_arch = "aarch64")
+    all(target_os = "linux", target_arch = "aarch64"),
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "macos", target_arch = "x86_64"),
+    all(target_os = "windows", target_arch = "x86_64")
 )))]
-compile_error!("GBA-010 supports only Linux x86-64 and macOS arm64 native hosts");
+compile_error!(
+    "gba-recomp build hosts: Linux x86-64/ARM64, macOS ARM64/x86-64, Windows x86-64 (SPEC-068)"
+);
 
 pub struct EmitInfo {
     pub llvm_version: &'static str,

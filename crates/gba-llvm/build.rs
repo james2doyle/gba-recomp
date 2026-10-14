@@ -42,9 +42,11 @@ fn main() {
     libnames_args.extend_from_slice(LINK_COMPONENTS);
     let libnames = llvm_config(&binary, &libnames_args);
     for filename in libnames.split_whitespace() {
+        // Unix archives are libX.a; MSVC builds name them X.lib.
         let library = filename
             .strip_prefix("lib")
             .and_then(|name| name.strip_suffix(".a"))
+            .or_else(|| filename.strip_suffix(".lib"))
             .unwrap_or_else(|| panic!("unexpected static LLVM library name `{filename}`"));
         if !PathBuf::from(&libdir).join(filename).is_file() {
             panic!("LLVM component archive is missing: {libdir}/{filename}");
@@ -67,6 +69,8 @@ fn main() {
             return;
         }
         "linux" => "stdc++",
+        // MSVC links its C++ runtime automatically.
+        "windows" => return,
         _ => panic!("unsupported compiler host OS for LLVM C++ runtime: {target_os}"),
     };
     println!("cargo:rustc-link-lib=dylib={cpp_runtime}");
@@ -87,6 +91,13 @@ fn llvm_config(binary: &PathBuf, args: &[&str]) -> String {
 }
 
 fn emit_system_library(flag: &str) {
+    if let Some(name) = flag
+        .strip_suffix(".lib")
+        .filter(|n| !n.contains(['/', '\\']))
+    {
+        println!("cargo:rustc-link-lib=dylib={name}");
+        return;
+    }
     if let Some(name) = flag.strip_prefix("-l") {
         println!("cargo:rustc-link-lib=dylib={name}");
         return;
