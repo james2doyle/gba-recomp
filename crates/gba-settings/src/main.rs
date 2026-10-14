@@ -345,6 +345,14 @@ impl App {
                     .fixed_decimals(2),
             );
         });
+        ui.horizontal(|ui| {
+            use gba_desktop::settings::TouchMode;
+            ui.label("Controles na tela (touch)");
+            let t = &mut self.draft.input.touch_controls;
+            ui.selectable_value(t, TouchMode::Auto, "Automático");
+            ui.selectable_value(t, TouchMode::On, "Sempre");
+            ui.selectable_value(t, TouchMode::Off, "Nunca");
+        });
         ui.add_space(8.0);
         ui.heading("Botões do GBA");
         let capture = self.capture;

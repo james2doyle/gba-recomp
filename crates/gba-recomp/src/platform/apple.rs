@@ -20,7 +20,7 @@ pub(super) fn package(i: &PackageInputs<'_>) -> Result<Packaged, String> {
     let executable = i.dir.join("game");
     link(i, &executable)?;
     bundle_sdl(i.dir, &executable, i.sdl_dir, sdl_name)?;
-    let companions = bundle_companions(i.dir, sdl_name)?;
+    let companions = bundle_companions(i.dir, sdl_name, i.spec)?;
     Ok(Packaged {
         sdl: sdl_name.to_owned(),
         companions,
@@ -230,16 +230,34 @@ pub(super) fn make_app_bundle(dir: &Path, rom: &[u8], sha_hex: &str) -> Result<(
 }
 
 /// Copy `gba-settings` (EXT-64-03) when it was built next to gba-recomp.
-pub(super) fn bundle_companions(package: &Path, sdl_name: &str) -> Result<bool, String> {
-    let settings = bundle_companion(package, sdl_name, "gba-settings")?;
+pub(super) fn bundle_companions(
+    package: &Path,
+    sdl_name: &str,
+    spec: &gba_llvm::native::TargetSpec,
+) -> Result<bool, String> {
+    let settings = bundle_companion(package, sdl_name, "gba-settings", spec)?;
     // Party app (SPEC-067); optional like the settings app.
-    bundle_companion(package, sdl_name, "gba-party")?;
+    bundle_companion(package, sdl_name, "gba-party", spec)?;
     Ok(settings)
 }
 
-fn bundle_companion(package: &Path, sdl_name: &str, name: &str) -> Result<bool, String> {
+fn bundle_companion(
+    package: &Path,
+    sdl_name: &str,
+    name: &str,
+    spec: &gba_llvm::native::TargetSpec,
+) -> Result<bool, String> {
     let exe = env::current_exe().map_err(|e| e.to_string())?;
-    let Some(source) = exe.parent().map(|d| d.join(name)).filter(|p| p.is_file()) else {
+    // Host packages reuse the companions next to gba-recomp; cross packages
+    // take them from cargo's target/<triple>/release.
+    let dir = exe.parent().map(|d| {
+        if *spec == gba_llvm::native::TargetSpec::host() {
+            d.to_path_buf()
+        } else {
+            d.join("..").join(&spec.triple).join("release")
+        }
+    });
+    let Some(source) = dir.map(|d| d.join(name)).filter(|p| p.is_file()) else {
         return Ok(false);
     };
     let target = package.join(name);

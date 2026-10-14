@@ -13,5 +13,6 @@ pub mod input;
 pub mod menu;
 pub mod sdl;
 pub mod settings;
+pub mod touch;
 
 pub use app::{AppOptions, AppReport, run_app};

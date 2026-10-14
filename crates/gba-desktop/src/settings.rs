@@ -51,6 +51,34 @@ pub struct Input {
     /// `aN+`/`aN-` (DEV-64-02).
     pub joystick: [Vec<String>; 10],
     pub deadzone: f32,
+    /// On-screen gamepad (SPEC-068 TOUCH-68-01).
+    pub touch_controls: TouchMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TouchMode {
+    /// Shown when a touch screen is present.
+    Auto,
+    On,
+    Off,
+}
+
+impl TouchMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TouchMode::Auto => "auto",
+            TouchMode::On => "on",
+            TouchMode::Off => "off",
+        }
+    }
+    /// Default: automatic, except on the Web where it is opt-in.
+    pub fn platform_default() -> Self {
+        if cfg!(target_os = "emscripten") {
+            TouchMode::Off
+        } else {
+            TouchMode::Auto
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,6 +175,7 @@ impl Default for Input {
                 strings(&["b4"]),
             ],
             deadzone: 0.25,
+            touch_controls: TouchMode::platform_default(),
         }
     }
 }
@@ -386,6 +415,14 @@ impl Settings {
                     .ok_or_else(|| format!("unknown GBA button `{button}`"))?;
                 self.gpio.lines[index] = Some(int(&value, 0, 1023)? as u32);
             }
+            ("input", "touch_controls") => {
+                self.input.touch_controls = match value {
+                    Value::Str(ref s) if s == "auto" => TouchMode::Auto,
+                    Value::Str(ref s) if s == "on" => TouchMode::On,
+                    Value::Str(ref s) if s == "off" => TouchMode::Off,
+                    _ => return Err("`touch_controls` must be \"auto\", \"on\" or \"off\"".into()),
+                }
+            }
             ("input", k) => {
                 let (kind, button) = k
                     .split_once('_')
@@ -456,6 +493,11 @@ impl Settings {
         let _ = writeln!(o, "latency_ms = {}\n", a.latency_ms);
         let _ = writeln!(o, "[input]");
         let _ = writeln!(o, "deadzone = {:.2}", self.input.deadzone);
+        let _ = writeln!(
+            o,
+            "touch_controls = \"{}\"",
+            self.input.touch_controls.as_str()
+        );
         for (i, b) in BUTTONS.iter().enumerate() {
             let _ = writeln!(o, "key_{b} = {}", list(&self.input.keyboard[i]));
         }
