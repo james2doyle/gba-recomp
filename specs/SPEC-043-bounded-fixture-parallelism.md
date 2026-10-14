@@ -1,6 +1,6 @@
 # SPEC-043 — Paralelismo limitado de fixtures independentes do GBA-020
 
-Estado do documento: Accepted. Implementação e evidência: em andamento; acompanhe o [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementação no commit `a27e95e1ccf276f471586a220a8b39eab23f6807`; evidência: [gate GBA-020 e medição A/B](../knowledge/evidence/gba020-thumb-strict-aot-parallelism-macos-arm64.json). Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 

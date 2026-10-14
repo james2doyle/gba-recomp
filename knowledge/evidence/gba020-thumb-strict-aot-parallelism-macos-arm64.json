@@ -1,0 +1,167 @@
+{
+  "evidence_id": "GBA020-SPEC038-043-MACOS-ARM64-20261014",
+  "recorded_at": "2026-10-14",
+  "classification": [
+    "synthetic strict-AOT fixture execution",
+    "local static ROM compile attempt",
+    "bounded gate throughput measurement"
+  ],
+  "commits": {
+    "contracts": "706681cff67b832321d39a3b4a68cef77695722d",
+    "implementation": "a27e95e1ccf276f471586a220a8b39eab23f6807"
+  },
+  "host": {
+    "machine": "Mac mini M4",
+    "os": "Darwin",
+    "architecture": "arm64",
+    "logical_cpus": 10,
+    "rustc": "1.99.0 (b940084d7 2026-09-28)",
+    "llvm": "23.1.3",
+    "toolchain_lock_sha256": "9013071b52def3e4b16043386bd9ce90135feae872de99916578aa5647da05cf"
+  },
+  "implementation": {
+    "specifications": [
+      "SPEC-038: 128 exact complete states per (mode, PC), 100000 unique global states retained",
+      "SPEC-039: Thumb STR word immediate, EWRAM/IWRAM physical RAM only",
+      "SPEC-040: Thumb LDR word immediate, EWRAM/IWRAM physical RAM only",
+      "SPEC-041: Thumb LSR immediate Format 1",
+      "SPEC-042: Thumb LDRH immediate Format 10, EWRAM/IWRAM physical RAM only",
+      "SPEC-043: bounded scheduling of independent fixture modes"
+    ],
+    "recompiler_binary_sha256": "af398f5ba90c7e672b01391138499a426fbde965550edd6b328ec93489788f85",
+    "scripts": {
+      "verify_gba020_sha256": "c49b1b4c737148c2873870ff4450e50ded3c60074d63e3529b162b50b3d5ec06",
+      "verify_gba020_lsl_sha256": "f885d974281717acbe7fe0a6848545c6638b7ea01de38d28a4bb49fa8a0d862a",
+      "tiny_counter_fixture_generator_sha256": "2aed78fb1433cd9cdd8013e1f813c92eae9ad5d4c4f6a562a894b34ca9cb3728"
+    }
+  },
+  "workspace_tests": {
+    "command": "cargo test --locked --workspace --jobs 10",
+    "environment": {
+      "LLVM_SYS_231_PREFIX": "target/toolchains/LLVM-23.1.3-macOS-ARM64",
+      "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER": "target/toolchains/LLVM-23.1.3-macOS-ARM64/bin/clang",
+      "CARGO_BUILD_JOBS": 10
+    },
+    "results": {
+      "gba_ir": "64 passed",
+      "gba_recomp": "87 passed",
+      "gba_runtime_abi_rust": "0 tests",
+      "doctests": "0 tests"
+    },
+    "log_path": "target/gba020/spec043-cargo-test-linker-20261014.log",
+    "log_sha256": "f60a45255d3122185ab5a64d90912443f9182c39fffcd54abee30ca2100b5e88"
+  },
+  "gate_ab": {
+    "method": "One complete gate run per configuration on the same host, same source and prebuilt recomp binary; the script ran cargo build before its fixture groups. These are single paired samples, not a repeated median.",
+    "serial": {
+      "configuration": {
+        "GBA020_JOBS": 1,
+        "GBA020_LINK_THREADS": 10,
+        "CARGO_BUILD_JOBS": 10
+      },
+      "result": "passed",
+      "wall_seconds": 81.51,
+      "user_seconds_reported_by_time_lp": 27.37,
+      "system_seconds_reported_by_time_lp": 12.28,
+      "maximum_resident_bytes_reported_by_time_lp": 41877504,
+      "swaps_reported_by_time_lp": 0,
+      "log_path": "target/gba020/spec043-serial-1x10.log",
+      "log_sha256": "c4c316601a2da3b5eece4c3dc0e6eb93fb5b9eeb875c82a7a9a0e8488a20adc3"
+    },
+    "parallel": {
+      "configuration": {
+        "GBA020_JOBS": 10,
+        "GBA020_LINK_THREADS": 1,
+        "CARGO_BUILD_JOBS": 10
+      },
+      "result": "passed",
+      "wall_seconds": 46.62,
+      "user_seconds_reported_by_time_lp": 29.69,
+      "system_seconds_reported_by_time_lp": 12.87,
+      "maximum_resident_bytes_reported_by_time_lp": 41549824,
+      "swaps_reported_by_time_lp": 0,
+      "log_path": "target/gba020/spec043-parallel-10x1.log",
+      "log_sha256": "04468b71697037d6a80a6e73bfe1efbd27c4f96a2c5ae9acd9e9cda5bce62cab"
+    },
+    "comparison": {
+      "whole_gate_wall_reduction_percent": 42.8,
+      "whole_gate_speedup_ratio": 1.75,
+      "serial_fixture_groups_wall_ms_sum": 34633.3,
+      "parallel_fixture_groups_wall_ms_sum": 10259.3,
+      "fixture_groups_wall_reduction_percent": 70.4,
+      "fixture_groups_speedup_ratio": 3.38,
+      "group_timings_ms": [
+        { "group": "thumb-ldrword", "modes": 9, "serial": 6217.9, "parallel": 1909.2 },
+        { "group": "thumb-ldrh", "modes": 10, "serial": 5486.4, "parallel": 1702.7 },
+        { "group": "thumb-format3", "modes": 10, "serial": 7551.3, "parallel": 2126.9 },
+        { "group": "thumb-lsl-lsr", "modes": 13, "serial": 9631.9, "parallel": 2816.9 },
+        { "group": "thumb-addsub", "modes": 8, "serial": 5745.8, "parallel": 1703.6 }
+      ]
+    },
+    "limitations": [
+      "Per-group wall markers include fixture generation, compile, execution and manifest checks.",
+      "time -lp maximum resident size is not a sum of concurrent worker RSS; aggregate worker memory was not measured.",
+      "Zero swaps were reported in both runs. No claim is made that all ten CPUs were saturated for the full gate.",
+      "This measures independent synthetic fixture throughput, not the serial discovery or LLVM emission of a commercial ROM."
+    ]
+  },
+  "exact_leafgreen_ldrh_encoding_fixture": {
+    "fixture_mode": "thumb-ldrh-leafgreen-encoding",
+    "encoding": "0x8821",
+    "inference": "LDRH r1,[r4,#0] based on encoding fields; this fixture validates local AOT behavior and does not establish execution of LeafGreen.",
+    "fixture_rom_sha256": "7005b3e8ec017ea52a025a3ac9494a7222cfe617df9197c295ab8c9de49ab409",
+    "expected_guest_state_o0_and_o2": {
+      "status": "budget_exhausted",
+      "steps": 12,
+      "r0": 2864434397,
+      "r1": 8721,
+      "pc": "0x08000086",
+      "cpsr": "0x6000003F",
+      "guest_cycle": 12,
+      "ewram_word0": 1144201745,
+      "iwram_word0": 0
+    },
+    "o0": {
+      "game_sha256": "5a03f041abd0efa00491b00e52c4271d33fb8a345eb52d8f7b72cc54afc117de",
+      "manifest_sha256": "73252fe17670a162c140123df55cc2a8e3882a5bf29c7d2f1c48af18cfe32b94"
+    },
+    "o2": {
+      "game_sha256": "9066bc70a7a88b5b6c114c7fc52aead63354322ff6ee34e13225579f1ca96f9a",
+      "manifest_sha256": "f5ccc5952854d22113d2a87a89809a18b90ee48c376f7ef0570b7a739b7d12ae"
+    }
+  },
+  "leafgreen_compile_attempt": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-spec042-20261014-O2 --opt O2 --steps 100",
+    "exit_code": 1,
+    "result": "bx_target_unresolved at 0x08000B6A: r0 is not statically bounded",
+    "log_path": "target/gba020/leafgreen-after-spec042-20261014-O2.log",
+    "log_sha256": "e7f1f22a285e81cdc0fe108d389edc31f6aba50c8de5c6b7dc896f1ac3f688f8",
+    "package_created": false,
+    "real_seconds": 0.62,
+    "user_seconds": 0.58,
+    "system_seconds": 0.01,
+    "maximum_resident_bytes_reported_by_time_lp": 34422784,
+    "swaps_reported_by_time_lp": 0,
+    "static_bytes": {
+      "0x08000B48": "0xB530 PUSH {r4,r5,lr}",
+      "0x08000B4C": "0x7828 LDRB r0,[r5,#0]",
+      "0x08000B4E": "0x2800 CMP r0,#0",
+      "0x08000B50": "0xD009 BNE; both successors remain possible while the loaded byte is Unknown",
+      "0x08000B52": "0x4A07 LDR r2,[pc,#0x1C]; literal statically resolves to 0x04000208",
+      "0x08000B54": "0x8811 LDRH r1,[r2,#0]",
+      "0x08000B58": "0x8014 STRH r4,[r2,#0]",
+      "0x08000B5E": "0x8800 LDRH r0,[r0,#0]",
+      "0x08000B66": "0xBC30 POP {r4,r5}",
+      "0x08000B68": "0xBC01 POP {r0}",
+      "0x08000B6A": "0x4700 BX r0"
+    },
+    "interpretation": "LDRB r0 is followed by CMP r0,#0, so discovery keeps both BNE successors. On the fallthrough path the LDR literal sets r2 to the statically inferred address 0x04000208 and STRH writes there; the current abstract memory policy conservatively clears its RAM stack shadow for a write outside supported physical RAM. The later LDRH destination is overwritten by POP {r0}; because the shadow was cleared on this path, POP {r0} is Unknown and the final BX cannot be closed. This is static analyzer behavior and encoding/address inference, not a guest execution trace."
+  },
+  "limitations": [
+    "LeafGreen was not packaged or executed; REA did not provide a decompilation session for this .gba artifact.",
+    "Only Darwin arm64 was tested; Linux x86-64 remains pending.",
+    "Dynamic memory operations in these new fixtures support physical EWRAM/IWRAM only; MMIO faults explicitly.",
+    "CPU saturation and aggregate concurrent worker RSS were not established by this measurement."
+  ]
+}
