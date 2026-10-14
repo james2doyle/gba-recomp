@@ -506,6 +506,29 @@ unsafe fn build_arm_program_function(
     if ldmia_helper.is_null() {
         return Err("LLVMAddFunction for gba_ldmia_thumb_v3 returned null".to_owned());
     }
+    let mut stmia_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(exit_type, 0),
+            i32_type,
+            i32_type,
+        ]
+    };
+    let stmia_helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            stmia_parameters.as_mut_ptr(),
+            stmia_parameters.len() as u32,
+            0,
+        )
+    };
+    let stmia_helper_name =
+        CString::new("gba_stmia_thumb_v3").expect("static name contains no NUL");
+    let stmia_helper =
+        unsafe { LLVMAddFunction(module, stmia_helper_name.as_ptr(), stmia_helper_type) };
+    if stmia_helper.is_null() {
+        return Err("LLVMAddFunction for gba_stmia_thumb_v3 returned null".to_owned());
+    }
     let entry = unsafe { append_block(context, function, "entry") };
     let validation_failed = unsafe { append_block(context, function, "validation_failed") };
     let validated = unsafe { append_block(context, function, "validated") };
@@ -760,6 +783,8 @@ unsafe fn build_arm_program_function(
                 pop_helper,
                 ldmia_helper_type,
                 ldmia_helper,
+                stmia_helper_type,
+                stmia_helper,
                 store16_helper_type,
                 store16_helper,
                 store8_helper_type,
@@ -1250,6 +1275,8 @@ unsafe fn lower_thumb_instruction(
     pop_helper: LLVMValueRef,
     ldmia_helper_type: LLVMTypeRef,
     ldmia_helper: LLVMValueRef,
+    stmia_helper_type: LLVMTypeRef,
+    stmia_helper: LLVMValueRef,
     store16_helper_type: LLVMTypeRef,
     store16_helper: LLVMValueRef,
     store8_helper_type: LLVMTypeRef,
@@ -2143,6 +2170,70 @@ unsafe fn lower_thumb_instruction(
                     context,
                     function,
                     &format!("thumb_ldmia_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
+            unsafe { LLVMBuildRet(builder, status) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::StoreMultipleIncrementAfter {
+            base_register,
+            register_list,
+        } => {
+            let mut arguments = [
+                runtime,
+                exit,
+                unsafe { LLVMConstInt(i32_type, u64::from(base_register), 0) },
+                unsafe { LLVMConstInt(i32_type, u64::from(register_list), 0) },
+            ];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    stmia_helper_type,
+                    stmia_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"thumb_stmia_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_stmia_succeeded".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_stmia_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_stmia_failure_{:08X}", instruction.guest_pc),
                 )
             };
             unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };

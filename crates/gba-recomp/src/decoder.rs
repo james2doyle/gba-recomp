@@ -373,6 +373,34 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0xC000 {
+        let base_register = ((encoding >> 8) & 0x7) as u8;
+        let register_list = encoding & 0x00FF;
+        if register_list == 0 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (empty STMIA register list is unpredictable)"
+            ));
+        }
+        let base_in_list = register_list & (1 << base_register) != 0;
+        let lower_registers = if base_register == 0 {
+            0
+        } else {
+            register_list & ((1 << base_register) - 1)
+        };
+        if base_in_list && lower_registers != 0 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (STMIA base register is included after a lower register; result is unpredictable)"
+            ));
+        }
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register,
+                register_list,
+            },
+        });
+    }
     if encoding & 0xFC00 == 0x4400 {
         let opcode = (encoding >> 8) & 0x3;
         if opcode != 0x2 {
@@ -978,7 +1006,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_thumb_ldmia_and_rejects_empty_list_and_stmia() {
+    fn decodes_thumb_ldmia_and_stmia_and_rejects_unpredictable_forms() {
         let instruction = decode_thumb(0x0800_03A8, 0xCB01).unwrap();
         assert_eq!(instruction.guest_pc, 0x0800_03A8);
         assert_eq!(instruction.encoding, 0xCB01);
@@ -994,7 +1022,30 @@ mod tests {
                 .unwrap_err()
                 .contains("empty LDMIA register list is unpredictable")
         );
-        assert!(decode_thumb(0x0800_03A8, 0xC001).is_err());
+        assert_eq!(
+            decode_thumb(0x0800_03A8, 0xC201).unwrap().operation,
+            ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 1,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03A8, 0xC001).unwrap().operation,
+            ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 0,
+                register_list: 1,
+            }
+        );
+        assert!(
+            decode_thumb(0x0800_03A8, 0xC000)
+                .unwrap_err()
+                .contains("empty STMIA register list is unpredictable")
+        );
+        assert!(
+            decode_thumb(0x0800_03A8, 0xC205)
+                .unwrap_err()
+                .contains("STMIA base register is included after a lower register")
+        );
     }
 
     #[test]

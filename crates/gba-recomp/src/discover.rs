@@ -494,7 +494,7 @@ fn resolve_thumb_ldmia_rom(
                 .any(|address| is_rom_window_address(*address))
             {
                 return Err(format!(
-                    "thumb_ldmia_rom_base_not_singleton at 0x{pc:08X}: r{base_register} has multiple possible ROM bases"
+                    "thumb_ldmia_rom_base_not_singleton at 0x{pc:08X} (resolve_thumb_ldmia_rom): r{base_register} has multiple possible ROM bases: {base_values:?}"
                 ));
             }
             continue;
@@ -799,6 +799,73 @@ fn process_thumb_instruction(
                 incoming,
             );
         }
+        ThumbOperation::StoreMultipleIncrementAfter {
+            base_register,
+            register_list,
+        } => {
+            let old_base = &state.registers[base_register as usize];
+            let transfer_bytes = register_list.count_ones().wrapping_mul(4);
+            let mut next_state = state.clone();
+            next_state.registers[base_register as usize] = old_base.wrapping_add(transfer_bytes);
+
+            let Some(base_values) = old_base.values() else {
+                next_state.clear_memory();
+                enqueue_state(
+                    IsaMode::Thumb,
+                    instruction.guest_pc.wrapping_add(2),
+                    next_state,
+                    pending,
+                    incoming,
+                );
+                return Ok(());
+            };
+            if base_values.len() != 1 {
+                next_state.clear_memory();
+                enqueue_state(
+                    IsaMode::Thumb,
+                    instruction.guest_pc.wrapping_add(2),
+                    next_state,
+                    pending,
+                    incoming,
+                );
+                return Ok(());
+            }
+
+            let aligned_start = *base_values.iter().next().expect("one base value") & !3;
+            if !supported_ram_interval(aligned_start, transfer_bytes) {
+                next_state.clear_memory();
+            } else {
+                next_state.invalidate_word_bytes(aligned_start, transfer_bytes);
+                let known_values = (0_u8..8)
+                    .filter(|register| register_list & (1_u16 << *register) != 0)
+                    .filter(|register| {
+                        !matches!(state.registers[*register as usize], AbstractValue::Unknown)
+                    })
+                    .count();
+                if next_state.memory_words.len().saturating_add(known_values)
+                    > MAX_ABSTRACT_MEMORY_WORDS
+                {
+                    next_state.clear_memory();
+                } else {
+                    let mut slot = 0_u32;
+                    for register in 0..8 {
+                        if register_list & (1 << register) == 0 {
+                            continue;
+                        }
+                        let address = aligned_start + slot * 4;
+                        next_state.set_memory_word(address, state.registers[register].clone());
+                        slot += 1;
+                    }
+                }
+            }
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::LslImmediate { rd, rs, amount } => {
             let shifted_source = match &state.registers[rs as usize] {
                 AbstractValue::Unknown => AbstractValue::Unknown,
@@ -976,7 +1043,7 @@ fn process_thumb_instruction(
                         .any(|value| is_rom_window_address(*value))
                 {
                     return Err(format!(
-                        "thumb_ldmia_rom_base_not_singleton at 0x{:08X}: r{base_register} has multiple possible ROM bases",
+                        "thumb_ldmia_rom_base_not_singleton at 0x{:08X} (process_thumb_instruction): r{base_register} has multiple possible ROM bases: {base_values:?}",
                         instruction.guest_pc
                     ));
                 }
@@ -1435,6 +1502,166 @@ mod tests {
         assert_eq!(after.registers[1], AbstractValue::constant(0x1111_1111));
         assert_eq!(after.registers[3], AbstractValue::constant(0x3333_3333));
         assert_eq!(after.memory_words, memory_before);
+    }
+
+    #[test]
+    fn thumb_stmia_updates_known_ram_shadow_and_base_writeback() {
+        let image = counter_rom();
+        let guest_pc = 0x0800_0084;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xC221, // STMIA r2!, {r0,r5}.
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 0x21,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[0] = AbstractValue::constant(0x1111_1111);
+        state.registers[2] = AbstractValue::constant(0x0300_0003);
+        state.registers[5] = AbstractValue::constant(0x5555_5555);
+        state.set_memory_word(0x0300_0000, AbstractValue::constant(0xAAAA_AAAA));
+        state.set_memory_word(0x0300_0004, AbstractValue::constant(0xBBBB_BBBB));
+        let mut incoming = BTreeMap::from([((IsaMode::Thumb, guest_pc), state.clone())]);
+        let mut pending = VecDeque::new();
+        let mut branch_targets = BTreeSet::new();
+
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut branch_targets,
+        )
+        .unwrap();
+
+        let after = incoming.get(&(IsaMode::Thumb, guest_pc + 2)).unwrap();
+        assert_eq!(after.registers[2], AbstractValue::constant(0x0300_000B));
+        assert_eq!(
+            after.load_memory_word(0x0300_0000),
+            AbstractValue::constant(0x1111_1111)
+        );
+        assert_eq!(
+            after.load_memory_word(0x0300_0004),
+            AbstractValue::constant(0x5555_5555)
+        );
+    }
+
+    #[test]
+    fn thumb_stmia_clears_memory_shadow_for_unknown_or_unsupported_base() {
+        let image = counter_rom();
+        let guest_pc = 0x0800_0084;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xC201,
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 1,
+            },
+        };
+        for base in [AbstractValue::Unknown, AbstractValue::constant(0x0800_0000)] {
+            let mut state = AbstractState::unknown();
+            state.registers[0] = AbstractValue::constant(0x1234_5678);
+            state.registers[2] = base;
+            state.set_memory_word(0x0300_0000, AbstractValue::constant(0xAAAA_AAAA));
+            let mut incoming = BTreeMap::from([((IsaMode::Thumb, guest_pc), state.clone())]);
+            let mut pending = VecDeque::new();
+            let mut branch_targets = BTreeSet::new();
+
+            process_thumb_instruction(
+                &image,
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut branch_targets,
+            )
+            .unwrap();
+
+            let after = incoming.get(&(IsaMode::Thumb, guest_pc + 2)).unwrap();
+            assert!(after.memory_words.is_empty());
+        }
+    }
+
+    #[test]
+    fn thumb_stmia_shadow_stores_old_base_when_base_is_lowest_member() {
+        let image = counter_rom();
+        let guest_pc = 0x0800_0084;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xC224, // STMIA r2!, {r2,r5}.
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 0x24,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[2] = AbstractValue::constant(0x0300_0003);
+        state.registers[5] = AbstractValue::constant(0x5555_5555);
+        let mut incoming = BTreeMap::from([((IsaMode::Thumb, guest_pc), state.clone())]);
+        let mut pending = VecDeque::new();
+        let mut branch_targets = BTreeSet::new();
+
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut branch_targets,
+        )
+        .unwrap();
+
+        let after = incoming.get(&(IsaMode::Thumb, guest_pc + 2)).unwrap();
+        assert_eq!(after.registers[2], AbstractValue::constant(0x0300_000B));
+        assert_eq!(
+            after.load_memory_word(0x0300_0000),
+            AbstractValue::constant(0x0300_0003)
+        );
+        assert_eq!(
+            after.load_memory_word(0x0300_0004),
+            AbstractValue::constant(0x5555_5555)
+        );
+    }
+
+    #[test]
+    fn thumb_stmia_unknown_source_invalidates_only_its_shadow_slot() {
+        let image = counter_rom();
+        let guest_pc = 0x0800_0084;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xC203, // STMIA r2!, {r0,r1}.
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 0x03,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[2] = AbstractValue::constant(0x0300_0000);
+        state.registers[1] = AbstractValue::constant(0x1111_1111);
+        state.set_memory_word(0x0300_0000, AbstractValue::constant(0xAAAA_AAAA));
+        state.set_memory_word(0x0300_0004, AbstractValue::constant(0xBBBB_BBBB));
+        let mut incoming = BTreeMap::from([((IsaMode::Thumb, guest_pc), state.clone())]);
+        let mut pending = VecDeque::new();
+        let mut branch_targets = BTreeSet::new();
+
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut branch_targets,
+        )
+        .unwrap();
+
+        let after = incoming.get(&(IsaMode::Thumb, guest_pc + 2)).unwrap();
+        assert_eq!(after.load_memory_word(0x0300_0000), AbstractValue::Unknown);
+        assert_eq!(
+            after.load_memory_word(0x0300_0004),
+            AbstractValue::constant(0x1111_1111)
+        );
     }
 
     #[test]
@@ -2038,6 +2265,48 @@ mod tests {
             &[AbstractValue::constant(0x0800_0085)],
         );
         assert!(state.memory_words.is_empty());
+    }
+
+    #[test]
+    fn thumb_stmia_clears_shadow_instead_of_repopulating_after_capacity_overflow() {
+        let image = counter_rom();
+        let guest_pc = ROM_BASE + 0x84;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xC0FF, // STMIA r0!, {r0-r7}; Rb is the lowest member.
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 0,
+                register_list: 0xFF,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[0] = AbstractValue::constant(0x0300_0100);
+        for register in 1..8 {
+            state.registers[register] = AbstractValue::constant(register as u32);
+        }
+        for index in 0..MAX_ABSTRACT_MEMORY_WORDS {
+            state.set_memory_word(
+                0x0200_0100 + index as u32 * 4,
+                AbstractValue::constant(index as u32),
+            );
+        }
+        let mut incoming = BTreeMap::from([((IsaMode::Thumb, guest_pc), state.clone())]);
+        let mut pending = VecDeque::new();
+        let mut branch_targets = BTreeSet::new();
+
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut branch_targets,
+        )
+        .unwrap();
+
+        let after = incoming.get(&(IsaMode::Thumb, guest_pc + 2)).unwrap();
+        assert!(after.memory_words.is_empty());
+        assert_eq!(after.registers[0], AbstractValue::constant(0x0300_0120));
     }
 
     #[test]

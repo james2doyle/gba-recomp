@@ -138,6 +138,10 @@ pub enum ThumbOperation {
         base_register: u8,
         register_list: u16,
     },
+    StoreMultipleIncrementAfter {
+        base_register: u8,
+        register_list: u16,
+    },
     /// LDMIA whose singleton base was resolved against the immutable ROM image.
     /// Values are indexed by register number; entries outside register_list are ignored.
     LoadRomMultipleIncrementAfter {
@@ -286,6 +290,7 @@ pub enum VerifyError {
     InvalidThumbPushRegisterList(u16),
     InvalidThumbPopRegisterList(u16),
     InvalidThumbLdmiaRegisterList(u16),
+    InvalidThumbStmiaRegisterList(u16),
     InvalidThumbImmediateRegister(u8),
     InvalidThumbFormat3Register(u8),
     InvalidThumbRomLiteralRegister(u8),
@@ -332,6 +337,12 @@ impl fmt::Display for VerifyError {
             }
             Self::InvalidThumbLdmiaRegisterList(list) => {
                 write!(f, "invalid Thumb LDMIA register list 0x{list:04X}")
+            }
+            Self::InvalidThumbStmiaRegisterList(list) => {
+                write!(
+                    f,
+                    "invalid or unpredictable Thumb STMIA register list 0x{list:04X}"
+                )
             }
             Self::InvalidThumbImmediateRegister(register) => write!(
                 f,
@@ -792,6 +803,33 @@ impl ArmProgram {
                         }
                     }
                 }
+                ThumbOperation::StoreMultipleIncrementAfter {
+                    base_register,
+                    register_list,
+                } => {
+                    let encoding = instruction.encoding;
+                    if base_register > 7 || register_list == 0 || register_list & !0x00FF != 0 {
+                        return Err(VerifyError::InvalidThumbStmiaRegisterList(register_list));
+                    }
+                    let base_in_list = register_list & (1 << base_register) != 0;
+                    let lower_registers = if base_register == 0 {
+                        0
+                    } else {
+                        register_list & ((1 << base_register) - 1)
+                    };
+                    if base_in_list && lower_registers != 0 {
+                        return Err(VerifyError::InvalidThumbStmiaRegisterList(register_list));
+                    }
+                    let encoded_base = ((encoding >> 8) & 0x7) as u8;
+                    if encoding & 0xF800 != 0xC000
+                        || base_register != encoded_base
+                        || register_list != encoding & 0x00FF
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::BlPrefix { lr_partial }
                     if instruction.encoding & 0xF800 != 0xF000
                         || lr_partial
@@ -1024,7 +1062,8 @@ impl ArmProgram {
                     }
                 }
                 ThumbOperation::LoadMultipleIncrementAfter { .. }
-                | ThumbOperation::LoadRomMultipleIncrementAfter { .. } => {
+                | ThumbOperation::LoadRomMultipleIncrementAfter { .. }
+                | ThumbOperation::StoreMultipleIncrementAfter { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if fallthrough & 1 != 0 {
                         return Err(VerifyError::MisalignedThumbPc(fallthrough));
@@ -1390,7 +1429,8 @@ pub fn execute_thumb_instruction(
         }
         ThumbOperation::Push { .. }
         | ThumbOperation::Pop { .. }
-        | ThumbOperation::LoadMultipleIncrementAfter { .. } => {
+        | ThumbOperation::LoadMultipleIncrementAfter { .. }
+        | ThumbOperation::StoreMultipleIncrementAfter { .. } => {
             return Err(StepFault::MemoryRuntimeRequired);
         }
         ThumbOperation::MovImmediate { rd, value } => {
@@ -1899,6 +1939,83 @@ mod tests {
     }
 
     #[test]
+    fn arm_program_verifier_checks_thumb_stmia_fields_and_successor() {
+        let guest_pc = 0x0800_0100;
+        let mut program = thumb_ldmia_program(
+            guest_pc,
+            0xC201,
+            ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 1,
+            },
+        );
+        assert!(program.verify().is_ok());
+
+        let base_is_first = thumb_ldmia_program(
+            guest_pc,
+            0xC224,
+            ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 0x24,
+            },
+        );
+        assert!(base_is_first.verify().is_ok());
+
+        program.thumb_instructions[0].operation = ThumbOperation::StoreMultipleIncrementAfter {
+            base_register: 3,
+            register_list: 1,
+        };
+        assert_eq!(
+            program.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xC201))
+        );
+
+        let empty = thumb_ldmia_program(
+            guest_pc,
+            0xC200,
+            ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 0,
+            },
+        );
+        assert_eq!(
+            empty.verify(),
+            Err(VerifyError::InvalidThumbStmiaRegisterList(0))
+        );
+
+        let unpredictable = thumb_ldmia_program(
+            guest_pc,
+            0xC205,
+            ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 5,
+            },
+        );
+        assert_eq!(
+            unpredictable.verify(),
+            Err(VerifyError::InvalidThumbStmiaRegisterList(5))
+        );
+
+        let mut missing_successor = thumb_ldmia_program(
+            guest_pc,
+            0xC201,
+            ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 1,
+            },
+        );
+        missing_successor.thumb_instructions.pop();
+        missing_successor.branch_targets.clear();
+        assert_eq!(
+            missing_successor.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
     fn resolved_thumb_rom_ldmia_loads_values_and_obeys_base_overlap() {
         let guest_pc = 0x0800_0100;
         let instruction = ThumbInstruction {
@@ -2170,6 +2287,28 @@ mod tests {
         let mut cpu = state(instruction.guest_pc);
         cpu.cpsr |= 0x20;
         cpu.r[13] = 0x0300_0020;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn thumb_stmia_requires_memory_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0xC201,
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 1,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[0] = 0xAABB_CCDD;
+        cpu.r[2] = 0x0300_0020;
         let before = cpu;
         assert_eq!(
             execute_thumb_instruction(&mut cpu, instruction),

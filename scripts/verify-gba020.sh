@@ -812,7 +812,7 @@ verify_thumb_pop_reject() {
 verify_thumb_pop_reject thumb-pop-empty-unsupported
 verify_thumb_pop_reject thumb-pop-pc-unsupported
 
-verify_thumb_ldmia() {
+verify_thumb_multiple() {
     mode=$1
     steps=$2
     instruction_count=$3
@@ -854,12 +854,15 @@ PY
     done
 }
 
-verify_thumb_ldmia thumb-ldmia-rom-bx 9 10 \
+verify_thumb_multiple thumb-ldmia-rom-bx 9 10 \
     '{"status":"budget_exhausted","steps":9,"r0":134217865,"r1":51,"pc":"0x080000F4","cpsr":"0x0000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_ldmia thumb-ldmia-iwram-bx 12 13 \
+verify_thumb_multiple thumb-ldmia-iwram-bx 12 13 \
     '{"status":"budget_exhausted","steps":12,"r0":134217869,"r1":51,"pc":"0x080000F8","cpsr":"0x0000001F","guest_cycle":12,"ewram_word0":0,"iwram_word0":134217869}'
 
-verify_thumb_ldmia_reject() {
+verify_thumb_multiple thumb-stmia-iwram-bx 8 9 \
+    '{"status":"budget_exhausted","steps":8,"r0":305419896,"r1":134217861,"pc":"0x080000F8","cpsr":"0x0000001F","guest_cycle":8,"ewram_word0":0,"iwram_word0":305419896}'
+
+verify_thumb_multiple_reject() {
     mode=$1
     expected_error=$2
     rom="$root/target/gba020/$mode.gba"
@@ -874,7 +877,7 @@ verify_thumb_ldmia_reject() {
     fi
     if ! grep -Fq "$expected_error" "$compile_log"; then
         cat "$compile_log" >&2
-        echo "$mode did not report the expected LDMIA rejection" >&2
+        echo "$mode did not report the expected decode or analysis rejection" >&2
         exit 1
     fi
     if [ -e "$package" ]; then
@@ -883,12 +886,14 @@ verify_thumb_ldmia_reject() {
     fi
 }
 
-verify_thumb_ldmia_reject thumb-ldmia-rom-out-of-range \
+verify_thumb_multiple_reject thumb-ldmia-rom-out-of-range \
     'thumb_ldmia_rom_load_out_of_image at 0x08000084'
-verify_thumb_ldmia_reject thumb-ldmia-empty-unsupported \
+verify_thumb_multiple_reject thumb-ldmia-empty-unsupported \
     'empty LDMIA register list is unpredictable'
-verify_thumb_ldmia_reject thumb-stmia-unsupported \
-    'unsupported_thumb_instruction at 0x08000084'
+verify_thumb_multiple_reject thumb-stmia-empty-unsupported \
+    'empty STMIA register list is unpredictable'
+verify_thumb_multiple_reject thumb-stmia-base-unpredictable \
+    'STMIA base register is included after a lower register'
 
 stack_return_rom="$root/target/gba020/thumb-stack-return.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$stack_return_rom" --mode thumb-stack-return

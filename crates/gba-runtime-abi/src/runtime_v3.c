@@ -397,3 +397,87 @@ uint32_t gba_ldmia_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
     }
     return GBA_EXIT_CONTINUE_V2;
 }
+
+uint32_t gba_stmia_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                            uint32_t base_register, uint32_t register_list) {
+    if (out == NULL) {
+        return GBA_EXIT_FAULT_V2;
+    }
+    out->reason = GBA_EXIT_CONTINUE_V2;
+    out->next_pc = rt == NULL ? 0 : rt->cpu.r[15];
+    out->fault_address = 0;
+    out->fault_code = GBA_MEMORY_FAULT_NONE_V3;
+
+    if (rt == NULL) {
+        return fail(rt, out, 0, GBA_MEMORY_FAULT_RUNTIME_V3);
+    }
+    const uint32_t guest_base = base_register < 8
+                                    ? rt->cpu.r[base_register]
+                                    : 0;
+    if (rt->abi_version != GBA_ABI_VERSION_V3 ||
+        rt->cpu.abi_version != GBA_ABI_VERSION_V2) {
+        return fail(rt, out, guest_base, GBA_MEMORY_FAULT_ABI_V3);
+    }
+    if (rt->memory == NULL) {
+        return fail(rt, out, guest_base, GBA_MEMORY_FAULT_NULL_MEMORY_V3);
+    }
+    if (base_register > 7 || register_list == 0 ||
+        (register_list & ~UINT32_C(0xFF)) != 0) {
+        return fail(rt, out, guest_base, GBA_MEMORY_FAULT_REGISTER_LIST_V3);
+    }
+    if ((register_list & (UINT32_C(1) << base_register)) != 0) {
+        const uint32_t lower_registers = base_register == 0
+                                             ? 0
+                                             : register_list &
+                                                   ((UINT32_C(1) << base_register) - 1);
+        if (lower_registers != 0) {
+            return fail(rt, out, guest_base,
+                        GBA_MEMORY_FAULT_REGISTER_LIST_V3);
+        }
+    }
+
+    const uint32_t old_base = guest_base;
+    uint32_t count = 0;
+    for (uint32_t bits = register_list; bits != 0; bits >>= 1) {
+        count += bits & UINT32_C(1);
+    }
+    const uint32_t total_bytes = count * UINT32_C(4);
+    const uint32_t aligned_start = old_base & ~UINT32_C(3);
+    const uint64_t end = (uint64_t)aligned_start + total_bytes;
+    uint8_t *destination;
+    if (aligned_start >= UINT32_C(0x02000000) &&
+        aligned_start < UINT32_C(0x02040000)) {
+        if (end > UINT64_C(0x02040000)) {
+            return fail(rt, out, UINT32_C(0x02040000),
+                        GBA_MEMORY_FAULT_REGION_V3);
+        }
+        destination = &rt->memory->ewram[aligned_start - UINT32_C(0x02000000)];
+    } else if (aligned_start >= UINT32_C(0x03000000) &&
+               aligned_start < UINT32_C(0x03008000)) {
+        if (end > UINT64_C(0x03008000)) {
+            return fail(rt, out, UINT32_C(0x03008000),
+                        GBA_MEMORY_FAULT_REGION_V3);
+        }
+        destination = &rt->memory->iwram[aligned_start - UINT32_C(0x03000000)];
+    } else {
+        return fail(rt, out, aligned_start, GBA_MEMORY_FAULT_REGION_V3);
+    }
+
+    uint32_t values[8] = {0};
+    for (uint32_t reg = 0; reg < 8; ++reg) {
+        if ((register_list & (UINT32_C(1) << reg)) != 0) {
+            values[reg] = rt->cpu.r[reg];
+        }
+    }
+
+    uint32_t slot = 0;
+    for (uint32_t reg = 0; reg < 8; ++reg) {
+        if ((register_list & (UINT32_C(1) << reg)) == 0) {
+            continue;
+        }
+        store_le32(&destination[slot * UINT32_C(4)], values[reg]);
+        ++slot;
+    }
+    rt->cpu.r[base_register] = old_base + total_bytes;
+    return GBA_EXIT_CONTINUE_V2;
+}

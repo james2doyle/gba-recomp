@@ -113,18 +113,24 @@ def generate(mode: str = "valid") -> bytes:
         "thumb-ldmia-iwram-bx",
         "thumb-ldmia-rom-out-of-range",
         "thumb-ldmia-empty-unsupported",
-        "thumb-stmia-unsupported",
+        "thumb-stmia-iwram-bx",
+        "thumb-stmia-empty-unsupported",
+        "thumb-stmia-base-unpredictable",
     ):
         encoding = {
             "thumb-ldmia-rom-bx": 0xCB01,
             "thumb-ldmia-iwram-bx": 0xCB01,
             "thumb-ldmia-rom-out-of-range": 0xCB03,
             "thumb-ldmia-empty-unsupported": 0xC800,
-            "thumb-stmia-unsupported": 0xC001,
+            "thumb-stmia-iwram-bx": 0xC201,
+            "thumb-stmia-empty-unsupported": 0xC000,
+            "thumb-stmia-base-unpredictable": 0xC205,
         }[mode]
         thumb_code = [encoding, 0x4700, 0x2133, 0x4770]
         if mode == "thumb-ldmia-iwram-bx":
             thumb_code = [0xB401, 0x466B, encoding, 0x4700, 0x2133, 0x4770]
+        elif mode == "thumb-stmia-iwram-bx":
+            thumb_code = [encoding, 0x4718]  # STMIA r2!,{r0}; BX r3.
         image[0x84 : 0x84 + 2 * len(thumb_code)] = struct.pack(
             f"<{len(thumb_code)}H", *thumb_code
         )
@@ -141,6 +147,19 @@ def generate(mode: str = "valid") -> bytes:
                 "<3I", 0x0800008D, 0x03000004, 0x08000085
             )
             image[0xF0:0xF4] = struct.pack("<I", 0x080000F8)
+            image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
+        elif mode == "thumb-stmia-iwram-bx":
+            image[0xC0:0xD4] = struct.pack(
+                "<5I",
+                0xE59F0018,  # LDR r0,[pc,#0x18] -> value at 0xE0.
+                0xE59F2018,  # LDR r2,[pc,#0x18] -> IWRAM base at 0xE4.
+                0xE59F3018,  # LDR r3,[pc,#0x18] -> ARM loop at 0xE8.
+                0xE59F1018,  # LDR r1,[pc,#0x18] -> Thumb entry at 0xEC.
+                0xE12FFF11,  # BX r1.
+            )
+            image[0xE0:0xF0] = struct.pack(
+                "<4I", 0x12345678, 0x03000003, 0x080000F8, 0x08000085
+            )
             image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
         else:
             rom_base = (
@@ -940,7 +959,9 @@ def main() -> None:
             "thumb-ldmia-iwram-bx",
             "thumb-ldmia-rom-out-of-range",
             "thumb-ldmia-empty-unsupported",
-            "thumb-stmia-unsupported",
+            "thumb-stmia-iwram-bx",
+            "thumb-stmia-empty-unsupported",
+            "thumb-stmia-base-unpredictable",
             "thumb-pop-r3",
             "thumb-pop-multiple",
             "thumb-stack-return",
