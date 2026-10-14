@@ -73,6 +73,13 @@ name = "gba-core"
 version = "0.1.0"
 
 [[package]]
+name = "gba-desktop"
+version = "0.1.0"
+dependencies = [
+ "gba-core",
+]
+
+[[package]]
 name = "gba-ir"
 version = "0.1.0"
 

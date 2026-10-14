@@ -1,6 +1,6 @@
 # SPEC-061 — Runner headless e frontend desktop do núcleo
 
-Estado do documento: Accepted em 2026-10-14. O runner headless (`gba-run`) está implementado; o frontend desktop é a próxima etapa. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted em 2026-10-14. O runner headless (`gba-run`) está implementado. FE-61-01 está implementado em `gba-desktop` (SDL3 3.4 via FFI mínima escrita à mão, sem dependências novas): janela com escala inteira (`--scale`, padrão 3x) letterbox 3:2 e filtro nearest, áudio S16 estéreo 32768 Hz com fila limitada a ~100 ms (contadores de underrun/overrun; sem dispositivo a emulação continua, AUD-03), teclado/gamepad com hotplug, ritmo pelo relógio monotônico a ~59,7275 Hz com fast-forward só de apresentação (Tab), save atômico quando sujo (saída e a cada ~10 s) e fault com saída não zero. Verificado: build, clippy, testes unitários e smoke `--frames 300` da LeafGreen com `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy` (saída 0) e sem driver de áudio; janela real, gamepad físico e qualidade de áudio ainda não foram verificados manualmente. Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Problema e escopo
 

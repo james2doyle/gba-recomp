@@ -2,6 +2,7 @@
 members = [
     "crates/gba-core",
     "crates/gba-run",
+    "crates/gba-desktop",
     "crates/gba-ir",
     "crates/gba-runtime-abi",
     "crates/gba-llvm",
