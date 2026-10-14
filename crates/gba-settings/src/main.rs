@@ -636,10 +636,23 @@ fn main() -> Result<(), String> {
             None
         }
     };
+    // Window/Dock icon from the embedded logo (decoded by SDL, no extra crate).
+    let icon = gba_desktop::sdl::Surface::from_png(gba_desktop::assets::ICON_PNG)
+        .and_then(|s| s.to_rgba())
+        .map(|(width, height, rgba)| egui::IconData {
+            rgba,
+            width,
+            height,
+        });
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("gba-recomp — Configurações")
+        .with_inner_size([720.0, 620.0]);
+    match icon {
+        Ok(icon) => viewport = viewport.with_icon(std::sync::Arc::new(icon)),
+        Err(e) => eprintln!("gba-settings: icon unavailable ({e})"),
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("gba-recomp — Configurações")
-            .with_inner_size([720.0, 620.0]),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(

@@ -37,6 +37,25 @@ struct SdlGamepad {
 struct SdlJoystick {
     _p: [u8; 0],
 }
+#[repr(C)]
+struct SdlIoStream {
+    _p: [u8; 0],
+}
+/// `struct SDL_Surface` (public, read-only fields).
+#[repr(C)]
+struct SdlSurface {
+    flags: u32,
+    format: u32,
+    w: c_int,
+    h: c_int,
+    pitch: c_int,
+    pixels: *mut c_void,
+    refcount: c_int,
+    reserved: *mut c_void,
+}
+
+const SDL_PIXELFORMAT_RGBA32: u32 = 0x1676_2004; // ABGR8888 on little-endian
+const SDL_LOGICAL_PRESENTATION_DISABLED: c_int = 0;
 
 #[repr(C)]
 struct SdlAudioSpec {
@@ -155,6 +174,17 @@ unsafe extern "C" {
     fn SDL_GetNumJoystickHats(joystick: *mut SdlJoystick) -> c_int;
     fn SDL_PumpEvents();
     fn SDL_SetHint(name: *const c_char, value: *const c_char) -> bool;
+    fn SDL_IOFromConstMem(mem: *const c_void, size: usize) -> *mut SdlIoStream;
+    fn SDL_LoadPNG_IO(src: *mut SdlIoStream, closeio: bool) -> *mut SdlSurface;
+    fn SDL_ConvertSurface(surface: *mut SdlSurface, format: u32) -> *mut SdlSurface;
+    fn SDL_DestroySurface(surface: *mut SdlSurface);
+    fn SDL_SetWindowIcon(window: *mut SdlWindow, icon: *mut SdlSurface) -> bool;
+    fn SDL_CreateTextureFromSurface(
+        renderer: *mut SdlRenderer,
+        surface: *mut SdlSurface,
+    ) -> *mut SdlTexture;
+    fn SDL_SetTextureAlphaModFloat(texture: *mut SdlTexture, alpha: f32) -> bool;
+    fn SDL_GetRenderOutputSize(renderer: *mut SdlRenderer, w: *mut c_int, h: *mut c_int) -> bool;
     fn SDL_GetGamepadStringForButton(button: c_int) -> *const c_char;
     fn SDL_GetGamepadButtonFromString(name: *const c_char) -> c_int;
     fn SDL_GetScancodeName(scancode: c_int) -> *const c_char;
@@ -188,6 +218,57 @@ fn c_str_to_string(p: *const c_char) -> String {
     }
     // SAFETY: SDL returns NUL-terminated strings it owns.
     unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
+}
+
+/// A decoded image owned by SDL (PNG assets: splash and icon).
+pub struct Surface {
+    ptr: NonNull<SdlSurface>,
+}
+
+impl Surface {
+    /// Decode an in-memory PNG (SDL 3.4 `SDL_LoadPNG_IO`).
+    pub fn from_png(bytes: &'static [u8]) -> Result<Self, String> {
+        // SAFETY: `bytes` is static and outlives the stream; SDL closes the
+        // stream (closeio = true) and returns an owned surface or null.
+        let raw = unsafe {
+            let io = SDL_IOFromConstMem(bytes.as_ptr().cast(), bytes.len());
+            if io.is_null() {
+                return Err(last_error("SDL_IOFromConstMem"));
+            }
+            SDL_LoadPNG_IO(io, true)
+        };
+        NonNull::new(raw)
+            .map(|ptr| Self { ptr })
+            .ok_or_else(|| last_error("SDL_LoadPNG_IO"))
+    }
+
+    /// (width, height, RGBA8 pixels) for toolkits that take raw icons.
+    pub fn to_rgba(&self) -> Result<(u32, u32, Vec<u8>), String> {
+        // SAFETY: converts our live surface into a new owned RGBA surface,
+        // copies its rows (pitch may exceed 4*w) and destroys it.
+        unsafe {
+            let conv = SDL_ConvertSurface(self.ptr.as_ptr(), SDL_PIXELFORMAT_RGBA32);
+            if conv.is_null() {
+                return Err(last_error("SDL_ConvertSurface"));
+            }
+            let s = &*conv;
+            let (w, h, pitch) = (s.w as usize, s.h as usize, s.pitch as usize);
+            let mut out = Vec::with_capacity(w * h * 4);
+            for y in 0..h {
+                let row = std::slice::from_raw_parts((s.pixels as *const u8).add(y * pitch), w * 4);
+                out.extend_from_slice(row);
+            }
+            SDL_DestroySurface(conv);
+            Ok((w as u32, h as u32, out))
+        }
+    }
+}
+
+impl Drop for Surface {
+    fn drop(&mut self) {
+        // SAFETY: destroying the owned surface.
+        unsafe { SDL_DestroySurface(self.ptr.as_ptr()) };
+    }
 }
 
 /// Set an SDL hint before initialisation.
@@ -540,6 +621,83 @@ impl Video<'_> {
                 self.height * scale,
             )
         };
+    }
+
+    pub fn set_icon(&mut self, icon: &Surface) {
+        // SAFETY: window and surface are live; SDL copies the pixels.
+        unsafe { SDL_SetWindowIcon(self.window.as_ptr(), icon.ptr.as_ptr()) };
+    }
+
+    /// Show `image` centred over a dark background for `duration`, with
+    /// fade in/out, at the output resolution. `pump` handles events and
+    /// returns false to abort (window closed). Returns whether to continue.
+    pub fn splash(
+        &mut self,
+        image: &Surface,
+        duration: std::time::Duration,
+        mut pump: impl FnMut() -> bool,
+    ) -> bool {
+        // SAFETY: renderer/window are live; the texture is created from our
+        // surface and destroyed before returning; FRects live for each call.
+        unsafe {
+            let tex = SDL_CreateTextureFromSurface(self.renderer.as_ptr(), image.ptr.as_ptr());
+            if tex.is_null() {
+                return true;
+            }
+            SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_LINEAR);
+            SDL_SetRenderLogicalPresentation(
+                self.renderer.as_ptr(),
+                0,
+                0,
+                SDL_LOGICAL_PRESENTATION_DISABLED,
+            );
+            let (iw, ih) = (
+                (*image.ptr.as_ptr()).w as f32,
+                (*image.ptr.as_ptr()).h as f32,
+            );
+            let start = std::time::Instant::now();
+            let fade = 0.35f32;
+            let total = duration.as_secs_f32();
+            let mut keep = true;
+            while start.elapsed() < duration {
+                if !pump() {
+                    keep = false;
+                    break;
+                }
+                let t = start.elapsed().as_secs_f32();
+                let alpha = (t / fade).min((total - t) / fade).clamp(0.0, 1.0);
+                let (mut ow, mut oh) = (0, 0);
+                SDL_GetRenderOutputSize(self.renderer.as_ptr(), &mut ow, &mut oh);
+                let side = (ow.min(oh) as f32) * 0.86;
+                let scale = (side / iw).min(side / ih);
+                let (dw, dh) = (iw * scale, ih * scale);
+                let dst = FRect {
+                    x: (ow as f32 - dw) / 2.0,
+                    y: (oh as f32 - dh) / 2.0,
+                    w: dw,
+                    h: dh,
+                };
+                SDL_SetRenderDrawColor(self.renderer.as_ptr(), 13, 8, 32, 255);
+                SDL_RenderClear(self.renderer.as_ptr());
+                SDL_SetTextureAlphaModFloat(tex, alpha);
+                SDL_RenderTexture(
+                    self.renderer.as_ptr(),
+                    tex,
+                    ptr::null(),
+                    (&dst as *const FRect).cast(),
+                );
+                SDL_RenderPresent(self.renderer.as_ptr());
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+            SDL_DestroyTexture(tex);
+            SDL_SetRenderLogicalPresentation(
+                self.renderer.as_ptr(),
+                self.width,
+                self.height,
+                SDL_LOGICAL_PRESENTATION_INTEGER_SCALE,
+            );
+            keep
+        }
     }
 
     pub fn set_title(&mut self, title: &str) {

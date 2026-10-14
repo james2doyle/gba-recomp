@@ -20,6 +20,8 @@ Overrides por jogo e página "Jogo" da SPEC-009, seleção de dispositivo de áu
 - MENU-63-02: remapeamento mostra a ação aguardada, aceita tecla ou botão de gamepad, `Esc` cancela mantendo o binding anterior (UI-01). Direções opostas simultâneas são neutralizadas (INPUT-01). Perda de foco e desconexão de gamepad liberam botões (INPUT-02).
 - CTX-63-01: o botão direito MUST abrir o menu de contexto nativo do sistema quando houver adaptador: no macOS um `NSMenu` com submenus Vídeo (escala, tela cheia, filtro, escala inteira, vsync, correção de cor), Som (mudo, volume, latência), Controles (deadzone, abrir remapeamento, restaurar padrões) e Sistema (pausar, reiniciar, salvar agora, sair), com marcas no valor efetivo. Ações do menu de contexto aplicam e persistem imediatamente. Sem adaptador nativo (Linux), o botão direito abre o menu da janela.
 
+- FR-63-03: a janela do jogo MUST exibir `assets/logo-alpha.png` como splash por 2,4 s (fade de entrada/saída, na resolução de saída) antes de iniciar o guest; `--no-splash` desativa para execuções automatizadas. `assets/logo-ico.png` MUST ser o ícone da janela/Dock do jogo e de `gba-settings`. Os dois PNGs são embutidos no binário e decodificados pela SDL (`SDL_LoadPNG_IO`).
+
 ## Critérios de aceite
 
 Testes de parse/serialização/migração de `settings.toml` (válido, inválido preservado, faixas), mapeamento de input com deadzone e neutralização de opostos, navegação/rascunho do menu em modelo puro; smoke do pacote recompilado com driver de vídeo `dummy` por N frames; hash idêntico com configurações diferentes; verificação manual em macOS de janela, menu nativo, som e gamepad registrada como evidência.

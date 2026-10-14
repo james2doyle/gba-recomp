@@ -35,6 +35,8 @@ pub struct AppOptions {
     pub settings_path: Option<PathBuf>,
     /// Window title, including the execution mode (FR-63-01).
     pub title: String,
+    /// Show the logo splash before the game starts (FR-63-03).
+    pub splash: bool,
 }
 
 #[derive(Debug, Default)]
@@ -436,6 +438,11 @@ pub fn run_app(
         *bindings = b;
         applied = Some(s.clone());
     };
+    // Branding (FR-63-03): window/Dock icon and a 2.4 s logo splash.
+    match sdl::Surface::from_png(crate::assets::ICON_PNG) {
+        Ok(icon) => video.set_icon(&icon),
+        Err(e) => eprintln!("gba-desktop: icon unavailable ({e})"),
+    }
     apply(
         &current,
         &mut video,
@@ -468,6 +475,33 @@ pub fn run_app(
             }
         }
     };
+
+    if o.splash {
+        match sdl::Surface::from_png(crate::assets::SPLASH_PNG) {
+            Ok(logo) => {
+                let keep = video.splash(&logo, crate::assets::SPLASH_DURATION, || {
+                    while let Some(ev) = ctx.poll_event() {
+                        if matches!(ev, Event::Quit) {
+                            return false;
+                        }
+                    }
+                    true
+                });
+                // Restore the user's presentation (filter/scaling/vsync).
+                let v = &current.video;
+                video.set_presentation(v.filter == Filter::Linear, v.integer_scale, v.vsync);
+                if !keep {
+                    drop(pads);
+                    drop(joys);
+                    drop(audio);
+                    drop(video);
+                    drop(ctx);
+                    return Ok(AppReport::default());
+                }
+            }
+            Err(e) => eprintln!("gba-desktop: splash unavailable ({e})"),
+        }
+    }
 
     let frame_time = Duration::from_nanos(CYCLES_PER_FRAME * 1_000_000_000 / GUEST_HZ);
     let mut report = AppReport {

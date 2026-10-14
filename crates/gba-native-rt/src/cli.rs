@@ -22,6 +22,7 @@ struct Options {
     verify: bool,
     hashes: bool,
     headless: bool,
+    no_splash: bool,
     settings: Option<PathBuf>,
     frames_given: bool,
 }
@@ -66,6 +67,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         verify: false,
         hashes: false,
         headless: false,
+        no_splash: false,
         settings: None,
         frames_given: false,
     };
@@ -85,6 +87,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 o.frames_given = true;
             }
             "--headless" => o.headless = true,
+            "--no-splash" => o.no_splash = true,
             "--settings" => o.settings = Some(PathBuf::from(value()?)),
             "--input" => {
                 let v = value()?;
@@ -312,6 +315,7 @@ fn run_window(
         frames: o.frames_given.then_some(o.frames),
         settings_path: o.settings.clone(),
         title: format!("{header_title} — gba-recomp aot-compatible (nativo)"),
+        splash: !o.no_splash,
     };
     let r = gba_desktop::run_app(&options, Some(&mut program))?;
     let c = &program.counters;

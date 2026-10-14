@@ -26,6 +26,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
         frames: None,
         settings_path: None,
         title: "gba-recomp — interpreted".to_owned(),
+        splash: true,
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or_else(usage);
@@ -34,6 +35,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
             "--bios" => o.bios = Some(PathBuf::from(value()?)),
             "--save" => o.save = Some(PathBuf::from(value()?)),
             "--settings" => o.settings_path = Some(PathBuf::from(value()?)),
+            "--no-splash" => o.splash = false,
             "--backup" => {
                 let v = value()?;
                 o.backup = Some(BackupKind::parse(&v).ok_or(format!("unknown backup `{v}`"))?);

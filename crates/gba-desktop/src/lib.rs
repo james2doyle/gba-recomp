@@ -6,6 +6,7 @@
 #![deny(unsafe_code)]
 
 pub mod app;
+pub mod assets;
 pub mod ctxmenu;
 pub mod gpio;
 pub mod input;
