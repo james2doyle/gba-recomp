@@ -30,3 +30,4 @@
 - [ADR-028-thumb-lsr-immediate](ADR-028-thumb-lsr-immediate.md)
 - [ADR-029-thumb-ldrh-immediate](ADR-029-thumb-ldrh-immediate.md)
 - [ADR-030-thumb-ime-store](ADR-030-thumb-ime-store.md)
+- [ADR-031-thumb-ie-ime-latches](ADR-031-thumb-ie-ime-latches.md)

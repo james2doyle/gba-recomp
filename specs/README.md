@@ -46,3 +46,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-042 — Thumb LDRH imediato Format 10 em AOT estrito](SPEC-042-thumb-ldrh-immediate.md)
 - [SPEC-043 — Paralelismo limitado de fixtures independentes do GBA-020](SPEC-043-bounded-fixture-parallelism.md)
 - [SPEC-044 — Thumb STRH para IME em AOT estrito](SPEC-044-thumb-ime-store.md)
+- [SPEC-045 — Loads e stores Thumb halfword para latches IE/IF/IME](SPEC-045-thumb-ie-ime-latches.md)
