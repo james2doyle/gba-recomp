@@ -1560,7 +1560,7 @@ impl Emitter {
 fn emit_run(e: &Emitter, run: &Run, name: &str) -> LLVMValueRef {
     let cname = CString::new(name).expect("run name has no NUL");
     let func = unsafe { LLVMAddFunction(e.module, cname.as_ptr(), e.t.run_fn) };
-    unsafe { LLVMSetLinkage(func, LLVMLinkage::LLVMInternalLinkage) };
+    // External: the table object references runs across shard objects.
     let ctx = unsafe { LLVMGetParam(func, 0) };
     let entry_param = unsafe { LLVMGetParam(func, 1) };
     let entry_bb = unsafe { LLVMAppendBasicBlockInContext(e.context, func, EMPTY) };
@@ -1757,16 +1757,18 @@ fn emit_run(e: &Emitter, run: &Run, name: &str) -> LLVMValueRef {
     func
 }
 
-/// Emit an object with native runs for `entries`, a lookup table and a
-/// `main` that hands control to `gba_native_main` in `gba-native-rt`.
-pub fn emit_native_object(
+/// Emit native runs for `entries` as several objects compiled in parallel
+/// (one LLVM context per shard) plus one object with the lookup table and
+/// `main`, which hands control to `gba_native_main` in `gba-native-rt`.
+pub fn emit_native_objects(
     rom: &[u8],
     rom_sha256: [u8; 32],
     entries: &[Entry],
     follow_direct_branches: bool,
-    output: &Path,
+    out_dir: &Path,
     optimization: Optimization,
-) -> Result<NativeEmitResult, String> {
+    threads: usize,
+) -> Result<(Vec<std::path::PathBuf>, NativeEmitResult), String> {
     let mut stats = NativeStats {
         entries_in: entries.len(),
         ..NativeStats::default()
@@ -1792,27 +1794,97 @@ pub fn emit_native_object(
     if runs.is_empty() {
         return Err("no ROM entry points to compile".to_owned());
     }
-    // SAFETY: LLVM handles are created and disposed within this function.
-    let info = unsafe { emit_native_llvm(rom_sha256, &runs, output, optimization)? };
-    Ok(NativeEmitResult { info, stats })
-}
-
-unsafe fn emit_native_llvm(
-    rom_sha256: [u8; 32],
-    runs: &[Run],
-    output: &Path,
-    optimization: Optimization,
-) -> Result<EmitInfo, String> {
     let target = native_target();
-    let triple = CString::new(target.triple).expect("static triple");
-    let cpu = CString::new(target.cpu).expect("static cpu");
-    let features = CString::new(target.features).expect("static features");
     let prefix = if target.triple.starts_with("x86_64-") {
         "x86"
     } else {
         "aarch64"
     };
+    // SAFETY: backend initialisation happens once, before worker threads.
     unsafe { initialize_backend(prefix) }?;
+
+    // Balance shards by instruction count.
+    let threads = threads.clamp(1, 64).min(runs.len());
+    let mut shards: Vec<Vec<&Run>> = vec![Vec::new(); threads];
+    let mut load = vec![0usize; threads];
+    let mut order: Vec<&Run> = runs.iter().collect();
+    order.sort_by_key(|r| std::cmp::Reverse(r.ops.len()));
+    for run in order {
+        let i = (0..threads).min_by_key(|&i| load[i]).expect("threads > 0");
+        load[i] += run.ops.len();
+        shards[i].push(run);
+    }
+    let mut outputs: Vec<std::path::PathBuf> = (0..threads)
+        .map(|i| out_dir.join(format!("runs{i}.o")))
+        .collect();
+    let table_out = out_dir.join("table.o");
+    let results: Vec<Result<EmitInfo, String>> = std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for (shard, out) in shards.iter().zip(&outputs) {
+            handles.push(scope.spawn(move || {
+                // SAFETY: each thread owns its LLVM context and module.
+                unsafe {
+                    with_module(out, optimization, |e| {
+                        for run in shard {
+                            emit_run(e, run, &run_name(run));
+                        }
+                        Ok(())
+                    })
+                }
+            }));
+        }
+        let table = scope.spawn(|| {
+            // SAFETY: as above.
+            unsafe {
+                with_module(&table_out, optimization, |e| {
+                    build_table(e, rom_sha256, &runs)
+                })
+            }
+        });
+        let mut r: Vec<_> = handles
+            .into_iter()
+            .map(|h| {
+                h.join()
+                    .unwrap_or_else(|_| Err("LLVM worker panicked".into()))
+            })
+            .collect();
+        r.push(
+            table
+                .join()
+                .unwrap_or_else(|_| Err("LLVM worker panicked".into())),
+        );
+        r
+    });
+    let mut info = None;
+    for r in results {
+        info = Some(r?);
+    }
+    outputs.push(table_out);
+    Ok((
+        outputs,
+        NativeEmitResult {
+            info: info.expect("at least one module"),
+            stats,
+        },
+    ))
+}
+
+fn run_name(run: &Run) -> String {
+    let mode = if run.entry.thumb { 't' } else { 'a' };
+    format!("gba_run_{mode}_{:08x}", run.entry.pc)
+}
+
+/// Create a context/module/target for one object, let `build` fill it, then
+/// verify, optimise and emit.
+unsafe fn with_module(
+    output: &Path,
+    optimization: Optimization,
+    build: impl FnOnce(&Emitter) -> Result<(), String>,
+) -> Result<EmitInfo, String> {
+    let target = native_target();
+    let triple = CString::new(target.triple).expect("static triple");
+    let cpu = CString::new(target.cpu).expect("static cpu");
+    let features = CString::new(target.features).expect("static features");
     let level = match optimization {
         Optimization::O0 => LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
         Optimization::O2 => LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
@@ -1849,13 +1921,12 @@ unsafe fn emit_native_llvm(
         LLVMSetDataLayout(module, layout_raw);
         LLVMDisposeMessage(layout_raw);
     }
-
-    let result = unsafe { build_module(context, module, builder, rom_sha256, runs) }
+    let emitter = unsafe { make_emitter(context, module, builder) };
+    let result = build(&emitter)
         .and_then(|()| unsafe { verify_module(module, "before optimization") })
         .and_then(|()| unsafe { run_optimization(module, machine, optimization) })
         .and_then(|()| unsafe { verify_module(module, "after optimization") })
         .and_then(|()| unsafe { emit_object(machine, module, output) });
-
     unsafe {
         LLVMDisposeTargetData(target_data);
         LLVMDisposeBuilder(builder);
@@ -1873,15 +1944,12 @@ unsafe fn emit_native_llvm(
     })
 }
 
-unsafe fn build_module(
+unsafe fn make_emitter(
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
-    rom_sha256: [u8; 32],
-    runs: &[Run],
-) -> Result<(), String> {
+) -> Emitter {
     let i1 = unsafe { LLVMInt1TypeInContext(context) };
-    let i8 = unsafe { LLVMInt8TypeInContext(context) };
     let i32 = unsafe { LLVMInt32TypeInContext(context) };
     let i64 = unsafe { LLVMInt64TypeInContext(context) };
     let ptr_t = unsafe { LLVMPointerTypeInContext(context, 0) };
@@ -1913,7 +1981,7 @@ unsafe fn build_module(
         write8: declare(c"gba_rt_write8", write_fn),
         fshr: declare(c"llvm.fshr.i32", fshr_fn),
     };
-    let e = Emitter {
+    Emitter {
         context,
         module,
         b: builder,
@@ -1930,68 +1998,70 @@ unsafe fn build_module(
             fshr_fn,
         },
         h,
-    };
+    }
+}
 
-    // Runs and table rows.
+/// Table of every resume entry, ROM hash and `main`.
+fn build_table(e: &Emitter, rom_sha256: [u8; 32], runs: &[Run]) -> Result<(), String> {
+    let context = e.context;
+    let module = e.module;
     let mut table: BTreeMap<u32, (LLVMValueRef, u32)> = BTreeMap::new();
     for run in runs {
-        let mode = if run.entry.thumb { 't' } else { 'a' };
-        let name = format!("gba_run_{mode}_{:08x}", run.entry.pc);
-        let func = emit_run(&e, run, &name);
+        let name = CString::new(run_name(run)).expect("no NUL");
+        // SAFETY: declares an external function defined in a shard object.
+        let func = unsafe { LLVMAddFunction(module, name.as_ptr(), e.t.run_fn) };
         let size = if run.entry.thumb { 2 } else { 4 };
         for k in 0..run.ops.len() as u32 {
             let key = run.entry.pc.wrapping_add(k * size) | u32::from(run.entry.thumb);
             table.entry(key).or_insert((func, k));
         }
     }
-    let mut row_fields = [i32, i32, ptr_t];
-    let row_t = unsafe { LLVMStructTypeInContext(context, row_fields.as_mut_ptr(), 3, 0) };
-    let mut rows: Vec<LLVMValueRef> = table
-        .iter()
-        .map(|(&key, &(func, index))| {
-            let mut vals = [e.c32(key), e.c32(index), func];
-            unsafe { LLVMConstNamedStruct(row_t, vals.as_mut_ptr(), 3) }
-        })
-        .collect();
-    let rows_t = unsafe { LLVMArrayType2(row_t, rows.len() as u64) };
-    let rows_init = unsafe { LLVMConstArray2(row_t, rows.as_mut_ptr(), rows.len() as u64) };
-    let rows_g = unsafe { LLVMAddGlobal(module, rows_t, c"gba_aot_entries".as_ptr()) };
+    // SAFETY: constants and globals created in this module's context.
     unsafe {
+        let i8 = LLVMInt8TypeInContext(context);
+        let mut row_fields = [e.t.i32, e.t.i32, e.t.ptr];
+        let row_t = LLVMStructTypeInContext(context, row_fields.as_mut_ptr(), 3, 0);
+        let mut rows: Vec<LLVMValueRef> = table
+            .iter()
+            .map(|(&key, &(func, index))| {
+                let mut vals = [e.c32(key), e.c32(index), func];
+                LLVMConstNamedStruct(row_t, vals.as_mut_ptr(), 3)
+            })
+            .collect();
+        let rows_t = LLVMArrayType2(row_t, rows.len() as u64);
+        let rows_init = LLVMConstArray2(row_t, rows.as_mut_ptr(), rows.len() as u64);
+        let rows_g = LLVMAddGlobal(module, rows_t, c"gba_aot_entries".as_ptr());
         LLVMSetInitializer(rows_g, rows_init);
         LLVMSetGlobalConstant(rows_g, 1);
         LLVMSetLinkage(rows_g, LLVMLinkage::LLVMInternalLinkage);
-    }
-    let mut sha_vals: Vec<LLVMValueRef> = rom_sha256
-        .iter()
-        .map(|&b| unsafe { LLVMConstInt(i8, u64::from(b), 0) })
-        .collect();
-    let sha_t = unsafe { LLVMArrayType2(i8, 32) };
-    let sha_init = unsafe { LLVMConstArray2(i8, sha_vals.as_mut_ptr(), 32) };
-    let sha_g = unsafe { LLVMAddGlobal(module, sha_t, c"gba_aot_rom_sha256".as_ptr()) };
-    unsafe {
+        let mut sha_vals: Vec<LLVMValueRef> = rom_sha256
+            .iter()
+            .map(|&b| LLVMConstInt(i8, u64::from(b), 0))
+            .collect();
+        let sha_t = LLVMArrayType2(i8, 32);
+        let sha_init = LLVMConstArray2(i8, sha_vals.as_mut_ptr(), 32);
+        let sha_g = LLVMAddGlobal(module, sha_t, c"gba_aot_rom_sha256".as_ptr());
         LLVMSetInitializer(sha_g, sha_init);
         LLVMSetGlobalConstant(sha_g, 1);
         LLVMSetLinkage(sha_g, LLVMLinkage::LLVMInternalLinkage);
-    }
 
-    // int main(int argc, char **argv)
-    let native_main_t = fnty(i32, &mut [i32, ptr_t, ptr_t, i32, ptr_t]);
-    let native_main = declare(c"gba_native_main", native_main_t);
-    let main_t = fnty(i32, &mut [i32, ptr_t]);
-    let main = declare(c"main", main_t);
-    let bb = unsafe { LLVMAppendBasicBlockInContext(context, main, EMPTY) };
-    e.at(bb);
-    let mut args = unsafe {
-        [
+        let mut nm = [e.t.i32, e.t.ptr, e.t.ptr, e.t.i32, e.t.ptr];
+        let native_main_t = LLVMFunctionType(e.t.i32, nm.as_mut_ptr(), 5, 0);
+        let native_main = LLVMAddFunction(module, c"gba_native_main".as_ptr(), native_main_t);
+        let mut mp = [e.t.i32, e.t.ptr];
+        let main_t = LLVMFunctionType(e.t.i32, mp.as_mut_ptr(), 2, 0);
+        let main = LLVMAddFunction(module, c"main".as_ptr(), main_t);
+        let bb = LLVMAppendBasicBlockInContext(context, main, EMPTY);
+        e.at(bb);
+        let mut args = [
             LLVMGetParam(main, 0),
             LLVMGetParam(main, 1),
             rows_g,
             e.c32(rows.len() as u32),
             sha_g,
-        ]
-    };
-    let r = e.call(native_main_t, native_main, &mut args);
-    unsafe { LLVMBuildRet(builder, r) };
-    let _ = i1;
+        ];
+        let r = e.call(native_main_t, native_main, &mut args);
+        LLVMBuildRet(e.b, r);
+    }
     Ok(())
 }

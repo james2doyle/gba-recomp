@@ -21,10 +21,14 @@ struct Options {
     interpret_only: bool,
     verify: bool,
     hashes: bool,
+    headless: bool,
+    settings: Option<PathBuf>,
+    frames_given: bool,
 }
 
-const USAGE: &str = "usage: <package>/game --rom <rom.gba> [--frames N] [--input FRAME:LEN:KEYS]... \
-[--save F] [--backup KIND] [--bios B] [--ppm P] [--ppm-every N] [--hashes] \
+const USAGE: &str = "usage: <package>/game --rom <rom.gba> [--save F] [--settings S] [--backup KIND] [--bios B]\n\
+  window (default): Esc/F1 or right click = menu, F11 = fullscreen, Tab = fast-forward\n\
+  --headless [--frames N] [--input FRAME:LEN:KEYS]... [--ppm P] [--ppm-every N] [--hashes] \
 [--interpret-only] [--verify-interpreter]";
 
 fn parse_keys(text: &str) -> Result<u16, String> {
@@ -61,6 +65,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
         interpret_only: false,
         verify: false,
         hashes: false,
+        headless: false,
+        settings: None,
+        frames_given: false,
     };
     let mut rom = None;
     while let Some(flag) = it.next() {
@@ -73,7 +80,12 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 let v = value()?;
                 o.backup = Some(BackupKind::parse(&v).ok_or(format!("unknown backup `{v}`"))?);
             }
-            "--frames" => o.frames = value()?.parse().map_err(|_| "bad --frames")?,
+            "--frames" => {
+                o.frames = value()?.parse().map_err(|_| "bad --frames")?;
+                o.frames_given = true;
+            }
+            "--headless" => o.headless = true,
+            "--settings" => o.settings = Some(PathBuf::from(value()?)),
             "--input" => {
                 let v = value()?;
                 let parts: Vec<&str> = v.splitn(3, ':').collect();
@@ -120,6 +132,9 @@ pub fn run(args: &[String], entries: &[AotEntry], sha256: [u8; 32]) -> Result<()
             hex(&digest),
             hex(&sha256)
         ));
+    }
+    if !o.headless {
+        return run_window(&o, entries);
     }
     let bios = match &o.bios {
         Some(p) => Some(fs::read(p).map_err(|e| format!("cannot read BIOS: {e}"))?),
@@ -249,4 +264,52 @@ pub fn run(args: &[String], entries: &[AotEntry], sha256: [u8; 32]) -> Result<()
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Playable window (SPEC-063 FR-63-02): same native program, SDL frontend.
+fn run_window(o: &Options, entries: &[AotEntry]) -> Result<(), String> {
+    let mut program = NativeProgram::new(entries);
+    let header_title: String = fs::read(&o.rom)
+        .ok()
+        .and_then(|r| {
+            r.get(0xA0..0xAC).map(|t| {
+                String::from_utf8_lossy(t)
+                    .trim_end_matches('\0')
+                    .trim()
+                    .to_owned()
+            })
+        })
+        .unwrap_or_default();
+    let options = gba_desktop::AppOptions {
+        rom: o.rom.clone(),
+        bios: o.bios.clone(),
+        save: o.save.clone(),
+        backup: o.backup,
+        frames: o.frames_given.then_some(o.frames),
+        settings_path: o.settings.clone(),
+        title: format!("{header_title} — gba-recomp aot-compatible (nativo)"),
+    };
+    let r = gba_desktop::run_app(&options, Some(&mut program))?;
+    let c = &program.counters;
+    let total = c.retired + r.interpreted_instructions;
+    eprintln!(
+        "{{\"execution_mode\":\"aot-compatible\",\"frontend\":\"sdl3\",\"frames\":{},\"instructions_native\":{},\"instructions_interpreted\":{},\"native_ratio\":{:.6},\"dispatcher_misses\":{},\"shells\":{},\"audio\":{},\"audio_underruns\":{},\"audio_overruns\":{},\"saves\":{},\"guest_cycles\":{},\"frame_hash\":\"{:016x}\"}}",
+        r.frames,
+        c.retired,
+        r.interpreted_instructions,
+        if total == 0 {
+            0.0
+        } else {
+            c.retired as f64 / total as f64
+        },
+        r.native_misses,
+        r.native_shells,
+        r.audio_on,
+        r.audio_underruns,
+        r.audio_overruns,
+        r.saves,
+        r.guest_cycles,
+        r.frame_hash,
+    );
+    Ok(())
 }

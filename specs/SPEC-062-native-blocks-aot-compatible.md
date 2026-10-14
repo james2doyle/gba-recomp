@@ -1,6 +1,6 @@
 # SPEC-062 — Blocos nativos LLVM sobre o núcleo `gba-core` (`aot-compatible`)
 
-Estado do documento: Accepted em 2026-10-14. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted em 2026-10-14. Implementada (commits `5569bad` e seguintes): lowering em `gba-llvm::native`, emissão paralela em shards (um contexto LLVM por thread), runtime `gba-native-rt` e `compile --mode aot-compatible`. LeafGreen O2, perfil de 3000 frames com input: 2845 runs, 28.719 instruções nativas, emissão 48 s em 10 threads; execução de 3000 frames verificada ciclo a ciclo contra o interpretador, 82,9% das instruções nativas, ~980 fps headless (KNO-007 EV-007-08). Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Problema, objetivos e escopo
 

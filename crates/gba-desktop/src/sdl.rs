@@ -59,6 +59,13 @@ const SDL_PIXELFORMAT_XRGB8888: u32 = 0x1616_1804;
 const SDL_AUDIO_S16LE: c_int = 0x8010;
 const SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK: u32 = 0xFFFF_FFFF;
 const SDL_EVENT_QUIT: u32 = 0x100;
+const SDL_EVENT_WINDOW_FOCUS_LOST: u32 = 0x20F;
+const SDL_EVENT_KEY_DOWN: u32 = 0x300;
+const SDL_EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401;
+const SDL_EVENT_GAMEPAD_BUTTON_DOWN: u32 = 0x651;
+const SDL_LOGICAL_PRESENTATION_LETTERBOX: c_int = 2;
+const SDL_SCALEMODE_LINEAR: c_int = 1;
+const SDL_BLENDMODE_BLEND: u32 = 1;
 const SDL_EVENT_GAMEPAD_ADDED: u32 = 0x653;
 const SDL_EVENT_GAMEPAD_REMOVED: u32 = 0x654;
 
@@ -121,6 +128,65 @@ unsafe extern "C" {
     fn SDL_CloseGamepad(gamepad: *mut SdlGamepad);
     fn SDL_GetGamepadID(gamepad: *mut SdlGamepad) -> u32;
     fn SDL_GetGamepadButton(gamepad: *mut SdlGamepad, button: c_int) -> bool;
+    fn SDL_GetGamepadAxis(gamepad: *mut SdlGamepad, axis: c_int) -> i16;
+    fn SDL_GetGamepadStringForButton(button: c_int) -> *const c_char;
+    fn SDL_GetGamepadButtonFromString(name: *const c_char) -> c_int;
+    fn SDL_GetScancodeName(scancode: c_int) -> *const c_char;
+    fn SDL_GetScancodeFromName(name: *const c_char) -> c_int;
+
+    fn SDL_SetWindowFullscreen(window: *mut SdlWindow, fullscreen: bool) -> bool;
+    fn SDL_SetWindowSize(window: *mut SdlWindow, w: c_int, h: c_int) -> bool;
+    fn SDL_SetWindowTitle(window: *mut SdlWindow, title: *const c_char) -> bool;
+    fn SDL_SetRenderVSync(renderer: *mut SdlRenderer, vsync: c_int) -> bool;
+    fn SDL_SetRenderDrawBlendMode(renderer: *mut SdlRenderer, mode: u32) -> bool;
+    fn SDL_RenderFillRect(renderer: *mut SdlRenderer, rect: *const FRect) -> bool;
+    fn SDL_RenderDebugText(renderer: *mut SdlRenderer, x: f32, y: f32, text: *const c_char)
+    -> bool;
+
+    fn SDL_SetAudioStreamGain(stream: *mut SdlAudioStream, gain: f32) -> bool;
+    fn SDL_ClearAudioStream(stream: *mut SdlAudioStream) -> bool;
+    fn SDL_PauseAudioStreamDevice(stream: *mut SdlAudioStream) -> bool;
+}
+
+#[repr(C)]
+pub struct FRect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+fn c_str_to_string(p: *const c_char) -> String {
+    if p.is_null() {
+        return String::new();
+    }
+    // SAFETY: SDL returns NUL-terminated strings it owns.
+    unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
+}
+
+/// SDL name of a scancode (e.g. "Z", "Return"); empty if unknown.
+pub fn scancode_name(scancode: usize) -> String {
+    // SAFETY: plain FFI call; unknown scancodes yield "".
+    c_str_to_string(unsafe { SDL_GetScancodeName(scancode as c_int) })
+}
+
+pub fn scancode_from_name(name: &str) -> Option<usize> {
+    let c = CString::new(name).ok()?;
+    // SAFETY: valid C string for the duration of the call.
+    let sc = unsafe { SDL_GetScancodeFromName(c.as_ptr()) };
+    (sc > 0).then_some(sc as usize)
+}
+
+pub fn pad_button_name(button: i32) -> String {
+    // SAFETY: plain FFI call; invalid buttons yield null.
+    c_str_to_string(unsafe { SDL_GetGamepadStringForButton(button) })
+}
+
+pub fn pad_button_from_name(name: &str) -> Option<i32> {
+    let c = CString::new(name).ok()?;
+    // SAFETY: valid C string for the duration of the call.
+    let b = unsafe { SDL_GetGamepadButtonFromString(c.as_ptr()) };
+    (b >= 0).then_some(b)
 }
 
 fn last_error(what: &str) -> String {
@@ -133,6 +199,9 @@ fn last_error(what: &str) -> String {
 /// Scancodes used by the frontend (`SDL_scancode.h`).
 pub mod scancode {
     pub const A: usize = 4;
+    pub const F1: usize = 58;
+    pub const F11: usize = 68;
+    pub const SPACE: usize = 44;
     pub const S: usize = 22;
     pub const X: usize = 27;
     pub const Z: usize = 29;
@@ -152,6 +221,7 @@ pub mod button {
     pub const SOUTH: i32 = 0;
     pub const EAST: i32 = 1;
     pub const BACK: i32 = 4;
+    pub const GUIDE: i32 = 5;
     pub const START: i32 = 6;
     pub const LEFT_SHOULDER: i32 = 9;
     pub const RIGHT_SHOULDER: i32 = 10;
@@ -168,6 +238,10 @@ pub struct Context {
 
 pub enum Event {
     Quit,
+    FocusLost,
+    KeyDown { scancode: usize, repeat: bool },
+    MouseDown { button: u8 },
+    PadDown { button: i32 },
     GamepadAdded(u32),
     GamepadRemoved(u32),
     Other,
@@ -241,6 +315,20 @@ impl Context {
         // SDL_GamepadDeviceEvent: type u32, reserved u32, timestamp u64, which u32.
         Some(match word(0) {
             SDL_EVENT_QUIT => Event::Quit,
+            SDL_EVENT_WINDOW_FOCUS_LOST => Event::FocusLost,
+            // SDL_KeyboardEvent: scancode at 24, repeat at 37.
+            SDL_EVENT_KEY_DOWN => Event::KeyDown {
+                scancode: word(24) as usize,
+                repeat: ev.bytes[37] != 0,
+            },
+            // SDL_MouseButtonEvent: button at 24.
+            SDL_EVENT_MOUSE_BUTTON_DOWN => Event::MouseDown {
+                button: ev.bytes[24],
+            },
+            // SDL_GamepadButtonEvent: button at 20.
+            SDL_EVENT_GAMEPAD_BUTTON_DOWN => Event::PadDown {
+                button: i32::from(ev.bytes[20]),
+            },
             SDL_EVENT_GAMEPAD_ADDED => Event::GamepadAdded(word(16)),
             SDL_EVENT_GAMEPAD_REMOVED => Event::GamepadRemoved(word(16)),
             _ => Event::Other,
@@ -346,8 +434,74 @@ impl Video<'_> {
         Ok(video)
     }
 
+    pub fn set_fullscreen(&mut self, on: bool) {
+        // SAFETY: window is live.
+        unsafe { SDL_SetWindowFullscreen(self.window.as_ptr(), on) };
+    }
+
+    pub fn set_scale(&mut self, scale: i32) {
+        // SAFETY: window is live.
+        unsafe {
+            SDL_SetWindowSize(
+                self.window.as_ptr(),
+                self.width * scale,
+                self.height * scale,
+            )
+        };
+    }
+
+    pub fn set_title(&mut self, title: &str) {
+        if let Ok(c) = CString::new(title) {
+            // SAFETY: window is live; C string valid for the call.
+            unsafe { SDL_SetWindowTitle(self.window.as_ptr(), c.as_ptr()) };
+        }
+    }
+
+    pub fn set_presentation(&mut self, linear: bool, integer: bool, vsync: bool) {
+        // SAFETY: handles are live.
+        unsafe {
+            SDL_SetTextureScaleMode(
+                self.texture.as_ptr(),
+                if linear {
+                    SDL_SCALEMODE_LINEAR
+                } else {
+                    SDL_SCALEMODE_NEAREST
+                },
+            );
+            SDL_SetRenderLogicalPresentation(
+                self.renderer.as_ptr(),
+                self.width,
+                self.height,
+                if integer {
+                    SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
+                } else {
+                    SDL_LOGICAL_PRESENTATION_LETTERBOX
+                },
+            );
+            SDL_SetRenderVSync(self.renderer.as_ptr(), c_int::from(vsync));
+        }
+    }
+
+    /// Uploads a full XRGB8888 frame, lets `overlay` draw on top (in guest
+    /// logical coordinates) and presents.
+    pub fn present_with(
+        &mut self,
+        pixels: &[u32],
+        overlay: impl FnOnce(&mut Painter<'_>),
+    ) -> Result<(), String> {
+        self.present_inner(pixels, overlay)
+    }
+
     /// Uploads a full XRGB8888 frame and presents it.
     pub fn present(&mut self, pixels: &[u32]) -> Result<(), String> {
+        self.present_inner(pixels, |_| {})
+    }
+
+    fn present_inner(
+        &mut self,
+        pixels: &[u32],
+        overlay: impl FnOnce(&mut Painter<'_>),
+    ) -> Result<(), String> {
         let pitch = self.width * 4;
         assert_eq!(
             pixels.len(),
@@ -374,9 +528,50 @@ impl Video<'_> {
             ) {
                 return Err(last_error("SDL_RenderTexture"));
             }
+        }
+        let mut painter = Painter {
+            renderer: self.renderer,
+            _video: PhantomData,
+        };
+        overlay(&mut painter);
+        // SAFETY: renderer is live.
+        unsafe {
             SDL_RenderPresent(self.renderer.as_ptr());
         }
         Ok(())
+    }
+}
+
+/// Draws overlays in guest logical coordinates (240x160).
+pub struct Painter<'v> {
+    renderer: NonNull<SdlRenderer>,
+    _video: PhantomData<&'v mut ()>,
+}
+
+impl Painter<'_> {
+    pub fn fill(&mut self, x: f32, y: f32, w: f32, h: f32, rgba: [u8; 4]) {
+        let rect = FRect { x, y, w, h };
+        // SAFETY: renderer is live; `rect` outlives the call.
+        unsafe {
+            SDL_SetRenderDrawBlendMode(self.renderer.as_ptr(), SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgba[0], rgba[1], rgba[2], rgba[3]);
+            SDL_RenderFillRect(self.renderer.as_ptr(), &rect);
+        }
+    }
+
+    /// 8x8 SDL debug font; ASCII only.
+    pub fn text(&mut self, x: f32, y: f32, text: &str, rgb: [u8; 3]) {
+        let ascii: String = text
+            .chars()
+            .map(|c| if c.is_ascii() { c } else { '?' })
+            .collect();
+        if let Ok(c) = CString::new(ascii) {
+            // SAFETY: renderer is live; C string valid for the call.
+            unsafe {
+                SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgb[0], rgb[1], rgb[2], 255);
+                SDL_RenderDebugText(self.renderer.as_ptr(), x, y, c.as_ptr());
+            }
+        }
     }
 }
 
@@ -402,6 +597,25 @@ impl Audio<'_> {
         // SAFETY: `stream` is live.
         let n = unsafe { SDL_GetAudioStreamQueued(self.stream.as_ptr()) };
         n.max(0) as usize
+    }
+
+    pub fn set_gain(&mut self, gain: f32) {
+        // SAFETY: `stream` is live.
+        unsafe { SDL_SetAudioStreamGain(self.stream.as_ptr(), gain) };
+    }
+
+    /// Pause playback and drop queued audio (menu open, UI-06).
+    pub fn pause(&mut self) {
+        // SAFETY: `stream` is live.
+        unsafe {
+            SDL_PauseAudioStreamDevice(self.stream.as_ptr());
+            SDL_ClearAudioStream(self.stream.as_ptr());
+        }
+    }
+
+    pub fn resume(&mut self) {
+        // SAFETY: `stream` is live.
+        unsafe { SDL_ResumeAudioStreamDevice(self.stream.as_ptr()) };
     }
 
     pub fn put(&mut self, samples: &[i16]) -> Result<(), String> {
@@ -435,6 +649,17 @@ impl Gamepad<'_> {
     pub fn id(&self) -> u32 {
         // SAFETY: `pad` is live.
         unsafe { SDL_GetGamepadID(self.pad.as_ptr()) }
+    }
+
+    /// Left stick (x, y) in SDL range.
+    pub fn left_stick(&self) -> (i16, i16) {
+        // SAFETY: `pad` is live; axes 0/1 are LEFTX/LEFTY.
+        unsafe {
+            (
+                SDL_GetGamepadAxis(self.pad.as_ptr(), 0),
+                SDL_GetGamepadAxis(self.pad.as_ptr(), 1),
+            )
+        }
     }
 
     pub fn button(&self, button: i32) -> bool {

@@ -59,6 +59,13 @@ Encontrados ao cobrir as matrizes de aceite de SPEC-057–060 (`cargo test -p gb
 - `apu.rs` SOUNDCNT_X: desligar o master zerava também SOUNDCNT_H (0x82), que deve continuar legível e gravável.
 - `apu.rs` `clock_sweep`: sweep de diminuição com shift 0 levava a frequência a 0 em vez de mantê-la.
 
+## Execução recompilada (`aot-compatible`, SPEC-062/063)
+
+| ID | Cenário | Resultado |
+|---|---|---|
+| EV-007-08 | LeafGreen, `compile --opt O2 --mode aot-compatible --profile-frames 3000` com os inputs do EV-007-02; execução `--headless --frames 3000 --verify-interpreter` com os mesmos inputs | Compilação 54 s (emissão 48 s em 10 threads, RSS 1,28 GB): 2845 runs, 28.719 instruções nativas, 7 sítios de shell. Execução sem divergência contra o interpretador em ciclos, registradores e framebuffer; 248.506.141 instruções nativas e 51.119.278 interpretadas (82,9% nativo; o restante é código em RAM, shells e misses); hash final `9dbc61778121f97e`, igual ao do mGBA após a correção do reset afim; ~980 frames/s sem verificação |
+| EV-007-09 | Mesmo pacote em janela com `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`, 600 frames | Saída 0, áudio ligado, SDL3 carregada do pacote via `@rpath`. Janela real, menu nativo, som e gamepad não foram verificados nesta sessão |
+
 ## Questões abertas
 
 - Isolar a origem do lag diferente (custos de prefetch/waitstate vs. custo de SWIs HLE) com trace de ciclos por frame.

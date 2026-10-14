@@ -10,7 +10,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use gba_core::{Gba, GbaConfig};
 use gba_llvm::Optimization;
-use gba_llvm::native::{Entry, emit_native_object};
+use gba_llvm::native::{Entry, emit_native_objects};
 use sha2::{Digest, Sha256};
 
 pub struct ProfileOptions {
@@ -151,17 +151,127 @@ pub fn profile(rom: &[u8], options: &ProfileOptions) -> Profile {
     }
 }
 
-fn link(object: &Path, runtime: &Path, executable: &Path) -> Result<(), String> {
+/// SDL3 shared library bundled into the package (FR-63-02).
+fn sdl_library() -> Result<(PathBuf, String), String> {
+    let dir = env::var_os("SDL3_LIB_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            if cfg!(target_os = "macos") {
+                PathBuf::from("/opt/homebrew/lib")
+            } else {
+                PathBuf::from("/usr/lib/x86_64-linux-gnu")
+            }
+        });
+    let name = if cfg!(target_os = "macos") {
+        "libSDL3.0.dylib"
+    } else {
+        "libSDL3.so.0"
+    };
+    let path = dir.join(name);
+    if !path.exists() {
+        return Err(format!(
+            "SDL3 runtime library not found at {} (set SDL3_LIB_DIR); no package was produced",
+            path.display()
+        ));
+    }
+    Ok((dir, name.to_owned()))
+}
+
+fn run(command: &mut Command, what: &str) -> Result<(), String> {
+    let output = command
+        .output()
+        .map_err(|e| format!("cannot run {what}: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{what} failed:\n{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
+}
+
+/// Copy SDL3 next to the executable and make the executable load it from
+/// there (`@executable_path` / `$ORIGIN`), so the package does not depend on
+/// the build machine's SDL installation.
+fn bundle_sdl(
+    package: &Path,
+    executable: &Path,
+    sdl_dir: &Path,
+    sdl_name: &str,
+) -> Result<(), String> {
+    let source = fs::canonicalize(sdl_dir.join(sdl_name))
+        .map_err(|e| format!("cannot resolve SDL3 library: {e}"))?;
+    let bundled = package.join(sdl_name);
+    fs::copy(&source, &bundled).map_err(|e| format!("cannot bundle SDL3: {e}"))?;
+    #[cfg(target_os = "macos")]
+    {
+        let prefix =
+            PathBuf::from(env::var_os("LLVM_SYS_231_PREFIX").ok_or("LLVM_SYS_231_PREFIX unset")?);
+        let tool = prefix.join("bin/llvm-install-name-tool");
+        let otool = Command::new(prefix.join("bin/llvm-otool"))
+            .arg("-L")
+            .arg(executable)
+            .output()
+            .map_err(|e| format!("cannot run llvm-otool: {e}"))?;
+        let listing = String::from_utf8_lossy(&otool.stdout);
+        let old = listing
+            .lines()
+            .map(str::trim)
+            .find(|l| l.contains("libSDL3"))
+            .and_then(|l| l.split(" (").next())
+            .ok_or("the executable does not reference SDL3")?
+            .to_owned();
+        let new = format!("@rpath/{sdl_name}");
+        let mut perms = fs::metadata(&bundled)
+            .map_err(|e| e.to_string())?
+            .permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        fs::set_permissions(&bundled, perms).map_err(|e| e.to_string())?;
+        run(
+            Command::new(&tool).args(["-id", &new]).arg(&bundled),
+            "llvm-install-name-tool -id",
+        )?;
+        run(
+            Command::new(&tool)
+                .args(["-change", &old, &new])
+                .arg(executable),
+            "llvm-install-name-tool -change",
+        )?;
+        // Rewriting load commands invalidates signatures; re-sign ad hoc.
+        for file in [&bundled, &executable.to_path_buf()] {
+            run(
+                Command::new("codesign")
+                    .args(["--force", "--sign", "-"])
+                    .arg(file),
+                "codesign",
+            )?;
+        }
+    }
+    let _ = executable;
+    Ok(())
+}
+
+fn link(
+    objects: &[PathBuf],
+    runtime: &Path,
+    executable: &Path,
+    sdl_dir: &Path,
+) -> Result<(), String> {
     let prefix = env::var_os("LLVM_SYS_231_PREFIX")
         .ok_or("set LLVM_SYS_231_PREFIX to the locked LLVM 23.1.3 installation")?;
     let clang = PathBuf::from(prefix).join("bin/clang");
     let mut command = Command::new(&clang);
     command
         .arg("-fuse-ld=lld")
-        .arg(object)
+        .args(objects)
         .arg(runtime)
         .arg("-o")
-        .arg(executable);
+        .arg(executable)
+        .arg("-L")
+        .arg(sdl_dir)
+        .arg("-lSDL3");
     #[cfg(target_os = "macos")]
     {
         let sdk = Command::new("xcrun")
@@ -173,10 +283,13 @@ fn link(object: &Path, runtime: &Path, executable: &Path) -> Result<(), String> 
             .arg("-isysroot")
             .arg(sdk)
             .arg("-mmacosx-version-min=14.0.0")
-            .args(["-lSystem", "-lc", "-lm"]);
+            .args(["-lobjc", "-framework", "AppKit", "-lSystem", "-lc", "-lm"])
+            .arg("-Wl,-rpath,@executable_path");
     }
     #[cfg(target_os = "linux")]
-    command.args(["-lc", "-lm", "-lpthread", "-ldl", "-lgcc_s"]);
+    command
+        .args(["-lc", "-lm", "-lpthread", "-ldl", "-lgcc_s"])
+        .arg("-Wl,-rpath,$ORIGIN");
     let output = command
         .output()
         .map_err(|e| format!("cannot run {}: {e}", clang.display()))?;
@@ -204,6 +317,7 @@ pub fn build_package(
     options: &ProfileOptions,
 ) -> Result<PackageReport, String> {
     let runtime = runtime_library()?;
+    let (sdl_dir, sdl_name) = sdl_library()?;
     if output.exists() {
         return Err(format!(
             "output path already exists: {}; choose a new package path",
@@ -236,22 +350,28 @@ pub fn build_package(
     let temporary = parent.join(format!(".{name}.tmp-{}-{stamp}", std::process::id()));
     fs::create_dir(&temporary).map_err(|e| format!("cannot create temporary package: {e}"))?;
     let result = (|| {
-        let object = temporary.join("game.o");
         let started = Instant::now();
-        let emitted = emit_native_object(
+        let threads = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(10);
+        let (objects, emitted) = emit_native_objects(
             &rom,
             sha,
             &profile.entries,
             options.follow_direct_branches,
-            &object,
+            &temporary,
             optimization,
+            threads,
         )?;
         let emit_seconds = started.elapsed().as_secs_f64();
         let executable = temporary.join("game");
         let started = Instant::now();
-        link(&object, &runtime, &executable)?;
+        link(&objects, &runtime, &executable, &sdl_dir)?;
+        bundle_sdl(&temporary, &executable, &sdl_dir, &sdl_name)?;
         let link_seconds = started.elapsed().as_secs_f64();
-        fs::remove_file(&object).map_err(|e| format!("cannot remove build object: {e}"))?;
+        for object in &objects {
+            fs::remove_file(object).map_err(|e| format!("cannot remove build object: {e}"))?;
+        }
         let s = &emitted.stats;
         let inputs: Vec<String> = options
             .inputs
@@ -259,7 +379,7 @@ pub fn build_package(
             .map(|(f, l, k)| format!("\"{f}:{l}:0x{k:03X}\""))
             .collect();
         let manifest = format!(
-            "{{\n  \"format_version\": 2,\n  \"execution_mode\": \"aot-compatible\",\n  \"rom_sha256\": \"{sha_hex}\",\n  \"rom_size\": {},\n  \"core_version\": {},\n  \"hle_bios_version\": {},\n  \"native_abi_version\": 1,\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"interpreter\": \"gba-core (linked, used for shells, misses and non-ROM code)\",\n  \"jit\": false,\n  \"profile\": {{\"frames\": {}, \"inputs\": [{}], \"instructions\": {}, \"rom_instructions\": {}, \"outside_rom_instructions\": {}, \"entries\": {}, \"seconds\": {:.3}}},\n  \"native\": {{\"runs\": {}, \"instructions\": {}, \"shell_sites\": {}, \"static_entries\": {}, \"follow_direct_branches\": {}, \"emit_seconds\": {:.3}, \"link_seconds\": {:.3}}},\n  \"coverage_limits\": \"only ROM code is native; RAM code, shells and misses run in the interpreter and are counted at runtime\"\n}}\n",
+            "{{\n  \"format_version\": 2,\n  \"execution_mode\": \"aot-compatible\",\n  \"rom_sha256\": \"{sha_hex}\",\n  \"rom_size\": {},\n  \"core_version\": {},\n  \"hle_bios_version\": {},\n  \"native_abi_version\": 1,\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"interpreter\": \"gba-core (linked, used for shells, misses and non-ROM code)\",\n  \"jit\": false,\n  \"profile\": {{\"frames\": {}, \"inputs\": [{}], \"instructions\": {}, \"rom_instructions\": {}, \"outside_rom_instructions\": {}, \"entries\": {}, \"seconds\": {:.3}}},\n  \"native\": {{\"runs\": {}, \"instructions\": {}, \"shell_sites\": {}, \"static_entries\": {}, \"follow_direct_branches\": {}, \"emit_seconds\": {:.3}, \"link_seconds\": {:.3}}},\n  \"frontend\": \"sdl3 window by default (bundled {sdl_name}); --headless for scripted runs\",\n  \"coverage_limits\": \"only ROM code is native; RAM code, shells and misses run in the interpreter and are counted at runtime\"\n}}\n",
             rom.len(),
             gba_core::CORE_VERSION,
             gba_core::bios::HLE_VERSION,

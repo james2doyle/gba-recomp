@@ -16,6 +16,18 @@ O projeto inclui intake com SHA-256 e um fluxo estritamente AOT ROM→LLVM→exe
 
 O gate GBA-020 detecta o orçamento lógico do host (teto dez) e limita workers de fixtures e LLD por fase. No Mac mini M4, o padrão é Cargo `--jobs 10`, link do binário `gba-recomp` com LLD 10, grupos de fixtures até dez workers × LLD 1 e compilações individuais com LLD 10. Sete grupos independentes (LSL/LSR, ADD/SUB, Thumb Format 3, LDR word, LDRH, STRB/LDRB e NEGS) rodam sequencialmente. Em três rodadas alternadas do lote STRB/LDRB, as medianas foram 5,51 s com 1 worker × 10 threads LLD e 2,11 s com 10 workers × 1 thread: 61,6% menos wall time nesse grupo sintético. O gate completo aquecido anterior passou em 44,55 s; o run serial de equivalência também passou, sem comparar esses tempos como benchmark. No gate pós-SPEC-052, as 12 compilações/execuções da família NEGS levaram 2,444 s com 10 workers × LLD 1; o gate completo levou 141,08 s e acumulou 523,14 s de CPU (média derivada de 3,71 CPUs lógicas). Essa amostra não tem baseline para o grupo NEGS e não mede saturação sustentada. Os logs, hashes e limites estão em [SPEC-047](specs/SPEC-047-logical-cpu-budget.md), [sua evidência](knowledge/evidence/gba020-cpu-budget-accelerated-gate.json) e [evidência SPEC-052](knowledge/evidence/gba020-thumb-negs-macos-arm64.json). Discovery e emissão LLVM de uma ROM seguem seriais; a tentativa LeafGreen mais recente parou em `0x17C1` em 0,61 s, antes do link, portanto esse valor não mede throughput. O teto do M4 é dez CPUs lógicas. Consulte também [ADR-021](adr/ADR-021-bounded-gba020-gate-parallelism.md) e a [evidência histórica SPEC-038–043](knowledge/evidence/gba020-thumb-strict-aot-parallelism-macos-arm64.json).
 
+## Executar um jogo recompilado (`aot-compatible`)
+
+Requer Rust 1.99.0, o LLVM 23.1.3 de `toolchain.lock.toml` e SDL3 (Homebrew no macOS). A ROM é fornecida pelo usuário e nunca entra no pacote.
+
+```bash
+cargo build --release -p gba-recomp -p gba-native-rt
+target/release/gba-recomp compile --rom jogo.gba --out out/jogo --opt O2 --mode aot-compatible --profile-frames 3000
+out/jogo/game --rom jogo.gba --save out/jogo.sav
+```
+
+O `compile` executa o jogo no interpretador para descobrir o código usado (perfil, opcionalmente com `--profile-input FRAME:LEN:TECLAS`), compila esse código da ROM com LLVM e gera um executável com a SDL3 embutida. Na janela: `Esc`/`F1` abre o menu (vídeo, áudio, controles), o botão direito abre o menu de contexto nativo (macOS) ou o menu da janela (Linux), `F11` alterna tela cheia e `Tab` acelera. `--headless --frames N --verify-interpreter` compara o código nativo com o interpretador ciclo a ciclo. Código em RAM, shells e misses rodam no interpretador e aparecem nas métricas (SPEC-062/063).
+
 - [Arquitetura](docs/architecture.md) e [fluxo do usuário](docs/product-flow.md).
 - [Especificações](specs/README.md), [decisões](adr/README.md) e [plano](plans/PLAN-001-delivery.md).
 - [Baseline de toolchain](toolchain.lock.toml) e [decisão ADR-004](adr/ADR-004-toolchain-baseline.md).

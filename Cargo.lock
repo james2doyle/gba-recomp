@@ -97,6 +97,7 @@ name = "gba-native-rt"
 version = "0.1.0"
 dependencies = [
  "gba-core",
+ "gba-desktop",
  "sha2",
 ]
 
