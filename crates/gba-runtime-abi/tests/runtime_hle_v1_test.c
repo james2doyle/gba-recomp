@@ -253,6 +253,18 @@ static void test_store16_v4_ime_zero_masks_and_updates_latch(void) {
     assert(exit_state.next_pc == UINT32_C(0x08000084));
     assert(load_io16(0x208) == 0);
     assert_cpu_unchanged(before);
+
+    reset_fixture(0);
+    runtime.base.cpu.r[15] = UINT32_C(0x08000088);
+    machine.io[0x208] = 0xFF;
+    machine.io[0x209] = 0xFF;
+    const GbaRuntimeV2 odd_ea_before = runtime.base.cpu;
+    assert(gba_store16_v4(&runtime, &exit_state, UINT32_C(0x04000209),
+                          UINT32_C(0x0000FFFE)) == GBA_EXIT_CONTINUE_V2);
+    assert(exit_state.reason == GBA_EXIT_CONTINUE_V2);
+    assert(exit_state.next_pc == UINT32_C(0x08000088));
+    assert(load_io16(0x208) == 0);
+    assert_cpu_unchanged(odd_ea_before);
 }
 
 static void test_store16_v4_ime_enable_faults_atomically(void) {
@@ -280,6 +292,11 @@ static void test_store16_v4_delegates_ram_and_faults_other_io(void) {
     assert(machine.memory.ewram[0] == 0xCD);
     assert(machine.memory.ewram[1] == 0xAB);
 
+    assert(gba_store16_v4(&runtime, &exit_state, UINT32_C(0x03000001),
+                          UINT32_C(0x1234ABCD)) == GBA_EXIT_CONTINUE_V2);
+    assert(machine.memory.iwram[0] == 0xCD);
+    assert(machine.memory.iwram[1] == 0xAB);
+
     machine.io[0x204] = 0x5A;
     const GbaRuntimeV2 before = runtime.base.cpu;
     assert(gba_store16_v4(&runtime, &exit_state, UINT32_C(0x04000205), 0) ==
@@ -300,6 +317,36 @@ static void test_store16_v4_validates_machine_before_io_mutation(void) {
     assert(machine.io[0x208] == 1);
 }
 
+static void assert_store16_v4_validation_fault(uint32_t expected_fault_code) {
+    runtime.base.cpu.r[15] = UINT32_C(0x0800008A);
+    machine.io[0x208] = 1;
+    const GbaRuntimeV2 before = runtime.base.cpu;
+    const uint8_t ewram_before = machine.memory.ewram[0];
+    assert(gba_store16_v4(&runtime, &exit_state, UINT32_C(0x04000208), 0) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit_state.reason == GBA_EXIT_FAULT_V2);
+    assert(exit_state.next_pc == UINT32_C(0x0800008A));
+    assert(exit_state.fault_address == UINT32_C(0x04000208));
+    assert(exit_state.fault_code == expected_fault_code);
+    assert(machine.io[0x208] == 1);
+    assert(machine.memory.ewram[0] == ewram_before);
+    assert_cpu_unchanged(before);
+}
+
+static void test_store16_v4_rejects_invalid_versions_before_mutation(void) {
+    reset_fixture(0);
+    runtime.abi_version++;
+    assert_store16_v4_validation_fault(GBA_HLE_FAULT_RUNTIME_ABI_V1);
+
+    reset_fixture(0);
+    runtime.base.cpu.abi_version++;
+    assert_store16_v4_validation_fault(GBA_HLE_FAULT_CPU_ABI_V1);
+
+    reset_fixture(0);
+    machine.abi_version++;
+    assert_store16_v4_validation_fault(GBA_HLE_FAULT_MACHINE_ABI_V1);
+}
+
 int main(void) {
     reset_fixture(0);
     invoke_reset();
@@ -317,5 +364,6 @@ int main(void) {
     test_store16_v4_ime_enable_faults_atomically();
     test_store16_v4_delegates_ram_and_faults_other_io();
     test_store16_v4_validates_machine_before_io_mutation();
+    test_store16_v4_rejects_invalid_versions_before_mutation();
     return 0;
 }
