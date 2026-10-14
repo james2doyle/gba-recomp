@@ -29,3 +29,4 @@
 - [ADR-027-thumb-ldr-word-immediate](ADR-027-thumb-ldr-word-immediate.md)
 - [ADR-028-thumb-lsr-immediate](ADR-028-thumb-lsr-immediate.md)
 - [ADR-029-thumb-ldrh-immediate](ADR-029-thumb-ldrh-immediate.md)
+- [ADR-030-thumb-ime-store](ADR-030-thumb-ime-store.md)
