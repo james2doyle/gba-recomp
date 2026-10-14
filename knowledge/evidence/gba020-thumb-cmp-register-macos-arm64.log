@@ -1,0 +1,1327 @@
+GBA020_CPU_BUDGET os=Darwin arch=arm64 detector=sysctl-hw.logicalcpu detected_cpus=10 automatic_budget=10 budget_override=none effective_budget=10 cargo_jobs=10 cargo_link_threads=10 fixture_workers=10 group_link_threads=1 serial_link_threads=10 max_phase_slots=10 fallback=0
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.20s
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/tiny-counter.gba (256 bytes, mode=valid)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/package-O0
+rom_sha256: 374dd35b3fe29ad1b75b7bab03f776745da7875c72e97922d786c19574cbe760
+instructions_aot: 6
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/package-O2
+rom_sha256: 374dd35b3fe29ad1b75b7bab03f776745da7875c72e97922d786c19574cbe760
+instructions_aot: 6
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/msr-mode.gba (256 bytes, mode=msr-mode)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/msr-package-O0
+rom_sha256: 886efdad3b53fad915ee810125fd288f401d80208e1a5c10380174834fd9f82b
+instructions_aot: 4
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/msr-package-O2
+rom_sha256: 886efdad3b53fad915ee810125fd288f401d80208e1a5c10380174834fd9f82b
+instructions_aot: 4
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/literal-load.gba (256 bytes, mode=literal-load)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/literal-package-O0
+rom_sha256: 838a61f71ef19e51430ecd767d1035085876c3cf96749661e8a4671d9dd7e729
+instructions_aot: 3
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/literal-package-O2
+rom_sha256: 838a61f71ef19e51430ecd767d1035085876c3cf96749661e8a4671d9dd7e729
+instructions_aot: 3
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/literal-condition-false.gba (256 bytes, mode=literal-condition-false)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/literal-condition-false-package
+rom_sha256: 91615eef86114073b2f2b3eb0ed82a8b130f5f725339be3d3e2bf8859848e728
+instructions_aot: 4
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/literal-out-of-range.gba (256 bytes, mode=literal-out-of-range)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/add-pc.gba (256 bytes, mode=add-pc)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/add-pc-package-O0
+rom_sha256: ed7c59f2146a9864f00dced8c536e547890566faf0aa4d7319d3949dcde8a801
+instructions_aot: 3
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/add-pc-package-O2
+rom_sha256: ed7c59f2146a9864f00dced8c536e547890566faf0aa4d7319d3949dcde8a801
+instructions_aot: 3
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/add-pc-condition-false.gba (256 bytes, mode=add-pc-condition-false)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/add-pc-condition-false-package
+rom_sha256: 972f9d596432876703194f91fe26d6a6f786b1006a8d1a188c8bbeb06bf5b00d
+instructions_aot: 4
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/mov-register-pc.gba (256 bytes, mode=mov-register-pc)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/mov-register-pc-package-O0
+rom_sha256: 139a13ae3bb14867c3fd35cd5f9f5a66f6c62a994d1e7ff5b9e0e440aa510a78
+instructions_aot: 4
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/mov-register-pc-package-O2
+rom_sha256: 139a13ae3bb14867c3fd35cd5f9f5a66f6c62a994d1e7ff5b9e0e440aa510a78
+instructions_aot: 4
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/mov-register-condition-false.gba (256 bytes, mode=mov-register-condition-false)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/mov-register-condition-false-package-O0
+rom_sha256: d6013db5cc11612af39b2b7d59387659d3d83f39e0ea4fc442a002ce3b1e3c5e
+instructions_aot: 4
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/mov-register-condition-false-package-O2
+rom_sha256: d6013db5cc11612af39b2b7d59387659d3d83f39e0ea4fc442a002ce3b1e3c5e
+instructions_aot: 4
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/mov-register-shift.gba (256 bytes, mode=mov-register-shift)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/store-ewram.gba (256 bytes, mode=store-ewram)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/store-ewram-package-O0
+rom_sha256: 43052d600b708cb8031757abfa13dea0bcfe5ddf5bfc60765bd673b505503957
+instructions_aot: 5
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/store-ewram-package-O2
+rom_sha256: 43052d600b708cb8031757abfa13dea0bcfe5ddf5bfc60765bd673b505503957
+instructions_aot: 5
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/store-iwram.gba (256 bytes, mode=store-iwram)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/store-iwram-package-O0
+rom_sha256: 46f8f87e091e8cf91a4b711d6e0c43ca8528a271546d71ddc609ba30096f945f
+instructions_aot: 5
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/store-iwram-package-O2
+rom_sha256: 46f8f87e091e8cf91a4b711d6e0c43ca8528a271546d71ddc609ba30096f945f
+instructions_aot: 5
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/store-condition-false.gba (256 bytes, mode=store-condition-false)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/store-condition-false-package
+rom_sha256: a480dc56f377868fa037ee192e92e98073e893e72098b2f35c9c402529235fc4
+instructions_aot: 5
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/store-out-of-range.gba (256 bytes, mode=store-out-of-range)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/store-out-of-range-package
+rom_sha256: d265f63f2afa80c2bf6957c14cd8c29d5c09903fb7b49969b2f82fcbd05cb130
+instructions_aot: 5
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/store-unaligned.gba (256 bytes, mode=store-unaligned)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/store-unaligned-package
+rom_sha256: 5cd4e2ee521d30424d8606dd9365a8ba315541e0447c3fc701af50cb8e404044
+instructions_aot: 5
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ewram-zero-even.gba (256 bytes, mode=thumb-strh-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ewram-zero-even-package-O0
+rom_sha256: 315982a5f2eb9c5689280cd14608b19e914e59380889695b7d9f7ba1a3ff3102
+instructions_aot: 11
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ewram-zero-even-package-O2
+rom_sha256: 315982a5f2eb9c5689280cd14608b19e914e59380889695b7d9f7ba1a3ff3102
+instructions_aot: 11
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ewram-thirtyone-odd-alias.gba (256 bytes, mode=thumb-strh-ewram-thirtyone-odd-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ewram-thirtyone-odd-alias-package-O0
+rom_sha256: bcbfb4993ecca29c9d189823e391f28f28747aa372ae372d3098441f294dc76c
+instructions_aot: 11
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ewram-thirtyone-odd-alias-package-O2
+rom_sha256: bcbfb4993ecca29c9d189823e391f28f28747aa372ae372d3098441f294dc76c
+instructions_aot: 11
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-iwram-zero-odd.gba (256 bytes, mode=thumb-strh-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-iwram-zero-odd-package-O0
+rom_sha256: e08ce593f1152c09e0d244d652009354568c22fa395452f1a1971992599e29f1
+instructions_aot: 11
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-iwram-zero-odd-package-O2
+rom_sha256: e08ce593f1152c09e0d244d652009354568c22fa395452f1a1971992599e29f1
+instructions_aot: 11
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strh-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-iwram-thirtyone-even-package-O0
+rom_sha256: 3415552be7c154c58764aa5aeec2df70bd73746ec64af76c4df1ed3348c48bde
+instructions_aot: 11
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-iwram-thirtyone-even-package-O2
+rom_sha256: 3415552be7c154c58764aa5aeec2df70bd73746ec64af76c4df1ed3348c48bde
+instructions_aot: 11
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ime-clear.gba (256 bytes, mode=thumb-strh-ime-clear)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ime-clear-package-O0
+rom_sha256: 56383efc5c2ccbbd6ca85f248e7796bd73b5488b4150777ac60eed9601699689
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-ime-clear-package-O2
+rom_sha256: 56383efc5c2ccbbd6ca85f248e7796bd73b5488b4150777ac60eed9601699689
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ie-ime-section.gba (4096 bytes, mode=thumb-ie-ime-section)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ie-ime-section-package-O0
+rom_sha256: 2bfefce1ae1fcaf7ddbdbb8cf70dbe385fef8c9af1a4fd735f85320f4ce52bfb
+instructions_aot: 27
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ie-ime-section-package-O2
+rom_sha256: 2bfefce1ae1fcaf7ddbdbb8cf70dbe385fef8c9af1a4fd735f85320f4ce52bfb
+instructions_aot: 27
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-invalid-odd.gba (256 bytes, mode=thumb-strh-invalid-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-invalid-odd-package
+rom_sha256: 831f63587ba2ce3317495e91146d1afd3531c3b4159715cb2bb52e8175ad7563
+instructions_aot: 11
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-ewram-zero.gba (256 bytes, mode=thumb-strword-ewram-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-ewram-zero-package-O0
+rom_sha256: 6e40639aadac9b2c06b7ce03247f3df1f3700c21590724d91e5e800c476f0814
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-ewram-zero-package-O2
+rom_sha256: 6e40639aadac9b2c06b7ce03247f3df1f3700c21590724d91e5e800c476f0814
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-ewram-thirtyone-alias.gba (256 bytes, mode=thumb-strword-ewram-thirtyone-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-ewram-thirtyone-alias-package-O0
+rom_sha256: 1681c1bb4c92fd7517983e89e79e1934b7aca471a21056099ae0d598539347d2
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-ewram-thirtyone-alias-package-O2
+rom_sha256: 1681c1bb4c92fd7517983e89e79e1934b7aca471a21056099ae0d598539347d2
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-iwram-thirtyone.gba (256 bytes, mode=thumb-strword-iwram-thirtyone)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-iwram-thirtyone-package-O0
+rom_sha256: 751454858ee9b319fe93632a40ef54d4002c08a5995814ec2954be53721adffc
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-iwram-thirtyone-package-O2
+rom_sha256: 751454858ee9b319fe93632a40ef54d4002c08a5995814ec2954be53721adffc
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-invalid-unaligned.gba (256 bytes, mode=thumb-strword-invalid-unaligned)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-invalid-unaligned-package
+rom_sha256: 20a4d7bbfd74433702f59f1264540c66a20cf792583559f470a7902b7d764a49
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-invalid-region.gba (256 bytes, mode=thumb-strword-invalid-region)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-invalid-region-package
+rom_sha256: dc68d65e443b955ff7762ce4f62403bee8bd544d57f9cbc7ff07ff17a1d2b21a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-mmio-dma.gba (256 bytes, mode=thumb-strword-mmio-dma)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-mmio-dma-package
+rom_sha256: 2aa6adc82e85f78f8387468495e48127e8eb5941a2135da1fadf922083352107
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-wraparound.gba (256 bytes, mode=thumb-strword-wraparound)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-wraparound-package
+rom_sha256: fe3d8a100cb5baafea06d955db7f6523538c3b1fda82a6fed2ca61a90d55b1da
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-register-unsupported.gba (256 bytes, mode=thumb-ldrword-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-sp-unsupported.gba (256 bytes, mode=thumb-ldrword-sp-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strword-register-unsupported.gba (256 bytes, mode=thumb-strword-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strh-register-unsupported.gba (256 bytes, mode=thumb-strh-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even.gba (256 bytes, mode=thumb-strb-ewram-zero-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O0
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-zero-even-package-O2
+rom_sha256: 244ce674d5749b46e02920600434fe81ba0d6dd948d66f8a41574157b6229cda
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O0
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-odd-package-O2
+rom_sha256: 556fe0ae959316da110d48c30a74b25b54fa1e4d7faceacab1c9a7fbbe3ffad3
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd.gba (256 bytes, mode=thumb-strb-iwram-zero-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O0
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-zero-odd-package-O2
+rom_sha256: 152116f1c26a17edcdf7fb223bee8a35cea7d4b5330fe5ddca8701d2e9a78d1c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even.gba (256 bytes, mode=thumb-strb-iwram-thirtyone-even)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O0
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-iwram-thirtyone-even-package-O2
+rom_sha256: b077f0451e5ec8825920b1b9f35d3fb9fa1ca272be7f3175f47f013ff8c26e3a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias.gba (256 bytes, mode=thumb-strb-ewram-thirtyone-even-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O0
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-ewram-thirtyone-even-alias-package-O2
+rom_sha256: dfc66b3bce9afe222aea03119b5a0ed20293c2317ec4f4365035864f978df798
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80.gba (256 bytes, mode=thumb-ldrb-ewram-zero-even-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O0
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-zero-even-80-package-O2
+rom_sha256: 45118982785e14b911aa9c228985294912b92779292c4da5a8d56be75408c991
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-odd-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O0
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-odd-ff-package-O2
+rom_sha256: d4bcc5c0806f3c158836aa32a4102f930fc58f49b4305a95b07873e145bf4b2a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f.gba (256 bytes, mode=thumb-ldrb-iwram-zero-odd-7f)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O0
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-zero-odd-7f-package-O2
+rom_sha256: 7d71a30e5bf8b148a3a6f9ca2ede808fff28a1bedddf73f38f336b1a9796ae79
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero.gba (256 bytes, mode=thumb-ldrb-iwram-thirtyone-even-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O0
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-iwram-thirtyone-even-zero-package-O2
+rom_sha256: 13215cec0563762a659c9eba21bd195171ed5cb209286a92bb6248efda93326e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80.gba (256 bytes, mode=thumb-ldrb-ewram-thirtyone-alias-80)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O0
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-ewram-thirtyone-alias-80-package-O2
+rom_sha256: 390f7511d8950771aabc10acac0f46d3df678dd4fa3c0a4e563c73f42206bc51
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-byte-load-store jobs=10 link_threads=1 wall_ms=2064.9
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-ewram-zero.gba (256 bytes, mode=thumb-ldrword-ewram-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-ewram-zero-package-O0
+rom_sha256: 22f2c1e123ddf9e910ce41268d1037ee0e918c9c78bfd6e24db9f405dda01f95
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-ewram-zero-package-O2
+rom_sha256: 22f2c1e123ddf9e910ce41268d1037ee0e918c9c78bfd6e24db9f405dda01f95
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-ewram-thirtyone.gba (256 bytes, mode=thumb-ldrword-ewram-thirtyone)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-ewram-thirtyone-package-O0
+rom_sha256: 2afbdfded96361dd45ca18499dc211dcc625a41b54e395ff10a6b0f02a05777a
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-ewram-thirtyone-package-O2
+rom_sha256: 2afbdfded96361dd45ca18499dc211dcc625a41b54e395ff10a6b0f02a05777a
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-iwram-thirtyone.gba (256 bytes, mode=thumb-ldrword-iwram-thirtyone)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-iwram-thirtyone-package-O0
+rom_sha256: 191c3db558421206eef72c723643497345a0c08e6054cc0b5e468ac06003af6b
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-iwram-thirtyone-package-O2
+rom_sha256: 191c3db558421206eef72c723643497345a0c08e6054cc0b5e468ac06003af6b
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-one.gba (256 bytes, mode=thumb-ldrword-unaligned-one)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-one-package-O0
+rom_sha256: 200db9fe7c81d36e49a79d4fe3523d9ae2af7eeea41c4999868d6909d8313435
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-one-package-O2
+rom_sha256: 200db9fe7c81d36e49a79d4fe3523d9ae2af7eeea41c4999868d6909d8313435
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-two.gba (256 bytes, mode=thumb-ldrword-unaligned-two)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-two-package-O0
+rom_sha256: 2261d98ef3d10f6b2147162d4ee5810333c662b6275ed630e43eeb9c0ac6ae29
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-two-package-O2
+rom_sha256: 2261d98ef3d10f6b2147162d4ee5810333c662b6275ed630e43eeb9c0ac6ae29
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-three.gba (256 bytes, mode=thumb-ldrword-unaligned-three)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-three-package-O0
+rom_sha256: 6adeb5f186eb348122ac70b109ba9f5ab121d2331f82e4086e729517642c2a8d
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-unaligned-three-package-O2
+rom_sha256: 6adeb5f186eb348122ac70b109ba9f5ab121d2331f82e4086e729517642c2a8d
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-alias.gba (256 bytes, mode=thumb-ldrword-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-alias-package-O0
+rom_sha256: ed5609c40560d62e42541403df4c489d3ef85d81e21179f2f637b32f9731a1f6
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-alias-package-O2
+rom_sha256: ed5609c40560d62e42541403df4c489d3ef85d81e21179f2f637b32f9731a1f6
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-mmio-dma.gba (256 bytes, mode=thumb-ldrword-mmio-dma)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-mmio-dma-package-O0
+rom_sha256: b174f8daf31eff8aa32c9e8b8426e3dd190a786926e51de82949d1fce20acf98
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-mmio-dma-package-O2
+rom_sha256: b174f8daf31eff8aa32c9e8b8426e3dd190a786926e51de82949d1fce20acf98
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-wraparound.gba (256 bytes, mode=thumb-ldrword-wraparound)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-wraparound-package-O0
+rom_sha256: bf99c2b1d7f3c31f585e9f60739addfee18a4f5a78b985c999155353c81aadbb
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrword-wraparound-package-O2
+rom_sha256: bf99c2b1d7f3c31f585e9f60739addfee18a4f5a78b985c999155353c81aadbb
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-ldrword jobs=10 link_threads=1 wall_ms=1836.4
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-zero.gba (256 bytes, mode=thumb-ldrh-ewram-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-zero-package-O0
+rom_sha256: 88fd5673fbab0df694c594952cb913b0c74b52682f033a169906fa364a828396
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-zero-package-O2
+rom_sha256: 88fd5673fbab0df694c594952cb913b0c74b52682f033a169906fa364a828396
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-odd.gba (256 bytes, mode=thumb-ldrh-ewram-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-odd-package-O0
+rom_sha256: 55a6a7c4b4947d3bcd1654cb0591b05ae6caf20ef7b8cce4cb0f8c9c520f3cd0
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-odd-package-O2
+rom_sha256: 55a6a7c4b4947d3bcd1654cb0591b05ae6caf20ef7b8cce4cb0f8c9c520f3cd0
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-thirtyone.gba (256 bytes, mode=thumb-ldrh-ewram-thirtyone)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-thirtyone-package-O0
+rom_sha256: 81807f4b0726986712f4ae761fd6afab241298f9cf5f72c7eda65dc075cc3093
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-ewram-thirtyone-package-O2
+rom_sha256: 81807f4b0726986712f4ae761fd6afab241298f9cf5f72c7eda65dc075cc3093
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-iwram-thirtyone.gba (256 bytes, mode=thumb-ldrh-iwram-thirtyone)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-iwram-thirtyone-package-O0
+rom_sha256: 9b9c46673b8763df57db3fcd047fdaa2bc2d4602a7353f24b1c2d531178230c1
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-iwram-thirtyone-package-O2
+rom_sha256: 9b9c46673b8763df57db3fcd047fdaa2bc2d4602a7353f24b1c2d531178230c1
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-leafgreen-encoding.gba (256 bytes, mode=thumb-ldrh-leafgreen-encoding)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-leafgreen-encoding-package-O0
+rom_sha256: 7005b3e8ec017ea52a025a3ac9494a7222cfe617df9197c295ab8c9de49ab409
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-leafgreen-encoding-package-O2
+rom_sha256: 7005b3e8ec017ea52a025a3ac9494a7222cfe617df9197c295ab8c9de49ab409
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-alias.gba (256 bytes, mode=thumb-ldrh-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-alias-package-O0
+rom_sha256: 4cd9110caf6678dd5d61ce04b2872fafec9716340403298d1bcd2f3ce93ff619
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-alias-package-O2
+rom_sha256: 4cd9110caf6678dd5d61ce04b2872fafec9716340403298d1bcd2f3ce93ff619
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-mmio-dma.gba (256 bytes, mode=thumb-ldrh-mmio-dma)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-mmio-dma-package-O0
+rom_sha256: 48782856f6940dc15945ce02504d5652d9e7e2af235853fb23588e8d2fb29a00
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-mmio-dma-package-O2
+rom_sha256: 48782856f6940dc15945ce02504d5652d9e7e2af235853fb23588e8d2fb29a00
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-wraparound.gba (256 bytes, mode=thumb-ldrh-wraparound)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-wraparound-package-O0
+rom_sha256: c7a8adee7d5929889b23e633ed67e24d7f22f1968a68190ba83f0a37dc1cb83c
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-wraparound-package-O2
+rom_sha256: c7a8adee7d5929889b23e633ed67e24d7f22f1968a68190ba83f0a37dc1cb83c
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrh-register-unsupported.gba (256 bytes, mode=thumb-ldrh-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrsh-register-unsupported.gba (256 bytes, mode=thumb-ldrsh-register-unsupported)
+GBA020_GROUP_TIMING group=thumb-ldrh jobs=10 link_threads=1 wall_ms=1674.2
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-invalid-odd.gba (256 bytes, mode=thumb-ldrb-invalid-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-invalid-odd-package-O0
+rom_sha256: 22c3cc1360fe113ed3a94c4447980e216bd53529007037a5dc6955582c5bcfa4
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-invalid-odd-package-O2
+rom_sha256: 22c3cc1360fe113ed3a94c4447980e216bd53529007037a5dc6955582c5bcfa4
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-wraparound.gba (256 bytes, mode=thumb-ldrb-wraparound)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-wraparound-package-O0
+rom_sha256: 2753be2697bfccb5ab9e1e66b152122b4fb62b7fc0be7e498e81168373a1e989
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-wraparound-package-O2
+rom_sha256: 2753be2697bfccb5ab9e1e66b152122b4fb62b7fc0be7e498e81168373a1e989
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-invalid-odd.gba (256 bytes, mode=thumb-strb-invalid-odd)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-invalid-odd-package-O0
+rom_sha256: cf157f9c1a989b9f02082e966c3a22ca30508de67035401792c5b2554a6f633e
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-invalid-odd-package-O2
+rom_sha256: cf157f9c1a989b9f02082e966c3a22ca30508de67035401792c5b2554a6f633e
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-wraparound.gba (256 bytes, mode=thumb-strb-wraparound)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-wraparound-package-O0
+rom_sha256: adc79ec166cedad006fb9eeaf094d399b39526291588f00f023ba6a48e8e54bc
+instructions_aot: 14
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-wraparound-package-O2
+rom_sha256: adc79ec166cedad006fb9eeaf094d399b39526291588f00f023ba6a48e8e54bc
+instructions_aot: 14
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldrb-register-unsupported.gba (256 bytes, mode=thumb-ldrb-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-strb-register-unsupported.gba (256 bytes, mode=thumb-strb-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-pop-r3.gba (256 bytes, mode=thumb-pop-r3)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-pop-multiple.gba (256 bytes, mode=thumb-pop-multiple)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-pop-empty-unsupported.gba (256 bytes, mode=thumb-pop-empty-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-pop-pc-unsupported.gba (256 bytes, mode=thumb-pop-pc-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldmia-rom-bx.gba (256 bytes, mode=thumb-ldmia-rom-bx)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldmia-iwram-bx.gba (256 bytes, mode=thumb-ldmia-iwram-bx)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldmia-rom-multibase-ne.gba (256 bytes, mode=thumb-ldmia-rom-multibase-ne)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldmia-rom-multibase-eq.gba (256 bytes, mode=thumb-ldmia-rom-multibase-eq)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-stmia-iwram-bx.gba (256 bytes, mode=thumb-stmia-iwram-bx)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldmia-rom-out-of-range.gba (256 bytes, mode=thumb-ldmia-rom-out-of-range)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldmia-empty-unsupported.gba (256 bytes, mode=thumb-ldmia-empty-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-stmia-empty-unsupported.gba (256 bytes, mode=thumb-stmia-empty-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-stmia-base-unpredictable.gba (256 bytes, mode=thumb-stmia-base-unpredictable)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-stack-return.gba (256 bytes, mode=thumb-stack-return)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-stack-return-unknown.gba (256 bytes, mode=thumb-stack-return-unknown)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-push.gba (256 bytes, mode=thumb-push)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-push-package-O0
+rom_sha256: 91cae7f3ed2094ee467ab9c6b57a2d6599081d9f8f5c58c7e629c9c7858484f3
+instructions_aot: 15
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-push-package-O2
+rom_sha256: 91cae7f3ed2094ee467ab9c6b57a2d6599081d9f8f5c58c7e629c9c7858484f3
+instructions_aot: 15
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-mov.gba (256 bytes, mode=thumb-mov)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-mov-package-O0
+rom_sha256: f0a3d7ceabeaa3571548d286f949de58522bb025be7aaef2b4969e626c5ea458
+instructions_aot: 11
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-mov-package-O2
+rom_sha256: f0a3d7ceabeaa3571548d286f949de58522bb025be7aaef2b4969e626c5ea458
+instructions_aot: 11
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-movs-immediate.gba (256 bytes, mode=thumb-movs-immediate)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-movs-immediate-package-O0
+rom_sha256: b76c5b37cac84a85cac608e9cf806e65468bd4373dfb6b4e757de914d899ebbe
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-movs-immediate-package-O2
+rom_sha256: b76c5b37cac84a85cac608e9cf806e65468bd4373dfb6b4e757de914d899ebbe
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-movs-zero.gba (256 bytes, mode=thumb-movs-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-movs-zero-package-O0
+rom_sha256: 9be9f73578c0cf5ce037d2022b042f93bc9c70cb4ffed90f65aecea4e87fea62
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-movs-zero-package-O2
+rom_sha256: 9be9f73578c0cf5ce037d2022b042f93bc9c70cb4ffed90f65aecea4e87fea62
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-movs-zero.gba (256 bytes, mode=thumb-f3-movs-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-movs-zero-package-O0
+rom_sha256: ba1a38297cefa1e4bc4b17a4f7fe77f2ef9971f07755215af4c60d6a661726a6
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-movs-zero-package-O2
+rom_sha256: ba1a38297cefa1e4bc4b17a4f7fe77f2ef9971f07755215af4c60d6a661726a6
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-movs-ff.gba (256 bytes, mode=thumb-f3-movs-ff)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-movs-ff-package-O0
+rom_sha256: 9179304cbc82af961a6d21fb633ab6d8b635e004dc688fabf2b6144ee6ec44a9
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-movs-ff-package-O2
+rom_sha256: 9179304cbc82af961a6d21fb633ab6d8b635e004dc688fabf2b6144ee6ec44a9
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-equal.gba (256 bytes, mode=thumb-f3-cmp-equal)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-equal-package-O0
+rom_sha256: 2af934922267788713cc9a5f7f68311e3a86dd6d8f31359ca2cdbbd90faca2f5
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-equal-package-O2
+rom_sha256: 2af934922267788713cc9a5f7f68311e3a86dd6d8f31359ca2cdbbd90faca2f5
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-borrow.gba (256 bytes, mode=thumb-f3-cmp-borrow)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-borrow-package-O0
+rom_sha256: 28b1dd59f1d7f7ab6e22524ed699ec9206ef8ff61d11e02f7fda7ea7e768b61f
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-borrow-package-O2
+rom_sha256: 28b1dd59f1d7f7ab6e22524ed699ec9206ef8ff61d11e02f7fda7ea7e768b61f
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-overflow.gba (256 bytes, mode=thumb-f3-cmp-overflow)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-overflow-package-O0
+rom_sha256: a0f3f88cbd7046eae5feade33347f45a99a5a2dd144d3845d321321e0d2cefbf
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-cmp-overflow-package-O2
+rom_sha256: a0f3f88cbd7046eae5feade33347f45a99a5a2dd144d3845d321321e0d2cefbf
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-carry.gba (256 bytes, mode=thumb-f3-add-carry)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-carry-package-O0
+rom_sha256: 76aa2765da32e2bb6bb595e29d2e7651f6d6180ec07f62986cc7b91c070e9b41
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-carry-package-O2
+rom_sha256: 76aa2765da32e2bb6bb595e29d2e7651f6d6180ec07f62986cc7b91c070e9b41
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-overflow.gba (256 bytes, mode=thumb-f3-add-overflow)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-overflow-package-O0
+rom_sha256: 22f2179ba0c61eba7a14c9f916f424533b57179262bf834d8b56ad8895a2f4f1
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-overflow-package-O2
+rom_sha256: 22f2179ba0c61eba7a14c9f916f424533b57179262bf834d8b56ad8895a2f4f1
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-alias.gba (256 bytes, mode=thumb-f3-add-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-alias-package-O0
+rom_sha256: 675f8b32327081d92ca10a6d4cbaae532c06f427dd29e1a903a9769dfad77130
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-add-alias-package-O2
+rom_sha256: 675f8b32327081d92ca10a6d4cbaae532c06f427dd29e1a903a9769dfad77130
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-sub-borrow.gba (256 bytes, mode=thumb-f3-sub-borrow)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-sub-borrow-package-O0
+rom_sha256: c93a6fdf3138582b5d6decc00167a0ea843f327b4820dde4f5379ff25a0fa2f2
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-sub-borrow-package-O2
+rom_sha256: c93a6fdf3138582b5d6decc00167a0ea843f327b4820dde4f5379ff25a0fa2f2
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-sub-overflow.gba (256 bytes, mode=thumb-f3-sub-overflow)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-sub-overflow-package-O0
+rom_sha256: 71a31eeb1cba061fe6edbfa6c016f49cc3723f69525d037c4c267bc32e768bb2
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-sub-overflow-package-O2
+rom_sha256: 71a31eeb1cba061fe6edbfa6c016f49cc3723f69525d037c4c267bc32e768bb2
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-format3 jobs=10 link_threads=1 wall_ms=2058.6
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-f3-neighbor-unsupported.gba (256 bytes, mode=thumb-f3-neighbor-unsupported)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-zero-carry-clear-package-O0
+rom_sha256: 39c1e3d018f00cdb18b20fee5bf1548b974366ac718ce18b5db272ca6a556cbf
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-zero-carry-clear-package-O2
+rom_sha256: 39c1e3d018f00cdb18b20fee5bf1548b974366ac718ce18b5db272ca6a556cbf
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-zero-carry-set-package-O0
+rom_sha256: d6a9556a74c3037eb71deaa58167a4bcfe378d807fe76b417590885b33e69195
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-zero-carry-set-package-O2
+rom_sha256: d6a9556a74c3037eb71deaa58167a4bcfe378d807fe76b417590885b33e69195
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-one-carry-package-O0
+rom_sha256: 50b405938db7a6fb15a66ac4cd58bc8752da739209c0ff2e2970578a67810b26
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-one-carry-package-O2
+rom_sha256: 50b405938db7a6fb15a66ac4cd58bc8752da739209c0ff2e2970578a67810b26
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-nineteen-package-O0
+rom_sha256: 39084a6a8ed0d23a8142af25ca7473f8234785f5d04e07b986cac252d53e6429
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-nineteen-package-O2
+rom_sha256: 39084a6a8ed0d23a8142af25ca7473f8234785f5d04e07b986cac252d53e6429
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-thirtyone-package-O0
+rom_sha256: 4e5b5e1fdede49666331246068d19d7c7a84dc7fcfc44e5cbb8ae57ca3276282
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-thirtyone-package-O2
+rom_sha256: 4e5b5e1fdede49666331246068d19d7c7a84dc7fcfc44e5cbb8ae57ca3276282
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-nonalias-package-O0
+rom_sha256: 1d8ba9cba9d55d1810e2dc980c726ffa0b2978ce0cd7193a6bac9febc456bf97
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-nonalias-package-O2
+rom_sha256: 1d8ba9cba9d55d1810e2dc980c726ffa0b2978ce0cd7193a6bac9febc456bf97
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-bx-package-O0
+rom_sha256: 68cf96b1dfc362681e9f04726f7b34cebd5b781c081fd0d57c4ec1450787d306
+instructions_aot: 7
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-bx-package-O2
+rom_sha256: 68cf96b1dfc362681e9f04726f7b34cebd5b781c081fd0d57c4ec1450787d306
+instructions_aot: 7
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-zero-carry-clear-package-O0
+rom_sha256: 827bf33d3ef73135d95c8aab02353296c38369067dde4653c472e454d23d4ff4
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-zero-carry-clear-package-O2
+rom_sha256: 827bf33d3ef73135d95c8aab02353296c38369067dde4653c472e454d23d4ff4
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-zero-carry-set-package-O0
+rom_sha256: 342e49c23de00097e1d1d710503399bb08a85f56b0bb412a020803cb56bbfadb
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-zero-carry-set-package-O2
+rom_sha256: 342e49c23de00097e1d1d710503399bb08a85f56b0bb412a020803cb56bbfadb
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-one-carry-package-O0
+rom_sha256: 7e5f78f8eb0bb3f6b7807d6de2fcdc9e78532c421aa06cb8d2a9bf342ff82bff
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-one-carry-package-O2
+rom_sha256: 7e5f78f8eb0bb3f6b7807d6de2fcdc9e78532c421aa06cb8d2a9bf342ff82bff
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-sixteen-package-O0
+rom_sha256: ff7ca723d3d92cd6682ab95b785be8b142184ecfda7462ef7eb8367aab07a76b
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-sixteen-package-O2
+rom_sha256: ff7ca723d3d92cd6682ab95b785be8b142184ecfda7462ef7eb8367aab07a76b
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-thirtyone-package-O0
+rom_sha256: 36c70d187c964de7db25a53686ad15c0a07d15e598b14dd8855a309ac5a7d246
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-thirtyone-package-O2
+rom_sha256: 36c70d187c964de7db25a53686ad15c0a07d15e598b14dd8855a309ac5a7d246
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-alias-package-O0
+rom_sha256: b785608f4c18d2d39318a222d486ca4ffb09488c943f50eef3b3bae6e6d1cb00
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-alias-package-O2
+rom_sha256: b785608f4c18d2d39318a222d486ca4ffb09488c943f50eef3b3bae6e6d1cb00
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-lsl-lsr jobs=10 link_threads=1 wall_ms=2780.6
+GBA-020 LSL/LSR fixtures passed: jobs=10 LLD=1
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsr-register-unsupported.gba (256 bytes, mode=thumb-lsr-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-lsl-register-unsupported.gba (256 bytes, mode=thumb-lsl-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-register.gba (256 bytes, mode=thumb-addsub-add-register)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-register-package-O0
+rom_sha256: 378482d7778d2be5e7df712ba2c69fe7aa1c9481edf132bda036b28618686aa5
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-register-package-O2
+rom_sha256: 378482d7778d2be5e7df712ba2c69fe7aa1c9481edf132bda036b28618686aa5
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-register.gba (256 bytes, mode=thumb-addsub-sub-register)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-register-package-O0
+rom_sha256: 98089022d217080ef9e62cf45912a9a2032a0c27ff650ea786e714c5feeff1a1
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-register-package-O2
+rom_sha256: 98089022d217080ef9e62cf45912a9a2032a0c27ff650ea786e714c5feeff1a1
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-zero.gba (256 bytes, mode=thumb-addsub-add-imm-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-zero-package-O0
+rom_sha256: 581f3c80062cb112198fb320b30aac0c9cd185a2cb7cc41d768ce795c9b0188f
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-zero-package-O2
+rom_sha256: 581f3c80062cb112198fb320b30aac0c9cd185a2cb7cc41d768ce795c9b0188f
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-seven.gba (256 bytes, mode=thumb-addsub-add-imm-seven)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-seven-package-O0
+rom_sha256: 2b10581d085e183e2122d433d2acd0d10d24188638f5ab6daa641fad26ba0402
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-seven-package-O2
+rom_sha256: 2b10581d085e183e2122d433d2acd0d10d24188638f5ab6daa641fad26ba0402
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-zero.gba (256 bytes, mode=thumb-addsub-sub-imm-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-zero-package-O0
+rom_sha256: 75809af5bc5b8030b0229ba377daa6793baca0afcfede5d9362418217bebf108
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-zero-package-O2
+rom_sha256: 75809af5bc5b8030b0229ba377daa6793baca0afcfede5d9362418217bebf108
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-seven.gba (256 bytes, mode=thumb-addsub-sub-imm-seven)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-seven-package-O0
+rom_sha256: 6be1f3090d6d4e0640f102b3ae1e43c4854cd5ff3c87749c3d51250ca2867526
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-seven-package-O2
+rom_sha256: 6be1f3090d6d4e0640f102b3ae1e43c4854cd5ff3c87749c3d51250ca2867526
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-carry.gba (256 bytes, mode=thumb-addsub-add-imm-carry)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-carry-package-O0
+rom_sha256: 63fec67f6eed35438ae60ab3482e00adb3a8897564466ec48f627cd56321d2f8
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-add-imm-carry-package-O2
+rom_sha256: 63fec67f6eed35438ae60ab3482e00adb3a8897564466ec48f627cd56321d2f8
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-overflow.gba (256 bytes, mode=thumb-addsub-sub-imm-overflow)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-overflow-package-O0
+rom_sha256: 31067a6b747c54c03c8123a2aa73e442a3bfa712798f0ff6cb2daabf9104359e
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-sub-imm-overflow-package-O2
+rom_sha256: 31067a6b747c54c03c8123a2aa73e442a3bfa712798f0ff6cb2daabf9104359e
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb-addsub jobs=10 link_threads=1 wall_ms=1674.5
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-literal-bx.gba (256 bytes, mode=thumb-addsub-literal-bx)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-literal-bx-package-O0
+rom_sha256: f5e7f165cec18e1270e51261c1ce74d0a6a4cd110293b3179859b3879871f0e2
+instructions_aot: 7
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-literal-bx-package-O2
+rom_sha256: f5e7f165cec18e1270e51261c1ce74d0a6a4cd110293b3179859b3879871f0e2
+instructions_aot: 7
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-addsub-out-of-family.gba (256 bytes, mode=thumb-addsub-out-of-family)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-zero-branch.gba (256 bytes, mode=thumb-ands-zero-branch)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-zero-branch-package-O0
+rom_sha256: f9622907df72985e9e3d786a7367fab9c2decd836110b791516632e324e02b0e
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-zero-branch-package-O2
+rom_sha256: f9622907df72985e9e3d786a7367fab9c2decd836110b791516632e324e02b0e
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-positive-branch.gba (256 bytes, mode=thumb-ands-positive-branch)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-positive-branch-package-O0
+rom_sha256: df37f631ddbf9af6ca991e1e53d9e5eed0d558edf53f38778d9b2bc103c05989
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-positive-branch-package-O2
+rom_sha256: df37f631ddbf9af6ca991e1e53d9e5eed0d558edf53f38778d9b2bc103c05989
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-negative-branch.gba (256 bytes, mode=thumb-ands-negative-branch)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-negative-branch-package-O0
+rom_sha256: d9988662b57278b3d397b33262e706face1f18dbca8baa40a0bec41f51e06435
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ands-negative-branch-package-O2
+rom_sha256: d9988662b57278b3d397b33262e706face1f18dbca8baa40a0bec41f51e06435
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-zero-branch.gba (256 bytes, mode=thumb-neg-zero-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-negative-branch.gba (256 bytes, mode=thumb-neg-negative-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-alias-branch.gba (256 bytes, mode=thumb-neg-alias-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-maxpositive-branch.gba (256 bytes, mode=thumb-neg-maxpositive-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-overflow-branch.gba (256 bytes, mode=thumb-neg-overflow-branch)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-zero-branch-package-O0
+rom_sha256: 3c8d43b8b9c139457a5a2969e62f512934fb735a5a5a3654f0a2c40baa3e80af
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-zero-branch-package-O2
+rom_sha256: 3c8d43b8b9c139457a5a2969e62f512934fb735a5a5a3654f0a2c40baa3e80af
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-negative-branch-package-O0
+rom_sha256: 28caef0753d0a6946e3ac9c2da88569dfccedcc330b7f197f353b5b4dbc95a5f
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-negative-branch-package-O2
+rom_sha256: 28caef0753d0a6946e3ac9c2da88569dfccedcc330b7f197f353b5b4dbc95a5f
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-alias-branch-package-O0
+rom_sha256: 4990d6f5e482c8cbeffc5d53d1ac32f27a890c1a025c2b537f894da929379d31
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-alias-branch-package-O2
+rom_sha256: 4990d6f5e482c8cbeffc5d53d1ac32f27a890c1a025c2b537f894da929379d31
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-maxpositive-branch-package-O0
+rom_sha256: 6b6f31099f6bf62f203b07fb64b7e5bc4fbe0b8635c078b0bf5060b9b39a39ed
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-maxpositive-branch-package-O2
+rom_sha256: 6b6f31099f6bf62f203b07fb64b7e5bc4fbe0b8635c078b0bf5060b9b39a39ed
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-overflow-branch-package-O0
+rom_sha256: 258c1deb6a1fb79d44c0db08f30d8aacfb9d58e5f50ce564c6a25fa4f60d5b4a
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-overflow-branch-package-O2
+rom_sha256: 258c1deb6a1fb79d44c0db08f30d8aacfb9d58e5f50ce564c6a25fa4f60d5b4a
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-ones-branch.gba (256 bytes, mode=thumb-neg-ones-branch)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-ones-branch-package-O0
+rom_sha256: 78d7e6b8a99dde7f3cc060a17a7532b47b21517d230b308f0111bca98ae98513
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-ones-branch-package-O2
+rom_sha256: 78d7e6b8a99dde7f3cc060a17a7532b47b21517d230b308f0111bca98ae98513
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb_negate_fixtures jobs=10 link_threads=1 wall_ms=1524.4
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-neg-unsupported.gba (256 bytes, mode=thumb-neg-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-zero-positive-branch.gba (256 bytes, mode=thumb-asr-zero-positive-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-zero-negative-branch.gba (256 bytes, mode=thumb-asr-zero-negative-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-carry-clear-branch.gba (256 bytes, mode=thumb-asr-31-carry-clear-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-carry-set-positive-branch.gba (256 bytes, mode=thumb-asr-31-carry-set-positive-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-alias-branch.gba (256 bytes, mode=thumb-asr-31-alias-branch)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-zero-positive-branch-package-O0
+rom_sha256: b5cf2c306ea99d4122f356cd55c38138d77c52c03abe620ab8a4eec150e87f40
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-zero-positive-branch-package-O2
+rom_sha256: b5cf2c306ea99d4122f356cd55c38138d77c52c03abe620ab8a4eec150e87f40
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-zero-negative-branch-package-O0
+rom_sha256: 44392ead9c2306d8cfe5dfecd1e26256776380a80c791b6bb4bb68a79719df5c
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-zero-negative-branch-package-O2
+rom_sha256: 44392ead9c2306d8cfe5dfecd1e26256776380a80c791b6bb4bb68a79719df5c
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-carry-clear-branch-package-O0
+rom_sha256: 2a217f6e7b217e0d7831f870bc5df24d10a271cdb99c744e01de6e10c9501e9a
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-carry-clear-branch-package-O2
+rom_sha256: 2a217f6e7b217e0d7831f870bc5df24d10a271cdb99c744e01de6e10c9501e9a
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-carry-set-positive-branch-package-O0
+rom_sha256: e6f609b15f1de2960a4591fd1a5fc8d4fb56b61872b19cf9b3235084cea86f21
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-carry-set-positive-branch-package-O2
+rom_sha256: e6f609b15f1de2960a4591fd1a5fc8d4fb56b61872b19cf9b3235084cea86f21
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-alias-branch-package-O0
+rom_sha256: 2537120e8126ebe4db1d1d0c9db9f68c08886998188557eabcedde0ea5a8f2eb
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-31-alias-branch-package-O2
+rom_sha256: 2537120e8126ebe4db1d1d0c9db9f68c08886998188557eabcedde0ea5a8f2eb
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+GBA020_GROUP_TIMING group=thumb_asr_immediate_fixtures jobs=10 link_threads=1 wall_ms=1993.7
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-asr-neighbor-unsupported.gba (256 bytes, mode=thumb-asr-neighbor-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-cmp-register-equal-branch.gba (256 bytes, mode=thumb-cmp-register-equal-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-cmp-register-not-equal-branch.gba (256 bytes, mode=thumb-cmp-register-not-equal-branch)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-cmp-register-signed-ge-overflow-branch.gba (256 bytes, mode=thumb-cmp-register-signed-ge-overflow-branch)
+GBA020_GROUP_TIMING group=thumb_cmp_register_fixtures jobs=10 link_threads=1 wall_ms=1651.6
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-cmp-register-unsupported.gba (256 bytes, mode=thumb-cmp-register-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-zero.gba (256 bytes, mode=thumb-orr-zero)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-zero-package-O0
+rom_sha256: 9a04d1d5c6f46454c94370bb3eced63303e6a62d0e93d4ebb05698c049ab6cfb
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-zero-package-O2
+rom_sha256: 9a04d1d5c6f46454c94370bb3eced63303e6a62d0e93d4ebb05698c049ab6cfb
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c0v0.gba (256 bytes, mode=thumb-orr-positive-c0v0)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c0v0-package-O0
+rom_sha256: 111161910268c10c3f66c626bd85d57761bb433520706782c7dc7a42bd46f2f6
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c0v0-package-O2
+rom_sha256: 111161910268c10c3f66c626bd85d57761bb433520706782c7dc7a42bd46f2f6
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-negative-c1v1.gba (256 bytes, mode=thumb-orr-negative-c1v1)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-negative-c1v1-package-O0
+rom_sha256: 44a034a3848b7c967f39cf077ad8419ff772c159fb6a362347496337179fe7f6
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-negative-c1v1-package-O2
+rom_sha256: 44a034a3848b7c967f39cf077ad8419ff772c159fb6a362347496337179fe7f6
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c0v1.gba (256 bytes, mode=thumb-orr-positive-c0v1)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c0v1-package-O0
+rom_sha256: f79612e98b650810705dbd1b44fd6f94dcae0e3475d9a8ea0684497607fd7d49
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c0v1-package-O2
+rom_sha256: f79612e98b650810705dbd1b44fd6f94dcae0e3475d9a8ea0684497607fd7d49
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c1v0.gba (256 bytes, mode=thumb-orr-positive-c1v0)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c1v0-package-O0
+rom_sha256: 44ef709180838eeabc70403b0b281e103872bbf4395751edcfc3f17c8e1032db
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-positive-c1v0-package-O2
+rom_sha256: 44ef709180838eeabc70403b0b281e103872bbf4395751edcfc3f17c8e1032db
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-alias.gba (256 bytes, mode=thumb-orr-alias)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-alias-package-O0
+rom_sha256: 43a7b67b50d5d249adc422475e740372e258dab521bb4953dfdf2cc3b86f7248
+instructions_aot: 10
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-alias-package-O2
+rom_sha256: 43a7b67b50d5d249adc422475e740372e258dab521bb4953dfdf2cc3b86f7248
+instructions_aot: 10
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-bx.gba (256 bytes, mode=thumb-orr-bx)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-bx-package-O0
+rom_sha256: ac427bc7456217339731463e564b8650b4c994cb885bed81e43679d069697fc2
+instructions_aot: 9
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-orr-bx-package-O2
+rom_sha256: ac427bc7456217339731463e564b8650b4c994cb885bed81e43679d069697fc2
+instructions_aot: 9
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-eor-unsupported.gba (256 bytes, mode=thumb-eor-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-tst-unsupported.gba (256 bytes, mode=thumb-tst-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-mvn-unsupported.gba (256 bytes, mode=thumb-mvn-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldr-literal-bx.gba (256 bytes, mode=thumb-ldr-literal-bx)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldr-literal-bx-package-O0
+rom_sha256: 15d6c458474e937040f69b30fc567d105ff0a80651f002d0992b2aa302ee411b
+instructions_aot: 6
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldr-literal-bx-package-O2
+rom_sha256: 15d6c458474e937040f69b30fc567d105ff0a80651f002d0992b2aa302ee411b
+instructions_aot: 6
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-ldr-literal-out-of-rom.gba (256 bytes, mode=thumb-ldr-literal-out-of-rom)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bl.gba (256 bytes, mode=thumb-bl)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bl-package-O0
+rom_sha256: 90ad11c76d9242b9190b59b8450b75c098f108bfb2bcf18310361e3026f9f1ce
+instructions_aot: 11
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bl-package-O2
+rom_sha256: 90ad11c76d9242b9190b59b8450b75c098f108bfb2bcf18310361e3026f9f1ce
+instructions_aot: 11
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bl-broken-pair.gba (256 bytes, mode=thumb-bl-broken-pair)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bl-suffix-without-prefix.gba (256 bytes, mode=thumb-bl-suffix-without-prefix)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bl-out-of-range.gba (256 bytes, mode=thumb-bl-out-of-range)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/bx-interwork.gba (256 bytes, mode=bx-interwork)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/bx-interwork-package-O0
+rom_sha256: 0a23731cf617d04b394a24d3820882beff1a482725cdf057ac8fd7cf90765b98
+instructions_aot: 6
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/bx-interwork-package-O2
+rom_sha256: 0a23731cf617d04b394a24d3820882beff1a482725cdf057ac8fd7cf90765b98
+instructions_aot: 6
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/bx-condition-false.gba (256 bytes, mode=bx-condition-false)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/bx-condition-false-package-O0
+rom_sha256: 83d75d23bf45a01dd5b2d78dae6e854042b1ed325e876b9ab7e05262ebc4ff4f
+instructions_aot: 6
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/bx-condition-false-package-O2
+rom_sha256: 83d75d23bf45a01dd5b2d78dae6e854042b1ed325e876b9ab7e05262ebc4ff4f
+instructions_aot: 6
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/bx-out-of-range.gba (256 bytes, mode=bx-out-of-range)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-swi-reset.gba (256 bytes, mode=thumb-swi-reset)
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-swi-reset-package-O0
+rom_sha256: cf89332ed7d30148e18ad2590033a8b0d4b4d237da643d4f031f4fb0ddd882ec
+instructions_aot: 12
+optimization: O0
+target: aarch64-apple-darwin
+package: /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-swi-reset-package-O2
+rom_sha256: cf89332ed7d30148e18ad2590033a8b0d4b4d237da643d4f031f4fb0ddd882ec
+instructions_aot: 12
+optimization: O2
+target: aarch64-apple-darwin
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-swi-unsupported.gba (256 bytes, mode=thumb-swi-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bcond-eq-taken.gba (256 bytes, mode=thumb-bcond-eq-taken)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bcond-eq-fallthrough.gba (256 bytes, mode=thumb-bcond-eq-fallthrough)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bcond-target-unsupported.gba (256 bytes, mode=thumb-bcond-target-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-bcond-fallthrough-unsupported.gba (256 bytes, mode=thumb-bcond-fallthrough-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-b-unconditional.gba (256 bytes, mode=thumb-b-unconditional)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-b-target-unsupported.gba (256 bytes, mode=thumb-b-target-unsupported)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/thumb-b-out-of-range.gba (256 bytes, mode=thumb-b-out-of-range)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/unsupported.gba (256 bytes, mode=unsupported)
+gba-recomp: unsupported_instruction at 0x080000C0: 0xE5910000 (only immediate pre-indexed LDR word from PC without writeback is implemented)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/out-of-range.gba (256 bytes, mode=out-of-range)
+gba-recomp: branch_target_out_of_rom at 0x08000000: ARM target 0x080001C0: guest range 0x080001C0..0x080001C4 is outside ROM image (256 bytes)
+wrote /Users/celsoinacio/projects/gba-recomp/target/gba020/bad-checksum.gba (256 bytes, mode=bad-checksum)
+gba-recomp: header_invalid: checksum at 0xBD is 0x48, calculated 0x49
+GBA-020 headless AOT fixture passed on Darwin/arm64

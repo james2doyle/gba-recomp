@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "contract_commit": "e6fa167",
+  "implementation_commit": "e8d855c7186667b0a23693a39150bcb8bfe25adc",
+  "compiler_sha256": "cb1336a640474a34110574e0782ea15e8c8f8fdaba85a1b0b50167d2e3291ecb",
+  "gate_script_sha256": "b9b91daa7b67e87a185b24a5c26212979469295f57c8beae54b36d87349c4347",
+  "fixture_generator_sha256": "991b41d5cf59a62ce29ec845085f44b86a91072e7dc00cff122ffa3ec46695e1",
+  "host": {
+    "os": "Darwin",
+    "architecture": "arm64",
+    "detected_logical_cpus": 10,
+    "automatic_cpu_budget": 10,
+    "cargo_jobs": 10,
+    "cargo_link_threads": 10,
+    "fixture_workers": 10,
+    "lld_threads_per_fixture": 1,
+    "max_phase_slots": 10
+  },
+  "implementation": {
+    "feature": "Thumb CMP register Format 4",
+    "encoding_mask": "(encoding & 0xFFC0) == 0x4280",
+    "example_encoding": "0x428A",
+    "operation": "ThumbOperation::CompareRegister { rd, rs }",
+    "semantics": "old(Rd) - old(Rs), update NZCV, do not write a GPR",
+    "discovery": "adjacent-branch refinement from proven immediate/register values; unknown remains conservative",
+    "ir_version": 2,
+    "runtime_abi_version": 4,
+    "runtime_abi_changed": false,
+    "strict_aot": true
+  },
+  "workspace_tests": {
+    "command": "cargo test --locked --workspace --jobs 10 --quiet",
+    "exit_code": 0,
+    "results": {
+      "gba_ir_passed": 76,
+      "gba_recomp_passed": 121,
+      "failed": 0
+    },
+    "log": {
+      "path": "knowledge/evidence/cargo-test-thumb-cmp-20261014-macos-arm64.log",
+      "sha256": "379ce142e214249468632de346886fe07f5fd3d95451cb2a7111c6cd3cc27057"
+    }
+  },
+  "gba020_gate": {
+    "command": "scripts/verify-gba020.sh",
+    "result": "passed",
+    "target": "aarch64-apple-darwin",
+    "cpu_budget": {
+      "effective_budget": 10,
+      "fixture_workers": 10,
+      "lld_threads_per_fixture": 1,
+      "max_phase_slots": 10
+    },
+    "thumb_cmp_fixture_group": {
+      "independent_compilations": 6,
+      "workers": 10,
+      "lld_threads_per_worker": 1,
+      "wall_ms": 1651.6,
+      "baseline_comparison": null
+    },
+    "log": {
+      "path": "knowledge/evidence/gba020-thumb-cmp-register-macos-arm64.log",
+      "sha256": "b15bfa97cd9f96e58b03879f59c8f3ca8544589d9c9dd22cd83f850166642563"
+    },
+    "sustained_saturation_measured": false
+  },
+  "fixtures": [
+    {
+      "rom_mode": "thumb-cmp-register-equal-branch",
+      "rom_sha256": "eb1f820039ec1e13987b25f804bda488f0e7a3fa0974bd03a9da15249176b0cd",
+      "run_instruction_budget": 10,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 10,
+        "r0": 17,
+        "r1": 66,
+        "pc": "0x080000E8",
+        "cpsr": "0x2000001F",
+        "guest_cycle": 10,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "70370823d46cf38d57b8316aaacd78a68590823916b48084cb3a1362a33590f4",
+          "manifest_sha256": "98dfaf51ed2e2a8b46f89320fc47e66558de8516857e69fc36586e7bd374da31",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 11
+        },
+        "O2": {
+          "game_sha256": "fb57700c2a606aa039ecdc4d097236a88fa1f6a85f03fa3264879cc29f115aefd",
+          "manifest_sha256": "5098da7490fc319856a78d2c094436c9b8ee3950c7b9a96b10ab5cf95ea87815",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 11
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-cmp-register-not-equal-branch",
+      "rom_sha256": "1f5357397200709b9fc056c54ef4cbd96ef2e0a1fd726a08dd2e544d7c6f8f66",
+      "run_instruction_budget": 10,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 10,
+        "r0": 34,
+        "r1": 66,
+        "pc": "0x080000E8",
+        "cpsr": "0x2000001F",
+        "guest_cycle": 10,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "82d11d8ae0f45eb886340e6c1afbd7bb838280996618bc1a9de6bcb764ff5839",
+          "manifest_sha256": "f53401e5622e8fe50cb87b239537312fcb689a3959a509fe9787d6b9b305b757",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 11
+        },
+        "O2": {
+          "game_sha256": "fe0bb35d81ade83a15900e485f757a5c8291bcccf0c8e0842e1aba6f81704547",
+          "manifest_sha256": "e31061051195a98d39360acc0049ebc50ca35f799811f00d10dbb4d3a26fdb52",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 11
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-cmp-register-signed-ge-overflow-branch",
+      "rom_sha256": "15124ec5daecdc006a45534bd774e358893722f9163a52cb196292b233f1dfa2",
+      "run_instruction_budget": 10,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 10,
+        "r0": 34,
+        "r1": 2147483647,
+        "pc": "0x080000E8",
+        "cpsr": "0x1000001F",
+        "guest_cycle": 10,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "5b35147fbca670b729655934c0a51a120705de2581fbe3816f9c152ad0ef55d8",
+          "manifest_sha256": "abc8ffc4440db1ef9fb26701df8a2819f5b2a2129882cff1889c1c44dfa5f3bd",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 11
+        },
+        "O2": {
+          "game_sha256": "0802408a45c41e55d556c3f0cc7552288a08d367e8c1149cf66d3e6b3a957e38",
+          "manifest_sha256": "312fd6d165269a232ea8556854a6ae580c9951212ed9b77505ffc83636fe8966",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 11
+        }
+      }
+    }
+  ],
+  "negative_case": {
+    "rom_mode": "thumb-cmp-register-unsupported",
+    "rom_sha256": "74bcc9d5a8b3f6a2d6d0cf8459380de80e8b342a1278cc77f03f899e3b5496b1",
+    "diagnostic": "gba-recomp: unsupported_thumb_instruction at 0x08000084: 0x42D1",
+    "package_created": false
+  },
+  "leafgreen_static_discovery": {
+    "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-cmp-20261014-O2 --opt O2 --steps 100",
+    "compiler_sha256": "cb1336a640474a34110574e0782ea15e8c8f8fdaba85a1b0b50167d2e3291ecb",
+    "exit_code": 1,
+    "diagnostic": "gba-recomp: bx_target_unresolved at 0x080006E4: r0 is not statically bounded",
+    "frontier_pc": "0x080006E4",
+    "frontier_encoding": "0x4700",
+    "source_classification": "Thumb BX r0 (encoding inference; the dynamic target is not known to discovery)",
+    "real_seconds": null,
+    "analysis": "static discovery only; no guest execution",
+    "llvm_emission_reached": false,
+    "link_reached": false,
+    "package_created": false,
+    "rom_executed": false,
+    "rea_decompilation_performed": false,
+    "log": {
+      "path": "knowledge/evidence/leafgreen-after-cmp-20261014-O2.log",
+      "sha256": "5a4a52df463c6fbb8d854463bf838676e4f6fd1174479aece8a06c09a1f9ee19"
+    }
+  },
+  "limitations": [
+    "Fixtures validate only the contracted Thumb CMP register subset on macOS arm64.",
+    "The direct fixture matrix covers EQ/NE and signed GE overflow behavior; other branch-condition combinations are covered by unit tests only where stated in SPEC-054.",
+    "LeafGreen's reported frontier is a static discovery diagnostic, not a runtime trace or proof of the branch being taken.",
+    "No LeafGreen LLVM output, link, package, guest execution, or REA decompilation was produced.",
+    "The 1.65 second fixture group is synthetic and has no before/after baseline.",
+    "The configured ten-slot budget does not establish sustained CPU saturation."
+  ]
+}

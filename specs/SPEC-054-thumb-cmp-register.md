@@ -1,6 +1,6 @@
 # SPEC-054 — CMP Thumb Format 4 por registrador em AOT estrito
 
-Estado do documento: Draft. Esta spec precede a implementação; progresso e evidência: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementação `e8d855c7186667b0a23693a39150bcb8bfe25adc`; progresso e evidência: [ROADMAP](../ROADMAP.md) e [relatório macOS arm64](../knowledge/evidence/gba020-thumb-cmp-register-macos-arm64.json).
 
 ## Problema, objetivos e escopo
 
@@ -58,6 +58,12 @@ Encoding fora do subset resulta em `unsupported_thumb_instruction` com PC guest.
 Executar testes de decoder/verificador, stepper, discovery e LLVM; fixtures O0/O2 e rejeições; `cargo test --locked --workspace --jobs 10` e `scripts/verify-gba020.sh` no limite de CPU configurado. Repetir discovery estática O2 da ROM fixada e guardar log, hash e resultado.
 
 Fixtures cobrem somente os estados configurados. Avanço da discovery não prova que um branch é tomado em runtime, que o jogo foi emitido/linkado ou que é compatível.
+
+## Resultado da implementação
+
+O CMP register foi implementado no decoder, GBA IR/verificador, executor de referência, discovery e lowering LLVM strict-AOT. `cargo test --locked --workspace --jobs 10 --quiet` passou com 76 testes em `gba-ir` e 121 em `gba-recomp`. `scripts/verify-gba020.sh` passou em Darwin/arm64; as três fixtures O0/O2 produziram estados iguais, com 11 instruções AOT cada, e CMN `0x42D1` foi rejeitado sem pacote parcial. ABI v4 e IR v2 permaneceram inalteradas.
+
+A nova tentativa LeafGreen O2 parou em `bx_target_unresolved` para `BX r0` (`0x4700`) em `0x080006E4`, antes de emissão LLVM/link; não gerou pacote e não executou a ROM. Trata-se de discovery estática e não prova que o CMP ou esse BX sejam tomados em runtime. Logs, hashes, estados e limites estão no [relatório](../knowledge/evidence/gba020-thumb-cmp-register-macos-arm64.json).
 
 ## Questões abertas
 

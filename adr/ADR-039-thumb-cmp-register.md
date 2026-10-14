@@ -1,6 +1,6 @@
 # ADR-039 — CMP Thumb Format 4 como operação IR específica
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 - Supersede: —
 
@@ -13,6 +13,10 @@ A descoberta O2 local da LeafGreen fixada em KNO-004 passou por ASR imediato e p
 Adotar [SPEC-054](../specs/SPEC-054-thumb-cmp-register.md) e adicionar `ThumbOperation::CompareRegister { rd, rs }` apenas para a máscara `(encoding & 0xFFC0) == 0x4280`. Reusar o lowering nativo de subtração sem writeback. Generalizar o certificado interno `pending_compare` para RHS imediato ou registrador, permitindo refinar somente o branch Thumb adjacente quando os dois valores forem conhecidos; manter os dois edges para estados desconhecidos. `CMP Rd,Rd` é sempre zero, mesmo quando o valor do registrador é desconhecido.
 
 Preservar ABI/runtime, estado da máquina e `GBA_IR_VERSION`. Não copiar implementação do vendor nem modificar `vendor-ref/`.
+
+## Resultado
+
+Implementado em `e8d855c7186667b0a23693a39150bcb8bfe25adc`. A suíte workspace passou (76 testes `gba-ir`, 121 `gba-recomp`) e o gate GBA-020 passou em macOS arm64 com fixtures O0/O2 e rejeição CMN sem pacote parcial. A descoberta da LeafGreen avançou para a fronteira reportada `BX r0` em `0x080006E4`, ainda antes de LLVM/link; veja [evidência fixada](../knowledge/evidence/gba020-thumb-cmp-register-macos-arm64.json). Isso não comprova execução ou compatibilidade do jogo.
 
 ## Alternativas
 

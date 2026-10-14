@@ -1,0 +1,3 @@
+command: /Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp compile --rom /Users/celsoinacio/projects/gba-recomp/roms/Pokemon - Leaf Green Version (U) (V1.1).gba --out /Users/celsoinacio/projects/gba-recomp/target/leafgreen-after-cmp-20261014-O2 --opt O2 --steps 100
+exit_code: 1
+gba-recomp: bx_target_unresolved at 0x080006E4: r0 is not statically bounded
