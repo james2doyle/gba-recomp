@@ -445,7 +445,10 @@ pub fn run_app(
                     repeat,
                 } => {
                     if menu.open && menu.remap.is_some_and(|r| !r.pad) && sc != scancode::ESCAPE {
-                        menu.bind(sdl::scancode_name(sc), false);
+                        // Ignore auto-repeat of the key that started the remap.
+                        if !repeat && let Some(s) = menu.bind(sdl::scancode_name(sc), false) {
+                            effect = Effect::Settings(s);
+                        }
                         continue;
                     }
                     if sc == scancode::F11 && !repeat {
@@ -473,7 +476,9 @@ pub fn run_app(
                         if b == button::GUIDE {
                             nav.push(Nav::Back);
                         } else {
-                            menu.bind(sdl::pad_button_name(b), true);
+                            if let Some(s) = menu.bind(sdl::pad_button_name(b), true) {
+                                effect = Effect::Settings(s);
+                            }
                         }
                         continue;
                     }

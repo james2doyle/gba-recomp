@@ -327,9 +327,14 @@ impl Menu {
     }
 
     /// Complete a pending remap with an SDL scancode name / gamepad string.
-    pub fn bind(&mut self, name: String, pad: bool) {
-        if let Some(r) = self.remap
-            && r.pad == pad
+    /// Returns the settings to apply when a binding was recorded: remaps
+    /// take effect and persist immediately so they cannot be lost by leaving
+    /// the page (fixes the "binding not kept" bug).
+    pub fn bind(&mut self, name: String, pad: bool) -> Option<Settings> {
+        let r = self.remap?;
+        if r.pad != pad || name.is_empty() {
+            return None;
+        }
         {
             let list = if pad {
                 &mut self.draft.input.gamepad
@@ -343,6 +348,9 @@ impl Menu {
             list[r.button] = vec![name];
             self.remap = None;
         }
+        self.effective = self.draft.clone();
+        self.status = Some("Controle salvo".into());
+        Some(self.draft.clone())
     }
 }
 
@@ -428,9 +436,13 @@ mod tests {
         assert_eq!(m.remap, None);
         assert_eq!(m.draft.input.keyboard[0], vec!["Z".to_owned()]);
         m.handle(Nav::Confirm);
-        m.bind("X".into(), true); // wrong device: ignored
+        assert!(m.bind("X".into(), true).is_none(), "wrong device is ignored");
         assert!(m.remap.is_some());
-        m.bind("X".into(), false);
+        let applied = m.bind("X".into(), false).expect("binding applies immediately");
+        assert_eq!(applied.input.keyboard[0], vec!["X".to_owned()]);
+        // Leaving the page no longer discards the binding.
+        m.handle(Nav::Back);
+        assert_eq!(m.draft.input.keyboard[0], vec!["X".to_owned()]);
         assert_eq!(m.draft.input.keyboard[0], vec!["X".to_owned()]);
         // X was B's key: moved, not duplicated.
         assert!(m.draft.input.keyboard[1].is_empty());
