@@ -1,0 +1,543 @@
+{
+ "id": "gba055-mgba-diff-leafgreen-20261014",
+ "spec": [
+  "SPEC-011 VAL-03",
+  "ADR-041 item 4"
+ ],
+ "date": "2026-10-14",
+ "host": {
+  "os": "macOS 15.3.1 arm64",
+  "cc": "Apple clang 17.0.0",
+  "cmake": "4.4.3",
+  "rust": "1.99.0"
+ },
+ "rom": {
+  "title": "Pokemon LeafGreen (U) rev 1 (BPGE)",
+  "sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825"
+ },
+ "scenario": {
+  "frames": 3000,
+  "bios": "hle (both sides)",
+  "save": "none (in-memory)",
+  "inputs": [
+   "1200:5:START",
+   "1500:5:START",
+   "1700:5:A",
+   "1900:5:A",
+   "2100:5:A",
+   "2300:5:A",
+   "2500:5:A",
+   "2700:5:A"
+  ],
+  "ppm_every": 100,
+  "ppm_window_ref": 10
+ },
+ "ours": {
+  "runner": "gba-run --release",
+  "base_commit": "8618314",
+  "mode": "interpreted",
+  "instructions_interpreted": 299625419,
+  "guest_cycles": 842604233,
+  "final_frame_hash": "72e7569f9537f038"
+ },
+ "oracle": {
+  "name": "mGBA (libmgba, static)",
+  "version": "0.11.0-dev (projectVersion 0.11-9155-143adf5aa)",
+  "commit": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+  "license": "MPL-2.0",
+  "build": "COLOR_16_BIT (BGR555 output, 5-bit blending); GB core, frontends, debuggers, scripting off; useBios=0 skipBios=1 idleOptimization=ignore",
+  "final_frame_hash": "9dbc61778121f97e"
+ },
+ "color_compare": "both sides expand BGR555 per channel as (v<<3)|(v>>2); frame hash = FNV-1a 64 over LE BGR555 (bit 15 masked on the oracle)",
+ "sampled_frames": {
+  "frames_compared": 30,
+  "identical_same_frame": 15,
+  "identical_within_window": 26,
+  "window": 10
+ },
+ "frames": [
+  {
+   "frame": 100,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 200,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 300,
+   "diff_pixels": 279,
+   "diff_pct": 0.727,
+   "max_channel_delta": 198,
+   "bbox": [
+    26,
+    58,
+    239,
+    94
+   ],
+   "best_offset": -1,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 400,
+   "diff_pixels": 110,
+   "diff_pct": 0.286,
+   "max_channel_delta": 231,
+   "bbox": [
+    71,
+    72,
+    185,
+    84
+   ],
+   "best_offset": -1,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 500,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 600,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 700,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 800,
+   "diff_pixels": 10646,
+   "diff_pct": 27.724,
+   "max_channel_delta": 239,
+   "bbox": [
+    0,
+    32,
+    239,
+    127
+   ],
+   "best_offset": 3,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 900,
+   "diff_pixels": 13511,
+   "diff_pct": 35.185,
+   "max_channel_delta": 231,
+   "bbox": [
+    0,
+    32,
+    239,
+    127
+   ],
+   "best_offset": 4,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1000,
+   "diff_pixels": 4859,
+   "diff_pct": 12.654,
+   "max_channel_delta": 223,
+   "bbox": [
+    0,
+    32,
+    239,
+    127
+   ],
+   "best_offset": 4,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1100,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1200,
+   "diff_pixels": 5950,
+   "diff_pct": 15.495,
+   "max_channel_delta": 239,
+   "bbox": [
+    0,
+    32,
+    239,
+    127
+   ],
+   "best_offset": 0,
+   "best_diff_pixels": 5950,
+   "best_diff_pct": 15.495
+  },
+  {
+   "frame": 1300,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1400,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1500,
+   "diff_pixels": 405,
+   "diff_pct": 1.055,
+   "max_channel_delta": 132,
+   "bbox": [
+    96,
+    53,
+    228,
+    109
+   ],
+   "best_offset": 2,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1600,
+   "diff_pixels": 743,
+   "diff_pct": 1.935,
+   "max_channel_delta": 107,
+   "bbox": [
+    0,
+    42,
+    239,
+    111
+   ],
+   "best_offset": 0,
+   "best_diff_pixels": 743,
+   "best_diff_pct": 1.935
+  },
+  {
+   "frame": 1700,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1800,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 1900,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2000,
+   "diff_pixels": 29,
+   "diff_pct": 0.076,
+   "max_channel_delta": 231,
+   "bbox": [
+    225,
+    148,
+    234,
+    154
+   ],
+   "best_offset": 1,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2100,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2200,
+   "diff_pixels": 37768,
+   "diff_pct": 98.354,
+   "max_channel_delta": 33,
+   "bbox": [
+    0,
+    0,
+    239,
+    159
+   ],
+   "best_offset": 1,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2300,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2400,
+   "diff_pixels": 29,
+   "diff_pct": 0.076,
+   "max_channel_delta": 247,
+   "bbox": [
+    221,
+    145,
+    230,
+    151
+   ],
+   "best_offset": 2,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2500,
+   "diff_pixels": 29,
+   "diff_pct": 0.076,
+   "max_channel_delta": 247,
+   "bbox": [
+    221,
+    144,
+    230,
+    150
+   ],
+   "best_offset": 1,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2600,
+   "diff_pixels": 69,
+   "diff_pct": 0.18,
+   "max_channel_delta": 247,
+   "bbox": [
+    8,
+    2,
+    26,
+    12
+   ],
+   "best_offset": 1,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2700,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2800,
+   "diff_pixels": 0,
+   "diff_pct": 0.0,
+   "max_channel_delta": 0,
+   "bbox": null,
+   "best_offset": 0,
+   "best_diff_pixels": 0,
+   "best_diff_pct": 0.0
+  },
+  {
+   "frame": 2900,
+   "diff_pixels": 2340,
+   "diff_pct": 6.094,
+   "max_channel_delta": 214,
+   "bbox": [
+    93,
+    23,
+    147,
+    108
+   ],
+   "best_offset": 0,
+   "best_diff_pixels": 2340,
+   "best_diff_pct": 6.094
+  },
+  {
+   "frame": 3000,
+   "diff_pixels": 2340,
+   "diff_pct": 6.094,
+   "max_channel_delta": 247,
+   "bbox": [
+    93,
+    23,
+    147,
+    108
+   ],
+   "best_offset": 0,
+   "best_diff_pixels": 2340,
+   "best_diff_pct": 6.094
+  }
+ ],
+ "hashes": {
+  "frames": 3000,
+  "hash_equal_same_frame": 1539,
+  "first_differing_frame": 16,
+  "change_frames": 1216,
+  "hash_window": 30,
+  "offset_histogram": {
+   "-6": 1,
+   "-1": 322,
+   "0": 107,
+   "1": 94,
+   "2": 264,
+   "3": 123,
+   "4": 247
+  },
+  "unmatched_change_frames": [
+   1200,
+   1593,
+   1594,
+   1595,
+   1596,
+   1597,
+   1598,
+   1599,
+   1600,
+   1601,
+   1602,
+   1603,
+   1604,
+   1605,
+   1606,
+   1607,
+   1608,
+   1609,
+   1635,
+   1703,
+   1712,
+   1739,
+   1910,
+   1936,
+   2116,
+   2125,
+   2126,
+   2134,
+   2301,
+   2305,
+   2319,
+   2502,
+   2503,
+   2508,
+   2518,
+   2519,
+   2731,
+   2742,
+   2743,
+   2853,
+   2854,
+   2860,
+   2861,
+   2867,
+   2868,
+   2874,
+   2875,
+   2881,
+   2882,
+   2888,
+   2889,
+   2895,
+   2896,
+   2902,
+   2903,
+   2989,
+   2993,
+   2997
+  ]
+ },
+ "experiments": {
+  "note": "out-of-tree probe linking gba-core by path; gba-core source unchanged",
+  "bg_affine_identity_after_frame1": {
+   "description": "poke BG2PA/BG2PD/BG3PA/BG3PD=0x0100 after frame 1 (after the game's SWI 0x01)",
+   "hash_equal_same_frame": 1668,
+   "unmatched_change_frames": 39,
+   "frame_2900_diff_pixels": 0
+  },
+  "start_vcount_0x7E": {
+   "description": "set gba-core VCOUNT to 0x7E at reset, as mGBA GBASkipBIOS does",
+   "frames_with_changed_hash_vs_base": 0
+  }
+ },
+ "state_dump_frame_2900": {
+  "BG2PA": {
+   "ours": "0x0000",
+   "mgba": "0x0100"
+  },
+  "BG2PD": {
+   "ours": "0x0000",
+   "mgba": "0x0100"
+  },
+  "DISPCNT": "0x1741 both (mode 1, BG2 affine enabled)",
+  "BG2CNT": "0x5C81 both",
+  "palette_u16_diffs": 0,
+  "oam_u16_diffs": 0
+ },
+ "limitations": [
+  "single ROM and scenario",
+  "mGBA is a second reference, not ground truth (VAL-03)",
+  "images and state dumps were inspected locally and not versioned"
+ ]
+}
