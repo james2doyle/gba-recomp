@@ -1,6 +1,6 @@
 # SPEC-051 — ANDS Thumb Format 4 por registrador em AOT estrito
 
-Estado do documento: Draft. Especificação escrita antes da implementação. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Especificada antes do código e implementada no commit `d26cc8d2c8817bfc517fc9bc36c9ee74acb514f8`. Evidências de testes, gate e nova fronteira estática: [relatório estruturado](../knowledge/evidence/gba020-thumb-ands-macos-arm64.json). Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Problema, objetivos e escopo
 
@@ -60,7 +60,7 @@ Fixtures sintéticas verificam somente os estados que configuram. Avançar disco
 
 ## Questões abertas
 
-Depois de ANDS, a próxima instrução alcançável precisa ser descoberta novamente. Esta tranche não presume que o próximo limite seja uma instrução ou estado de hardware específico.
+Depois da implementação, a discovery estática O2 de LeafGreen avançou até o raw halfword `0x4248` em `0x08000BEA` e parou antes de LLVM/link. SRC-46 confirma nas fontes fixadas a inferência `NEGS r0,r1`; esta spec não presume valores de registradores ou execução guest. Os detalhes e limites estão em [KNO-004](../knowledge/KNO-004-rom-intake.md).
 
 ## Referências e evidências
 
@@ -68,3 +68,4 @@ Depois de ANDS, a próxima instrução alcançável precisa ser descoberta novam
 - [SRC-45](../knowledge/KNO-001-evidence.md) registra as fontes upstream e limites de inferência.
 - [SPEC-050](SPEC-050-thumb-unconditional-branch.md) e [ADR-036](../adr/ADR-036-thumb-and-register.md).
 - [Tentativa LeafGreen após Thumb B](../knowledge/evidence/leafgreen-after-thumb-b-20261014-O2.json).
+- [Implementação e fixtures SPEC-051](../knowledge/evidence/gba020-thumb-ands-macos-arm64.json).

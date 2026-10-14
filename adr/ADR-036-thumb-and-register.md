@@ -1,6 +1,6 @@
 # ADR-036 — Implementar ANDS Thumb Format 4 como operação específica
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 - Supersede: —
 
@@ -12,7 +12,7 @@ O produto já suporta ORR Format 4, operações lógicas com propagação abstra
 
 ## Decisão proposta
 
-Adotar [SPEC-051](../specs/SPEC-051-thumb-and-register.md) e adicionar uma variante `AndRegister` dedicada. Reutilizar o domínio existente de AND abstrato para propagar valores sem ultrapassar 16 alternativas; manter a discovery de flags conservadora e manter branches condicionais com ambos os edges quando não houver prova independente. Emitir o AND diretamente em LLVM e preservar C/V e os demais campos CPSR.
+Adotar [SPEC-051](../specs/SPEC-051-thumb-and-register.md) e adicionar uma variante `AndRegister` dedicada. Reutilizar o domínio existente de AND abstrato para propagar valores sem ultrapassar 16 alternativas; manter a discovery de flags conservadora e manter branches condicionais com ambos os edges quando não houver prova independente. Emitir o AND diretamente em LLVM e preservar C/V e os demais campos CPSR. A implementação foi concluída no commit `d26cc8d2c8817bfc517fc9bc36c9ee74acb514f8`; as fixtures O0/O2, testes workspace e nova tentativa estática constam no [relatório de evidência](../knowledge/evidence/gba020-thumb-ands-macos-arm64.json).
 
 Manter ABI/runtime, estado de máquina e `GBA_IR_VERSION` inalterados. Não ampliar automaticamente a cobertura para outra operação Format 4, ainda que a infraestrutura seja parecida.
 

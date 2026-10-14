@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "source_commit": "d26cc8d2c8817bfc517fc9bc36c9ee74acb514f8",
+  "compiler_sha256": "64bad6611400e4ff24bf7fd1102ee18a676606148caa5d562280bb08341b6a3f",
+  "host": {
+    "os": "Darwin",
+    "architecture": "arm64",
+    "detected_logical_cpus": 10,
+    "automatic_cpu_budget": 10,
+    "cargo_jobs": 10,
+    "cargo_link_threads": 10,
+    "fixture_workers": 10,
+    "lld_threads_per_fixture": 1,
+    "max_phase_slots": 10
+  },
+  "implementation": {
+    "feature": "Thumb ANDS Format 4 register operation",
+    "operation": "ThumbOperation::AndRegister { rd, rs }",
+    "commit": "d26cc8d2c8817bfc517fc9bc36c9ee74acb514f8",
+    "ir_version": 2,
+    "runtime_abi_version": 4,
+    "runtime_abi_changed": false,
+    "strict_aot": true
+  },
+  "workspace_tests": {
+    "command": "cargo test --locked --workspace --jobs 10",
+    "exit_code": 0,
+    "results": {
+      "gba_ir_passed": 69,
+      "gba_recomp_passed": 115,
+      "failed": 0
+    },
+    "log": {
+      "path": "knowledge/evidence/cargo-test-thumb-ands-20261014-macos-arm64.log",
+      "sha256": "4e1f96debdf8b3f69f624c55549065b9274c73f6593771b26fe5940bf65355ea"
+    }
+  },
+  "gba020_gate": {
+    "command": "GBA020_JOBS=10 GBA020_LINK_THREADS=1 scripts/verify-gba020.sh",
+    "result": "passed",
+    "target": "aarch64-apple-darwin",
+    "log": {
+      "path": "knowledge/evidence/gba020-thumb-ands-macos-arm64.log",
+      "sha256": "e396c0ce307563ce0790b4a448340f05aa29c22274d244ed16cf2746ea437073"
+    }
+  },
+  "fixtures": [
+    {
+      "rom_mode": "thumb-ands-zero-branch",
+      "rom_sha256": "f9622907df72985e9e3d786a7367fab9c2decd836110b791516632e324e02b0e",
+      "aot_instruction_count": 12,
+      "run_instruction_budget": 9,
+      "optimization_results": {
+        "O0": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":0,\"r1\":1,\"pc\":\"0x08000090\",\"cpsr\":\"0x6000003F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O2": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":0,\"r1\":1,\"pc\":\"0x08000090\",\"cpsr\":\"0x6000003F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}"
+      }
+    },
+    {
+      "rom_mode": "thumb-ands-positive-branch",
+      "rom_sha256": "df37f631ddbf9af6ca991e1e53d9e5eed0d558edf53f38778d9b2bc103c05989",
+      "aot_instruction_count": 12,
+      "run_instruction_budget": 9,
+      "optimization_results": {
+        "O0": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2,\"r1\":3,\"pc\":\"0x08000088\",\"cpsr\":\"0x0000003F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O2": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2,\"r1\":3,\"pc\":\"0x08000088\",\"cpsr\":\"0x0000003F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}"
+      }
+    },
+    {
+      "rom_mode": "thumb-ands-negative-branch",
+      "rom_sha256": "d9988662b57278b3d397b33262e706face1f18dbca8baa40a0bec41f51e06435",
+      "aot_instruction_count": 12,
+      "run_instruction_budget": 9,
+      "optimization_results": {
+        "O0": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2147483648,\"r1\":2147483648,\"pc\":\"0x08000088\",\"cpsr\":\"0xB000003F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O2": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2147483648,\"r1\":2147483648,\"pc\":\"0x08000088\",\"cpsr\":\"0xB000003F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}"
+      }
+    }
+  ],
+  "negative_cases": {
+    "unsupported_thumb_format4": ["EOR", "TST", "MVN"],
+    "result": "rejected before package publication"
+  },
+  "leafgreen_static_discovery": {
+    "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "GBA_RECOMP_LINK_THREADS=10 /usr/bin/time -p target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-ands-20261014-O2 --opt O2 --steps 100",
+    "exit_code": 1,
+    "diagnostic": "unsupported_thumb_instruction at 0x08000BEA: 0x4248",
+    "real_seconds": 0.62,
+    "user_seconds": 0.58,
+    "system_seconds": 0.01,
+    "analysis": "static discovery only; no guest execution",
+    "package_created": false,
+    "llvm_emission_reached": false,
+    "link_reached": false,
+    "rom_executed": false,
+    "rea": {
+      "mcp_open_binary": "Transport closed; no REA Evidence ID returned.",
+      "decompilation_performed": false
+    },
+    "log": {
+      "path": "knowledge/evidence/leafgreen-after-ands-20261014-O2.log",
+      "sha256": "0502a2ff557851dd69a596314412138418dd94b5e578b37b75eace8f11b3e94d"
+    }
+  },
+  "limitations": [
+    "Fixtures prove only their configured states and strict-AOT subsets on macOS arm64.",
+    "Discovery keeps both conditional successors after ANDS when no independent adjacent CMP proof applies; it does not track N/Z produced by ANDS.",
+    "The LeafGreen diagnostic records only the next static decoder frontier; the ROM was not packaged, linked, or executed.",
+    "The 0.62 second LeafGreen failure is not an end-to-end compile benchmark.",
+    "The gate used the ten-slot host budget; this report does not claim sustained saturation of all ten logical CPUs.",
+    "The REA MCP transport closed and returned no Evidence ID or decompilation."
+  ]
+}

@@ -1,0 +1,5 @@
+gba-recomp: unsupported_thumb_instruction at 0x08000BEA: 0x4248
+real 0.62
+user 0.58
+sys 0.01
+compile_exit_code=1
