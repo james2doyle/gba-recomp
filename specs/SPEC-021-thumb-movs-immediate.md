@@ -1,6 +1,6 @@
 # SPEC-021 — MOVS Thumb imediato em AOT estrito
 
-Estado do documento: Accepted. Progresso de implementação: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted; escopo de decode ampliado por [SPEC-031](SPEC-031-thumb-immediate-format-3.md). Progresso de implementação: [ROADMAP](../ROADMAP.md).
 
 ## Escopo
 
@@ -15,5 +15,7 @@ Adicionar somente o formato Thumb `MOVS Rd,#imm8` (Format 3, opcode `00`) da ARM
 - TMOVI-05: testar rejeição de `CMP`, `ADD` e `SUB` imediatos Thumb, além da ausência de pacote parcial para instruções alcançáveis não suportadas.
 
 ## Evidência e limites
+
+Após a aceitação da SPEC-031, TFI3-01 substitui em TMOVI-01 a restrição deste grupo a MOVS e as rejeições de CMP/ADD/SUB imediato em TMOVI-05. TFI3-09 mantém a falha estrita sem pacote parcial para instruções que ainda não tenham suporte. Os requisitos TMOVI-02 e os critérios de MOVS em TMOVI-03/04 permanecem aplicáveis.
 
 A compilação estática da ROM LeafGreen identificada em KNO-004 chegou a `0x080003AA`, raw Thumb `0x20FF`, depois de suportar as fronteiras anteriores. A leitura como `MOVS r0,#0xFF` é inferência dos campos do encoding, corroborada pelas observações de fonte em SRC-22. Nenhum pacote LeafGreen foi criado e o jogo não foi executado. As fixtures sintéticas provarão apenas o formato e os efeitos especificados aqui.
