@@ -21,6 +21,15 @@ const IO_IE: u32 = 0x0400_0200;
 const IO_IF: u32 = 0x0400_0202;
 const IO_WAITCNT: u32 = 0x0400_0204;
 const IO_IME: u32 = 0x0400_0208;
+const IO_DMA0_START: u32 = 0x0400_00B0;
+const IO_DMA3_SAD: u32 = 0x0400_00D4;
+const IO_DMA3_DAD: u32 = 0x0400_00D8;
+const IO_DMA3_CNT: u32 = 0x0400_00DC;
+const IO_DMA_END: u32 = 0x0400_00E0;
+const DMA3_ADDRESS_MASK: u32 = 0x0FFF_FFFE;
+const DMA3_CONTROL_MASK: u32 = 0x0000_FFE0;
+const DMA3_ENABLE: u32 = 0x0000_8000;
+const DMA3_SAFE_IMMEDIATE_WORD_CONTROL: u32 = 0x0000_8400;
 
 pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
     discover_arm_program_with_states(image).map(|(program, _)| program)
@@ -302,6 +311,57 @@ impl AbstractValue {
             Self::Constants(values) => Some(values),
         }
     }
+
+    fn singleton(&self) -> Option<u32> {
+        let values = self.values()?;
+        (values.len() == 1).then(|| *values.iter().next().expect("one value"))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DmaAbstractState {
+    other_channels_quiescent: bool,
+    dma3_source: AbstractValue,
+    dma3_destination: AbstractValue,
+    dma3_control: AbstractValue,
+}
+
+impl DmaAbstractState {
+    fn zeroed() -> Self {
+        Self {
+            other_channels_quiescent: true,
+            dma3_source: AbstractValue::constant(0),
+            dma3_destination: AbstractValue::constant(0),
+            dma3_control: AbstractValue::constant(0),
+        }
+    }
+
+    fn unknown() -> Self {
+        Self {
+            other_channels_quiescent: false,
+            dma3_source: AbstractValue::Unknown,
+            dma3_destination: AbstractValue::Unknown,
+            dma3_control: AbstractValue::Unknown,
+        }
+    }
+
+    fn dma3_is_proven_disabled(&self) -> bool {
+        self.dma3_control.values().is_some_and(|values| {
+            !values.is_empty() && values.iter().all(|value| value & DMA3_ENABLE == 0)
+        })
+    }
+
+    fn all_channels_are_proven_quiescent(&self) -> bool {
+        self.other_channels_quiescent && self.dma3_is_proven_disabled()
+    }
+
+    fn invalidate(&mut self) {
+        *self = Self::unknown();
+    }
+
+    fn reset_after_hle(&mut self) {
+        *self = Self::zeroed();
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -309,6 +369,7 @@ struct AbstractState {
     registers: [AbstractValue; REG_PC as usize],
     memory_words: Arc<BTreeMap<u32, AbstractValue>>,
     io_halfwords: Arc<BTreeMap<u32, AbstractValue>>,
+    dma: DmaAbstractState,
     pending_compare: Option<CompareFact>,
 }
 
@@ -330,6 +391,9 @@ impl AbstractState {
                 (IO_IF, AbstractValue::constant(0)),
                 (IO_IME, AbstractValue::constant(0)),
             ])),
+            // The strict-AOT runner starts with its entire I/O array zeroed.
+            // This fact is only sound for that explicit entry contract.
+            dma: DmaAbstractState::zeroed(),
             pending_compare: None,
         }
     }
@@ -344,6 +408,7 @@ impl AbstractState {
         self.registers.fill(AbstractValue::Unknown);
         self.clear_memory();
         self.clear_io();
+        self.dma.invalidate();
     }
 
     fn clear_memory(&mut self) {
@@ -454,29 +519,26 @@ impl AbstractState {
     }
 
     fn push_words(&mut self, old_sp: &AbstractValue, values: &[AbstractValue]) {
-        let Some(stack_pointers) = old_sp.values() else {
-            self.clear_memory();
-            return;
-        };
-        if stack_pointers.len() != 1 || values.is_empty() {
-            self.clear_memory();
-            return;
-        }
-
-        let old_sp = *stack_pointers.iter().next().expect("one SP value");
         let Some(byte_count) = u32::try_from(values.len())
             .ok()
             .and_then(|count| count.checked_mul(4))
         else {
-            self.clear_memory();
+            self.invalidate_store(&AbstractValue::Unknown, u32::MAX, 0);
             return;
         };
-        let Some(new_sp) = old_sp.checked_sub(byte_count) else {
-            self.clear_memory();
+        let Some(stack_pointers) = old_sp.values() else {
+            self.invalidate_store(&AbstractValue::Unknown, byte_count, 0);
             return;
         };
+        if stack_pointers.len() != 1 || values.is_empty() {
+            self.invalidate_store(&AbstractValue::Unknown, byte_count, 0);
+            return;
+        }
+
+        let old_sp = *stack_pointers.iter().next().expect("one SP value");
+        let new_sp = old_sp.wrapping_sub(byte_count);
         if old_sp & 3 != 0 || !supported_ram_interval(new_sp, byte_count) {
-            self.clear_memory();
+            self.invalidate_store(&AbstractValue::constant(new_sp), byte_count, 0);
             return;
         }
 
@@ -550,11 +612,13 @@ impl AbstractState {
         let Some(addresses) = addresses.values() else {
             self.clear_memory();
             self.clear_io();
+            self.dma.invalidate();
             return;
         };
         if addresses.is_empty() || addresses.len() > MAX_CONSTANT_TARGETS {
             self.clear_memory();
             self.clear_io();
+            self.dma.invalidate();
             return;
         }
 
@@ -562,6 +626,7 @@ impl AbstractState {
         let mut clear_memory = false;
         for raw_address in addresses {
             let address = raw_address & !align_mask;
+            self.invalidate_dma_state_for_store(address, byte_count);
             if (byte_count == 4 && address & 3 != 0) || !supported_ram_interval(address, byte_count)
             {
                 clear_memory = true;
@@ -578,6 +643,125 @@ impl AbstractState {
             let memory_words = Arc::make_mut(&mut self.memory_words);
             for address in overwritten_words {
                 memory_words.remove(&address);
+            }
+        }
+    }
+
+    fn try_dma3_word_store(
+        &mut self,
+        address: u32,
+        value: &AbstractValue,
+        image: &RomImage,
+    ) -> bool {
+        if address & 3 != 0 || !self.dma.all_channels_are_proven_quiescent() {
+            return false;
+        }
+
+        match address {
+            IO_DMA3_SAD => {
+                self.dma.dma3_source = match value {
+                    AbstractValue::Unknown => AbstractValue::Unknown,
+                    AbstractValue::Constants(values) => AbstractValue::Constants(
+                        values
+                            .iter()
+                            .map(|value| value & DMA3_ADDRESS_MASK)
+                            .collect(),
+                    ),
+                };
+                self.clear_memory();
+                true
+            }
+            IO_DMA3_DAD => {
+                self.dma.dma3_destination = match value {
+                    AbstractValue::Unknown => AbstractValue::Unknown,
+                    AbstractValue::Constants(values) => AbstractValue::Constants(
+                        values
+                            .iter()
+                            .map(|value| value & DMA3_ADDRESS_MASK)
+                            .collect(),
+                    ),
+                };
+                self.clear_memory();
+                true
+            }
+            IO_DMA3_CNT => {
+                let Some(word) = value.singleton() else {
+                    return false;
+                };
+                let count = word & 0xFFFF;
+                let control = (word >> 16) & DMA3_CONTROL_MASK;
+                if control & DMA3_ENABLE == 0 {
+                    self.dma.dma3_control = AbstractValue::constant(control);
+                    self.clear_memory();
+                    return true;
+                }
+
+                if control != DMA3_SAFE_IMMEDIATE_WORD_CONTROL || count == 0 {
+                    return false;
+                }
+                let Some(source) = self.dma.dma3_source.singleton() else {
+                    return false;
+                };
+                let Some(destination) = self.dma.dma3_destination.singleton() else {
+                    return false;
+                };
+                if source & 3 != 0 || destination & 3 != 0 {
+                    return false;
+                }
+                let Some(byte_count) = count.checked_mul(4) else {
+                    return false;
+                };
+                let Some(source_end) = source.checked_add(byte_count) else {
+                    return false;
+                };
+                let Some(destination_end) = destination.checked_add(byte_count) else {
+                    return false;
+                };
+                let Ok(source_length) = usize::try_from(byte_count) else {
+                    return false;
+                };
+                if image.offset_for_guest(source, source_length).is_err()
+                    || source_end <= source
+                    || destination < 0x0300_0000
+                    || destination_end > 0x0300_8000
+                {
+                    return false;
+                }
+
+                // Immediate one-shot DMA blocks the guest CPU until completion.
+                // The model records only that it is disabled afterward; copied
+                // bytes and timing remain outside this discovery abstraction.
+                self.dma.dma3_control = AbstractValue::constant(control & !DMA3_ENABLE);
+                self.dma.dma3_source = AbstractValue::Unknown;
+                self.dma.dma3_destination = AbstractValue::Unknown;
+                self.clear_memory();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn invalidate_dma_state_for_store(&mut self, address: u32, byte_count: u32) {
+        let Some(end) = address.checked_add(byte_count) else {
+            self.dma.invalidate();
+            return;
+        };
+        if address < IO_DMA_END && IO_DMA0_START < end {
+            self.dma.invalidate();
+        }
+    }
+
+    fn reset_dma_after_register_ram_reset(&mut self, flags: &AbstractValue) {
+        match flags.singleton() {
+            Some(value) if value & 0x80 != 0 => self.dma.reset_after_hle(),
+            Some(_) => {}
+            None => {
+                if flags
+                    .values()
+                    .is_none_or(|values| values.iter().any(|value| value & 0x80 != 0))
+                {
+                    self.dma.invalidate();
+                }
             }
         }
     }
@@ -1328,11 +1512,16 @@ fn process_thumb_instruction(
                 total_states,
             )?;
         }
-        ThumbOperation::StoreWordImmediate { rb, imm5, .. } => {
+        ThumbOperation::StoreWordImmediate { rd, rb, imm5 } => {
             let mut next_state = state.clone();
             let address =
                 effective_store_address(&state.registers[rb as usize], u32::from(imm5) * 4, true);
-            next_state.invalidate_store(&address, 4, 0);
+            let recognized_dma_store = address.singleton().is_some_and(|address| {
+                next_state.try_dma3_word_store(address, &state.registers[rd as usize], image)
+            });
+            if !recognized_dma_store {
+                next_state.invalidate_store(&address, 4, 0);
+            }
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
@@ -1368,6 +1557,7 @@ fn process_thumb_instruction(
             let Some(base_values) = old_base.values() else {
                 next_state.clear_memory();
                 next_state.clear_io();
+                next_state.dma.invalidate();
                 enqueue_state(
                     IsaMode::Thumb,
                     instruction.guest_pc.wrapping_add(2),
@@ -1381,6 +1571,7 @@ fn process_thumb_instruction(
             if base_values.len() != 1 {
                 next_state.clear_memory();
                 next_state.clear_io();
+                next_state.dma.invalidate();
                 enqueue_state(
                     IsaMode::Thumb,
                     instruction.guest_pc.wrapping_add(2),
@@ -1393,6 +1584,7 @@ fn process_thumb_instruction(
             }
 
             let aligned_start = *base_values.iter().next().expect("one base value") & !3;
+            next_state.invalidate_dma_state_for_store(aligned_start, transfer_bytes);
             if !supported_ram_interval(aligned_start, transfer_bytes) {
                 next_state.clear_memory();
                 next_state.clear_io();
@@ -1599,6 +1791,7 @@ fn process_thumb_instruction(
             let mut next_state = state.clone();
             next_state.clear_memory();
             next_state.reset_io_after_register_ram_reset(&state.registers[0]);
+            next_state.reset_dma_after_register_ram_reset(&state.registers[0]);
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
@@ -1932,6 +2125,35 @@ mod tests {
         assert_eq!(state.io_halfword(IO_IE), ie);
         assert_eq!(state.io_halfword(IO_IF), interrupt_flags);
         assert_eq!(state.io_halfword(IO_IME), ime);
+    }
+
+    fn run_thumb_successors(
+        image: &RomImage,
+        instruction: ThumbInstruction,
+        state: &AbstractState,
+    ) -> Vec<AbstractState> {
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            image,
+            instruction,
+            state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        incoming
+            .remove(&(IsaMode::Thumb, instruction.guest_pc.wrapping_add(2)))
+            .expect("Thumb instruction has sequential successor")
+    }
+
+    fn thumb_word_store(pc: u32, rd: u8, imm5: u8) -> ThumbInstruction {
+        ThumbInstruction {
+            guest_pc: pc,
+            encoding: 0x6000 | (u16::from(imm5) << 6) | u16::from(rd),
+            operation: ThumbOperation::StoreWordImmediate { rd, rb: 0, imm5 },
+        }
     }
 
     fn pending_keys(pending: &VecDeque<((IsaMode, u32), AbstractState)>) -> Vec<(IsaMode, u32)> {
@@ -3505,6 +3727,279 @@ mod tests {
             );
             assert!(state.memory_words.is_empty());
         }
+    }
+
+    #[test]
+    fn thumb_dma3_rom_to_iwram_word_transfer_preserves_latches_only_after_proof() {
+        let image = counter_rom();
+        let source = ROM_BASE + 0xC0;
+        let destination = 0x0300_0040;
+        let mut state = state_with_known_io();
+        state.set_memory_word(0x0300_0000, AbstractValue::constant(0x0800_0085));
+        state.set_constant(0, IO_DMA3_SAD);
+        state.set_constant(5, source);
+
+        state = only_state(&run_thumb_successors(
+            &image,
+            thumb_word_store(ROM_BASE + 0x80, 5, 0),
+            &state,
+        ))
+        .clone();
+        assert_io_facts(
+            &state,
+            AbstractValue::constant(0x1234),
+            AbstractValue::constant(0x0056),
+            AbstractValue::constant(1),
+        );
+        assert!(state.memory_words.is_empty());
+        assert_eq!(state.dma.dma3_source, AbstractValue::constant(source));
+
+        state.set_memory_word(0x0300_0000, AbstractValue::constant(0x0800_0099));
+        state.set_constant(4, destination);
+        state = only_state(&run_thumb_successors(
+            &image,
+            thumb_word_store(ROM_BASE + 0x82, 4, 1),
+            &state,
+        ))
+        .clone();
+        assert_io_facts(
+            &state,
+            AbstractValue::constant(0x1234),
+            AbstractValue::constant(0x0056),
+            AbstractValue::constant(1),
+        );
+        assert!(state.memory_words.is_empty());
+        assert_eq!(
+            state.dma.dma3_destination,
+            AbstractValue::constant(destination)
+        );
+
+        state.set_memory_word(0x0300_0000, AbstractValue::constant(0x0800_00A5));
+        state.set_constant(1, (DMA3_SAFE_IMMEDIATE_WORD_CONTROL << 16) | 1);
+        state = only_state(&run_thumb_successors(
+            &image,
+            thumb_word_store(ROM_BASE + 0x84, 1, 2),
+            &state,
+        ))
+        .clone();
+        assert_io_facts(
+            &state,
+            AbstractValue::constant(0x1234),
+            AbstractValue::constant(0x0056),
+            AbstractValue::constant(1),
+        );
+        assert!(state.memory_words.is_empty());
+        assert!(state.dma.all_channels_are_proven_quiescent());
+        assert_eq!(state.dma.dma3_control, AbstractValue::constant(0x0400));
+        assert_eq!(state.dma.dma3_source, AbstractValue::Unknown);
+        assert_eq!(state.dma.dma3_destination, AbstractValue::Unknown);
+    }
+
+    #[test]
+    fn dma3_rearm_after_completion_cannot_reuse_preincrement_addresses() {
+        let image = counter_rom();
+        let mut state = state_with_known_io();
+        state.dma.dma3_source = AbstractValue::Unknown;
+        state.dma.dma3_destination = AbstractValue::Unknown;
+        state.dma.dma3_control = AbstractValue::constant(0x0400);
+        state.set_constant(0, IO_DMA3_SAD);
+        state.set_constant(1, (DMA3_SAFE_IMMEDIATE_WORD_CONTROL << 16) | 1);
+
+        let successors =
+            run_thumb_successors(&image, thumb_word_store(ROM_BASE + 0x84, 1, 2), &state);
+        let successor = only_state(&successors);
+        assert_io_facts(
+            successor,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+        assert!(!successor.dma.all_channels_are_proven_quiescent());
+    }
+
+    #[test]
+    fn push_to_io_or_unknown_stack_invalidates_latches_and_possible_dma_facts() {
+        let image = counter_rom();
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x80,
+            encoding: 0xB401,
+            operation: ThumbOperation::Push { register_list: 1 },
+        };
+
+        let mut mmio_stack = state_with_known_io();
+        mmio_stack.set_constant(0, 0xDEAD_BEEF);
+        mmio_stack.set_constant(13, IO_IME + 4);
+        mmio_stack.set_memory_word(0x0300_0000, AbstractValue::constant(0x0800_0085));
+        let successors = run_thumb_successors(&image, instruction, &mmio_stack);
+        let successor = only_state(&successors);
+        assert_io_facts(
+            successor,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+        assert!(successor.memory_words.is_empty());
+
+        let mut unknown_stack = state_with_known_io();
+        unknown_stack.set_constant(0, 0xDEAD_BEEF);
+        unknown_stack.registers[13] = AbstractValue::Unknown;
+        let successors = run_thumb_successors(&image, instruction, &unknown_stack);
+        let successor = only_state(&successors);
+        assert_io_facts(
+            successor,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+        assert!(!successor.dma.all_channels_are_proven_quiescent());
+    }
+
+    #[test]
+    fn stmia_to_dma_invalidates_quiescence_even_when_io_facts_are_cleared() {
+        let image = counter_rom();
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x80,
+            encoding: 0xC201,
+            operation: ThumbOperation::StoreMultipleIncrementAfter {
+                base_register: 2,
+                register_list: 1,
+            },
+        };
+        let mut state = state_with_known_io();
+        state.registers[0] = AbstractValue::constant(0x1234_5678);
+        state.set_constant(2, IO_DMA0_START);
+
+        let successors = run_thumb_successors(&image, instruction, &state);
+        let successor = only_state(&successors);
+        assert_io_facts(
+            successor,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+        assert!(!successor.dma.all_channels_are_proven_quiescent());
+    }
+
+    #[test]
+    fn disabled_dma3_control_store_has_no_latch_effect() {
+        let image = counter_rom();
+        let mut state = state_with_known_io();
+        state.set_memory_word(0x0300_0000, AbstractValue::constant(0x0800_0085));
+        state.set_constant(0, IO_DMA3_SAD);
+        state.set_constant(1, 0x0002_0001);
+
+        let successors =
+            run_thumb_successors(&image, thumb_word_store(ROM_BASE + 0x80, 1, 2), &state);
+        let successor = only_state(&successors);
+        assert_io_facts(
+            successor,
+            AbstractValue::constant(0x1234),
+            AbstractValue::constant(0x0056),
+            AbstractValue::constant(1),
+        );
+        assert!(successor.memory_words.is_empty());
+        assert!(successor.dma.all_channels_are_proven_quiescent());
+        assert_eq!(successor.dma.dma3_control, AbstractValue::constant(0));
+    }
+
+    #[test]
+    fn unsafe_dma3_configurations_clear_latches_and_dma_proof() {
+        let image = counter_rom();
+        let source = ROM_BASE + 0xC0;
+        let destination = 0x0300_0040;
+        let cases = [
+            (source, destination, 1, 0xC400),          // DMA IRQ enabled.
+            (source, destination, 1, 0x8600),          // Repeat.
+            (source, destination, 1, 0x8C00),          // DRQ.
+            (source, destination, 1, 0x9400),          // VBlank timing.
+            (source, destination, 1, 0x8000),          // 16-bit width.
+            (source, destination, 0, 0x8400),          // DMA3 count zero means 65536.
+            (ROM_BASE + 0xFC, destination, 2, 0x8400), // ROM range overrun.
+            (source, 0x0300_7FFC, 2, 0x8400),          // IWRAM range overrun.
+            (ROM_BASE + 0xC2, destination, 1, 0x8400), // Misaligned source.
+            (source, destination + 2, 1, 0x8400),      // Misaligned destination.
+            (source, 0x0200_0000, 1, 0x8400),          // EWRAM destination.
+        ];
+
+        for (source, destination, count, control) in cases {
+            let mut state = state_with_known_io();
+            state.dma.dma3_source = AbstractValue::constant(source & DMA3_ADDRESS_MASK);
+            state.dma.dma3_destination = AbstractValue::constant(destination & DMA3_ADDRESS_MASK);
+            state.set_constant(0, IO_DMA3_SAD);
+            state.set_constant(1, (control << 16) | count);
+            let successors =
+                run_thumb_successors(&image, thumb_word_store(ROM_BASE + 0x80, 1, 2), &state);
+            let successor = only_state(&successors);
+
+            assert_io_facts(
+                successor,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+            );
+            assert!(successor.memory_words.is_empty());
+            assert!(!successor.dma.all_channels_are_proven_quiescent());
+        }
+
+        let mut unknown_control = state_with_known_io();
+        unknown_control.dma.dma3_source = AbstractValue::constant(source);
+        unknown_control.dma.dma3_destination = AbstractValue::constant(destination);
+        unknown_control.set_constant(0, IO_DMA3_SAD);
+        let successors = run_thumb_successors(
+            &image,
+            thumb_word_store(ROM_BASE + 0x80, 1, 2),
+            &unknown_control,
+        );
+        let successor = only_state(&successors);
+        assert_io_facts(
+            successor,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+    }
+
+    #[test]
+    fn other_dma_channel_or_partial_dma3_store_prevents_quiescence_recovery() {
+        let mut other_channel = state_with_known_io();
+        other_channel.invalidate_store(&AbstractValue::constant(IO_DMA0_START), 4, 0);
+        assert!(!other_channel.dma.all_channels_are_proven_quiescent());
+        assert!(!other_channel.try_dma3_word_store(
+            IO_DMA3_SAD,
+            &AbstractValue::constant(ROM_BASE + 0xC0),
+            &counter_rom(),
+        ));
+        assert_io_facts(
+            &other_channel,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+
+        let mut partial = state_with_known_io();
+        partial.invalidate_store(&AbstractValue::constant(IO_DMA3_SAD), 2, 1);
+        assert!(!partial.dma.all_channels_are_proven_quiescent());
+        assert_io_facts(
+            &partial,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+        );
+    }
+
+    #[test]
+    fn register_ram_reset_restores_dma_proof_only_for_singleton_dma_flag() {
+        let mut reset = state_with_known_io();
+        reset.dma.invalidate();
+        reset.reset_dma_after_register_ram_reset(&AbstractValue::constant(0x80));
+        assert!(reset.dma.all_channels_are_proven_quiescent());
+        assert_eq!(reset.dma.dma3_source, AbstractValue::constant(0));
+        assert_eq!(reset.dma.dma3_destination, AbstractValue::constant(0));
+
+        let mut ambiguous = state_with_known_io();
+        ambiguous.reset_dma_after_register_ram_reset(&AbstractValue::Unknown);
+        assert!(!ambiguous.dma.all_channels_are_proven_quiescent());
+        assert_eq!(ambiguous.dma.dma3_source, AbstractValue::Unknown);
     }
 
     #[test]
