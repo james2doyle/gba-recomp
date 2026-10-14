@@ -104,6 +104,12 @@ No commit `6fe39a820fa595905b07120837e259062de8440b`, `cargo test --locked --wor
 
 Repetindo `cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-ldrb-6fe39a8 --opt O2 --steps 100` para a ROM de SHA-256 fixado acima, a descoberta estática passou por `0x0800099C` (`0x7808`, inferido como LDRB Format 9) e parou em `0x0800099E`, raw `0x4318`, com `unsupported_thumb_instruction`. SRC-31 corrobora a classificação como Thumb Format 4 `ORRS r0,r3`, mas não fornece valores de registradores ou flags observados. A pasta de saída não foi criada; nenhum pacote LeafGreen foi produzido, a ROM não foi executada e REA não produziu decompilação. Esta é somente a nova fronteira da descoberta estática para o hash fixado.
 
+## Tentativa após SPEC-030 — ORRS Thumb Format 4
+
+No commit `2530ef2c7292b833c4d4b0591c0927c5754b402c`, `cargo test --locked --workspace --jobs 10` passou com 41 testes em `gba-ir` e 44 em `gba-recomp`; o teste direcionado do verificador também passou após acrescentar o caso de `Rd` divergente. `scripts/verify-gba020.sh` passou em Darwin/arm64 com fixtures ORRS strict-AOT O0/O2 para N/Z, preservação de C/V e outros bits CPSR, alias, fluxo ORR→BX e rejeições AND/EOR/MVN sem pacote parcial. Evidência e hashes: [gba020-thumb-orr-register-macos-arm64.json](evidence/gba020-thumb-orr-register-macos-arm64.json).
+
+Repetindo `cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-orr-run --opt O2 --steps 100` para a ROM SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta estática passou por `0x4318` em `0x0800099E` e parou com `unsupported_thumb_instruction` em `0x080009A2`, raw `0x3201`. Os campos inferem Thumb Format 3 `ADDS r2,#1`, corroborado como formato pelas referências SRC-22. A saída `target/leafgreen-after-orr-run` não foi criada; não houve pacote, execução da ROM ou decompilação REA. O limite é resultado da descoberta estática local para o hash fixado, não trace dinâmico nem cobertura total do jogo.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

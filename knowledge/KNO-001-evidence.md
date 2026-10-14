@@ -62,6 +62,12 @@ O commit `6fe39a820fa595905b07120837e259062de8440b` implementa LDRB Thumb imedia
 
 SRC-31 revisa as fontes fixadas para o novo limite de descoberta, `0x4318`, inferido como ORRS Thumb Format 4. A inferência não contém valores de registradores ou flags observados; a fonte apenas corrobora a semântica arquitetural.
 
+## Evidência da implementação local ORRS
+
+O commit `2530ef2c7292b833c4d4b0591c0927c5754b402c` implementa ORRS Thumb Format 4 em decoder, GBA IR, descoberta de constantes e lowering LLVM strict-AOT. `cargo test --locked --workspace --jobs 10` passou com 41 testes em `gba-ir` e 44 em `gba-recomp`; após a revisão, o teste direcionado do verificador passou também com o caso de `Rd` divergente. `scripts/verify-gba020.sh` passou em Darwin/arm64 com fixtures O0/O2 para resultado zero, positivo e com sinal, quatro combinações de C/V, alias, ORR→BX, manifesto strict-AOT e rejeições AND/EOR/MVN sem pacote parcial. Hashes e estados estão em [gba020-thumb-orr-register-macos-arm64.json](evidence/gba020-thumb-orr-register-macos-arm64.json). Isso valida os cenários sintéticos do contrato em macOS arm64; não valida hardware nem execução dinâmica de LeafGreen.
+
+A recompilação estática pós-ORRS para a ROM de KNO-004 passou por `0x4318` em `0x0800099E` e parou em `0x3201` em `0x080009A2`. Os campos inferem `ADDS r2,#1` Thumb Format 3; SRC-22 já registra as fontes fixadas para os subopcodes desse formato. Nenhum valor de r2/flags foi observado. Não houve pacote LeafGreen, execução da ROM ou decompilação REA.
+
 ## Detalhamento da referência GBA
 
 - `crates/recomp-core/src/analyze.rs:24`: blocos têm endereço e modo; `:136` usa entradas observadas de RAM.
