@@ -19,3 +19,5 @@
 - [ADR-017-additive-halfword-store-abi](ADR-017-additive-halfword-store-abi.md)
 - [ADR-018-additive-byte-store-abi](ADR-018-additive-byte-store-abi.md)
 - [ADR-019-additive-byte-load-abi](ADR-019-additive-byte-load-abi.md)
+- [ADR-020-additive-thumb-pop-abi](ADR-020-additive-thumb-pop-abi.md)
+- [ADR-021-bounded-gba020-gate-parallelism](ADR-021-bounded-gba020-gate-parallelism.md)
