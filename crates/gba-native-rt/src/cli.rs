@@ -289,6 +289,16 @@ pub fn run(
     Ok(())
 }
 
+/// `$HOME/Library/Application Support/gba-recomp/saves/<sha256>.sav`; on
+/// iOS `HOME` is the application's sandbox container (SPEC-068).
+#[cfg(target_os = "ios")]
+fn ios_save_path(sha256: &[u8; 32]) -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("HOME")?)
+        .join("Library/Application Support/gba-recomp/saves");
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir.join(format!("{}.sav", hex(sha256))))
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -312,11 +322,15 @@ fn run_window(
             })
         })
         .unwrap_or_default();
+    let save = o.save.clone();
+    // iOS has no command line: keep the save in the app sandbox by default.
+    #[cfg(target_os = "ios")]
+    let save = save.or_else(|| ios_save_path(&_sha256));
     let options = gba_desktop::AppOptions {
         rom: o.rom.clone().unwrap_or_default(),
         rom_bytes: Some(rom),
         bios: o.bios.clone(),
-        save: o.save.clone(),
+        save,
         backup: o.backup,
         frames: o.frames_given.then_some(o.frames),
         settings_path: o.settings.clone(),

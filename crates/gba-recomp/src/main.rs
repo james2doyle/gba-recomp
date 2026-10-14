@@ -5,6 +5,7 @@ use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gba_ir::{ArmProgram, GBA_IR_VERSION};
+use gba_llvm::native::TargetSpec;
 use gba_llvm::{Optimization, emit_arm_program, emit_block, native_target};
 use gba_runtime_abi::{
     ABI_HEADER_V2, ABI_HEADER_V3, ABI_HEADER_V4, ABI_RUNTIME_HLE_V1_SOURCE, ABI_RUNTIME_V2_SOURCE,
@@ -154,10 +155,13 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     let output = output.ok_or_else(usage)?;
     let optimization = optimization.ok_or_else(usage)?;
     println!("execution_mode: {}", mode.as_str());
-    require_available_mode(mode)?;
+    require_available_mode(mode, &profile.target, profile.runtime_lib.as_deref())?;
     if mode == ExecutionMode::AotCompatible {
         let report = compat::build_package(&rom_path, &output, optimization, &profile)?;
         println!("package: {}", report.path.display());
+        if let Some(archive) = &report.archive {
+            println!("archive: {}", archive.display());
+        }
         print!("{}", report.manifest);
         return Ok(());
     }
@@ -507,10 +511,14 @@ fn parse_execution_mode(value: &str) -> Result<ExecutionMode, String> {
 /// IAC-02/IAC-09: `aot-compatible` links the `gba-core` interpreter through
 /// the `gba-native-rt` runtime (SPEC-062). Without that library the mode is
 /// rejected before any work instead of degrading to `strict-aot`.
-fn require_available_mode(mode: ExecutionMode) -> Result<(), String> {
+fn require_available_mode(
+    mode: ExecutionMode,
+    target: &TargetSpec,
+    runtime_lib: Option<&Path>,
+) -> Result<(), String> {
     match mode {
         ExecutionMode::StrictAot => Ok(()),
-        ExecutionMode::AotCompatible => compat::runtime_library()
+        ExecutionMode::AotCompatible => compat::runtime_library(target, runtime_lib)
             .map(|_| ())
             .map_err(|e| format!("execution mode `aot-compatible` is not available: {e}; the mode was not changed to strict-aot")),
     }
@@ -560,7 +568,9 @@ fn usage() -> String {
 
 #[cfg(test)]
 mod execution_mode_tests {
-    use super::{ExecutionMode, parse_execution_mode, require_available_mode, run_compile};
+    use super::{
+        ExecutionMode, TargetSpec, parse_execution_mode, require_available_mode, run_compile,
+    };
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
@@ -585,10 +595,13 @@ mod execution_mode_tests {
 
     #[test]
     fn compatible_mode_without_runtime_library_is_rejected_not_downgraded() {
-        assert!(require_available_mode(ExecutionMode::StrictAot).is_ok());
+        assert!(
+            require_available_mode(ExecutionMode::StrictAot, &TargetSpec::host(), None).is_ok()
+        );
         // SAFETY of test env mutation: this test only reads its own variable.
         unsafe { std::env::set_var("GBA_NATIVE_RT_LIB", "/nonexistent/libgba_native_rt.a") };
-        let error = require_available_mode(ExecutionMode::AotCompatible).unwrap_err();
+        let error = require_available_mode(ExecutionMode::AotCompatible, &TargetSpec::host(), None)
+            .unwrap_err();
         unsafe { std::env::remove_var("GBA_NATIVE_RT_LIB") };
         assert!(error.contains("aot-compatible"), "{error}");
         assert!(error.contains("not changed to strict-aot"), "{error}");

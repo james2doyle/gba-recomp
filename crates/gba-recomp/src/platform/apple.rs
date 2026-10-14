@@ -127,7 +127,7 @@ pub(super) fn bundle_sdl(
 }
 
 /// Application icon (`assets/logo-ico.png`), turned into `AppIcon.icns`.
-const APP_ICON_PNG: &[u8] = include_bytes!("../../../../assets/logo-ico.png");
+pub(super) const APP_ICON_PNG: &[u8] = include_bytes!("../../../../assets/logo-ico.png");
 
 pub(super) fn game_title(rom: &[u8]) -> String {
     let raw = rom.get(0xA0..0xAC).unwrap_or_default();
