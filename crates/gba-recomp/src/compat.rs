@@ -40,9 +40,9 @@ pub struct Profile {
     pub seconds: f64,
 }
 
-/// Locate the host runtime static library (NB-62-07, SPEC-068).
-pub fn runtime_library() -> Result<PathBuf, String> {
-    platform::default_runtime(&TargetSpec::host())
+/// Locate the runtime static library built for `target` (NB-62-07, SPEC-068).
+pub fn runtime_library_for(target: &TargetSpec) -> Result<PathBuf, String> {
+    platform::default_runtime(target)
 }
 
 pub fn parse_keys(text: &str) -> Result<u16, String> {
@@ -186,6 +186,7 @@ pub fn build_package(
     optimization: Optimization,
     options: &ProfileOptions,
 ) -> Result<PackageReport, String> {
+    platform::preflight(&options.target, options.embed_rom)?;
     let runtime = match &options.runtime_lib {
         Some(p) => p.clone(),
         None => platform::default_runtime(&options.target)?,
