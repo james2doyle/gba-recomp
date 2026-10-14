@@ -29,6 +29,8 @@ pub enum Command {
     Reset,
     SaveNow,
     Quit,
+    /// Open the external settings window (EXT-64-02).
+    OpenExternal,
     /// Make the draft effective and persist it (UI-02).
     Apply(Settings),
 }
@@ -55,11 +57,12 @@ pub struct Menu {
     pub status: Option<String>,
 }
 
-const MAIN: [&str; 7] = [
+const MAIN: [&str; 8] = [
     "Continuar",
     "Video",
     "Audio",
     "Controles",
+    "Janela de configuracoes...",
     "Reiniciar jogo",
     "Salvar agora",
     "Sair",
@@ -254,11 +257,12 @@ impl Menu {
                         self.go(Page::Controls);
                         Command::None
                     }
-                    4 => {
+                    4 => Command::OpenExternal,
+                    5 => {
                         self.close();
                         Command::Reset
                     }
-                    5 => Command::SaveNow,
+                    6 => Command::SaveNow,
                     _ => Command::Quit,
                 }
             }
@@ -436,9 +440,14 @@ mod tests {
         assert_eq!(m.remap, None);
         assert_eq!(m.draft.input.keyboard[0], vec!["Z".to_owned()]);
         m.handle(Nav::Confirm);
-        assert!(m.bind("X".into(), true).is_none(), "wrong device is ignored");
+        assert!(
+            m.bind("X".into(), true).is_none(),
+            "wrong device is ignored"
+        );
         assert!(m.remap.is_some());
-        let applied = m.bind("X".into(), false).expect("binding applies immediately");
+        let applied = m
+            .bind("X".into(), false)
+            .expect("binding applies immediately");
         assert_eq!(applied.input.keyboard[0], vec!["X".to_owned()]);
         // Leaving the page no longer discards the binding.
         m.handle(Nav::Back);
@@ -453,9 +462,11 @@ mod tests {
         let mut m = Menu::new(Settings::default());
         m.open_at(Page::Main, &Settings::default());
         m.cursor = 4;
+        assert_eq!(m.handle(Nav::Confirm), Command::OpenExternal);
+        m.cursor = 5;
         assert_eq!(m.handle(Nav::Confirm), Command::Reset);
         m.open_at(Page::Main, &Settings::default());
-        m.cursor = 6;
+        m.cursor = 7;
         assert_eq!(m.handle(Nav::Confirm), Command::Quit);
     }
 }

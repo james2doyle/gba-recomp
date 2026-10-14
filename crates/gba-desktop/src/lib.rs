@@ -7,6 +7,7 @@
 
 pub mod app;
 pub mod ctxmenu;
+pub mod gpio;
 pub mod input;
 pub mod menu;
 pub mod sdl;

@@ -47,7 +47,52 @@ pub struct Input {
     pub keyboard: [Vec<String>; 10],
     /// SDL gamepad button strings per GBA button.
     pub gamepad: [Vec<String>; 10],
+    /// Generic (non-gamepad) joystick controls: `bN`, `hN<up|down|left|right>`,
+    /// `aN+`/`aN-` (DEV-64-02).
+    pub joystick: [Vec<String>; 10],
     pub deadzone: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bias {
+    PullUp,
+    PullDown,
+    Disabled,
+}
+
+impl Bias {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Bias::PullUp => "pull-up",
+            Bias::PullDown => "pull-down",
+            Bias::Disabled => "disabled",
+        }
+    }
+}
+
+/// Buttons wired to GPIO lines (Linux gpiochip uAPI v2, GPIO-64-01).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Gpio {
+    pub enabled: bool,
+    pub chip: String,
+    pub active_low: bool,
+    pub bias: Bias,
+    pub debounce_ms: u32,
+    /// Line offset per GBA button (`None` = no pin).
+    pub lines: [Option<u32>; 10],
+}
+
+impl Default for Gpio {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            chip: "/dev/gpiochip0".into(),
+            active_low: true,
+            bias: Bias::PullUp,
+            debounce_ms: 10,
+            lines: [None; 10],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,6 +100,7 @@ pub struct Settings {
     pub video: Video,
     pub audio: Audio,
     pub input: Input,
+    pub gpio: Gpio,
 }
 
 fn strings(list: &[&str]) -> Vec<String> {
@@ -88,6 +134,18 @@ impl Default for Input {
                 strings(&["rightshoulder"]),
                 strings(&["leftshoulder"]),
             ],
+            joystick: [
+                strings(&["b0"]),
+                strings(&["b1"]),
+                strings(&["b8"]),
+                strings(&["b9"]),
+                strings(&["h0right", "a0+"]),
+                strings(&["h0left", "a0-"]),
+                strings(&["h0up", "a1-"]),
+                strings(&["h0down", "a1+"]),
+                strings(&["b5"]),
+                strings(&["b4"]),
+            ],
             deadzone: 0.25,
         }
     }
@@ -110,6 +168,7 @@ impl Default for Settings {
                 latency_ms: 60,
             },
             input: Input::default(),
+            gpio: Gpio::default(),
         }
     }
 }
@@ -230,7 +289,7 @@ impl Settings {
                     .ok_or_else(|| err("unterminated section".into()))?
                     .trim()
                     .to_owned();
-                if !matches!(section.as_str(), "video" | "audio" | "input") {
+                if !matches!(section.as_str(), "video" | "audio" | "input" | "gpio") {
                     return Err(err(format!("unknown section [{section}]")));
                 }
                 continue;
@@ -297,6 +356,35 @@ impl Settings {
                 }
                 self.input.deadzone = d;
             }
+            ("gpio", "enabled") => self.gpio.enabled = boolean(&value)?,
+            ("gpio", "chip") => match value {
+                Value::Str(s) if s.starts_with("/dev/") => self.gpio.chip = s,
+                _ => return Err("`chip` must be a /dev/gpiochipN path".into()),
+            },
+            ("gpio", "active_low") => self.gpio.active_low = boolean(&value)?,
+            ("gpio", "bias") => {
+                self.gpio.bias = match value {
+                    Value::Str(ref s) if s == "pull-up" => Bias::PullUp,
+                    Value::Str(ref s) if s == "pull-down" => Bias::PullDown,
+                    Value::Str(ref s) if s == "disabled" => Bias::Disabled,
+                    _ => {
+                        return Err(
+                            "`bias` must be \"pull-up\", \"pull-down\" or \"disabled\"".into()
+                        );
+                    }
+                }
+            }
+            ("gpio", "debounce_ms") => self.gpio.debounce_ms = int(&value, 0, 100)? as u32,
+            ("gpio", k) => {
+                let button = k
+                    .strip_prefix("line_")
+                    .ok_or_else(|| format!("unknown gpio key `{k}`"))?;
+                let index = BUTTONS
+                    .iter()
+                    .position(|b| *b == button)
+                    .ok_or_else(|| format!("unknown GBA button `{button}`"))?;
+                self.gpio.lines[index] = Some(int(&value, 0, 1023)? as u32);
+            }
             ("input", k) => {
                 let (kind, button) = k
                     .split_once('_')
@@ -313,6 +401,15 @@ impl Settings {
                 match kind {
                     "key" => self.input.keyboard[index] = list,
                     "pad" => self.input.gamepad[index] = list,
+                    "joy" => {
+                        if let Some(bad) = list
+                            .iter()
+                            .find(|c| crate::input::JoyControl::parse(c).is_none())
+                        {
+                            return Err(format!("invalid joystick control `{bad}`"));
+                        }
+                        self.input.joystick[index] = list
+                    }
                     _ => return Err(format!("unknown input key `{k}`")),
                 }
             }
@@ -363,6 +460,21 @@ impl Settings {
         }
         for (i, b) in BUTTONS.iter().enumerate() {
             let _ = writeln!(o, "pad_{b} = {}", list(&self.input.gamepad[i]));
+        }
+        for (i, b) in BUTTONS.iter().enumerate() {
+            let _ = writeln!(o, "joy_{b} = {}", list(&self.input.joystick[i]));
+        }
+        let g = &self.gpio;
+        let _ = writeln!(o, "\n[gpio]");
+        let _ = writeln!(o, "enabled = {}", g.enabled);
+        let _ = writeln!(o, "chip = \"{}\"", g.chip.replace('"', ""));
+        let _ = writeln!(o, "active_low = {}", g.active_low);
+        let _ = writeln!(o, "bias = \"{}\"", g.bias.as_str());
+        let _ = writeln!(o, "debounce_ms = {}", g.debounce_ms);
+        for (i, b) in BUTTONS.iter().enumerate() {
+            if let Some(line) = g.lines[i] {
+                let _ = writeln!(o, "line_{b} = {line}");
+            }
         }
         o
     }
@@ -457,6 +569,12 @@ mod tests {
         s.input.deadzone = 0.4;
         s.input.keyboard[0] = vec!["Space".into(), "Left Ctrl".into()];
         s.input.gamepad[3] = vec![];
+        s.input.joystick[2] = vec!["b7".into(), "a2-".into()];
+        s.gpio.enabled = true;
+        s.gpio.bias = Bias::PullDown;
+        s.gpio.debounce_ms = 25;
+        s.gpio.lines[0] = Some(17);
+        s.gpio.lines[9] = Some(26);
         assert_eq!(Settings::parse(&s.serialize()).unwrap(), s);
     }
 
@@ -473,6 +591,10 @@ mod tests {
             "[video]\nfilter = \"bicubic\"",
             "[bogus]",
             "[video]\nscale = \"3\"",
+            "[input]\njoy_a = [\"x3\"]",
+            "[gpio]\nline_q = 3",
+            "[gpio]\nchip = \"gpiochip0\"",
+            "[gpio]\ndebounce_ms = 500",
         ] {
             assert!(Settings::parse(&format!("{base}{bad}")).is_err(), "{bad}");
         }

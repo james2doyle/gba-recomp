@@ -33,6 +33,10 @@ struct SdlAudioStream {
 struct SdlGamepad {
     _p: [u8; 0],
 }
+#[repr(C)]
+struct SdlJoystick {
+    _p: [u8; 0],
+}
 
 #[repr(C)]
 struct SdlAudioSpec {
@@ -50,6 +54,12 @@ struct SdlEvent {
 const SDL_INIT_AUDIO: u32 = 0x10;
 const SDL_INIT_VIDEO: u32 = 0x20;
 const SDL_INIT_GAMEPAD: u32 = 0x2000;
+const SDL_INIT_JOYSTICK: u32 = 0x200;
+const SDL_EVENT_JOYSTICK_AXIS_MOTION: u32 = 0x600;
+const SDL_EVENT_JOYSTICK_HAT_MOTION: u32 = 0x602;
+const SDL_EVENT_JOYSTICK_BUTTON_DOWN: u32 = 0x603;
+const SDL_EVENT_JOYSTICK_ADDED: u32 = 0x605;
+const SDL_EVENT_JOYSTICK_REMOVED: u32 = 0x606;
 const SDL_INIT_EVENTS: u32 = 0x4000;
 const SDL_WINDOW_RESIZABLE: u64 = 0x20;
 const SDL_LOGICAL_PRESENTATION_INTEGER_SCALE: c_int = 4;
@@ -129,6 +139,22 @@ unsafe extern "C" {
     fn SDL_GetGamepadID(gamepad: *mut SdlGamepad) -> u32;
     fn SDL_GetGamepadButton(gamepad: *mut SdlGamepad, button: c_int) -> bool;
     fn SDL_GetGamepadAxis(gamepad: *mut SdlGamepad, axis: c_int) -> i16;
+    fn SDL_GetGamepadName(gamepad: *mut SdlGamepad) -> *const c_char;
+    fn SDL_GetGamepadConnectionState(gamepad: *mut SdlGamepad) -> c_int;
+    fn SDL_IsGamepad(id: u32) -> bool;
+    fn SDL_OpenJoystick(id: u32) -> *mut SdlJoystick;
+    fn SDL_CloseJoystick(joystick: *mut SdlJoystick);
+    fn SDL_GetJoystickID(joystick: *mut SdlJoystick) -> u32;
+    fn SDL_GetJoystickName(joystick: *mut SdlJoystick) -> *const c_char;
+    fn SDL_GetJoystickConnectionState(joystick: *mut SdlJoystick) -> c_int;
+    fn SDL_GetJoystickButton(joystick: *mut SdlJoystick, button: c_int) -> bool;
+    fn SDL_GetJoystickAxis(joystick: *mut SdlJoystick, axis: c_int) -> i16;
+    fn SDL_GetJoystickHat(joystick: *mut SdlJoystick, hat: c_int) -> u8;
+    fn SDL_GetNumJoystickButtons(joystick: *mut SdlJoystick) -> c_int;
+    fn SDL_GetNumJoystickAxes(joystick: *mut SdlJoystick) -> c_int;
+    fn SDL_GetNumJoystickHats(joystick: *mut SdlJoystick) -> c_int;
+    fn SDL_PumpEvents();
+    fn SDL_SetHint(name: *const c_char, value: *const c_char) -> bool;
     fn SDL_GetGamepadStringForButton(button: c_int) -> *const c_char;
     fn SDL_GetGamepadButtonFromString(name: *const c_char) -> c_int;
     fn SDL_GetScancodeName(scancode: c_int) -> *const c_char;
@@ -162,6 +188,14 @@ fn c_str_to_string(p: *const c_char) -> String {
     }
     // SAFETY: SDL returns NUL-terminated strings it owns.
     unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
+}
+
+/// Set an SDL hint before initialisation.
+pub fn set_hint(name: &str, value: &str) {
+    if let (Ok(n), Ok(v)) = (CString::new(name), CString::new(value)) {
+        // SAFETY: valid C strings for the duration of the call.
+        unsafe { SDL_SetHint(n.as_ptr(), v.as_ptr()) };
+    }
 }
 
 /// SDL name of a scancode (e.g. "Z", "Return"); empty if unknown.
@@ -244,6 +278,11 @@ pub enum Event {
     PadDown { button: i32 },
     GamepadAdded(u32),
     GamepadRemoved(u32),
+    JoystickAdded(u32),
+    JoystickRemoved(u32),
+    JoyButtonDown { which: u32, button: i32 },
+    JoyHat { which: u32, hat: i32, value: u8 },
+    JoyAxis { which: u32, axis: i32, value: i16 },
     Other,
 }
 
@@ -251,13 +290,48 @@ impl Context {
     /// Initialises video, events and gamepads (required).
     pub fn init() -> Result<Self, String> {
         // SAFETY: plain FFI call with constant flags.
-        if unsafe { SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) } {
+        if unsafe {
+            SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK)
+        } {
             Ok(Self {
                 _not_send: PhantomData,
             })
         } else {
             Err(last_error("SDL_Init"))
         }
+    }
+
+    /// Input-only initialisation for the settings app (no window).
+    pub fn init_input() -> Result<Self, String> {
+        // SAFETY: plain FFI call with constant flags.
+        if unsafe { SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK) } {
+            Ok(Self {
+                _not_send: PhantomData,
+            })
+        } else {
+            Err(last_error("SDL_Init"))
+        }
+    }
+
+    pub fn pump(&self) {
+        // SAFETY: plain FFI call on the thread that initialised SDL.
+        unsafe { SDL_PumpEvents() };
+    }
+
+    /// Whether the joystick `id` has a standard gamepad mapping.
+    pub fn is_gamepad(&self, id: u32) -> bool {
+        // SAFETY: plain FFI call; unknown ids return false.
+        unsafe { SDL_IsGamepad(id) }
+    }
+
+    pub fn open_joystick(&self, id: u32) -> Result<Joystick<'_>, String> {
+        // SAFETY: plain FFI call; an invalid id yields null.
+        let raw = unsafe { SDL_OpenJoystick(id) };
+        let joy = NonNull::new(raw).ok_or_else(|| last_error("SDL_OpenJoystick"))?;
+        Ok(Joystick {
+            joy,
+            _ctx: PhantomData,
+        })
     }
 
     /// Opens the default playback device as a 32768 Hz stereo S16 stream.
@@ -330,6 +404,24 @@ impl Context {
                 button: i32::from(ev.bytes[20]),
             },
             SDL_EVENT_GAMEPAD_ADDED => Event::GamepadAdded(word(16)),
+            SDL_EVENT_JOYSTICK_ADDED => Event::JoystickAdded(word(16)),
+            SDL_EVENT_JOYSTICK_REMOVED => Event::JoystickRemoved(word(16)),
+            // SDL_JoyButtonEvent / SDL_JoyHatEvent: index at 20, value at 21.
+            SDL_EVENT_JOYSTICK_BUTTON_DOWN => Event::JoyButtonDown {
+                which: word(16),
+                button: i32::from(ev.bytes[20]),
+            },
+            SDL_EVENT_JOYSTICK_HAT_MOTION => Event::JoyHat {
+                which: word(16),
+                hat: i32::from(ev.bytes[20]),
+                value: ev.bytes[21],
+            },
+            // SDL_JoyAxisEvent: axis at 20, value (i16) at 24.
+            SDL_EVENT_JOYSTICK_AXIS_MOTION => Event::JoyAxis {
+                which: word(16),
+                axis: i32::from(ev.bytes[20]),
+                value: i16::from_ne_bytes([ev.bytes[24], ev.bytes[25]]),
+            },
             SDL_EVENT_GAMEPAD_REMOVED => Event::GamepadRemoved(word(16)),
             _ => Event::Other,
         })
@@ -651,6 +743,16 @@ impl Gamepad<'_> {
         unsafe { SDL_GetGamepadID(self.pad.as_ptr()) }
     }
 
+    pub fn name(&self) -> String {
+        // SAFETY: `pad` is live.
+        c_str_to_string(unsafe { SDL_GetGamepadName(self.pad.as_ptr()) })
+    }
+
+    pub fn connection(&self) -> Connection {
+        // SAFETY: `pad` is live.
+        Connection::from_raw(unsafe { SDL_GetGamepadConnectionState(self.pad.as_ptr()) })
+    }
+
     /// Left stick (x, y) in SDL range.
     pub fn left_stick(&self) -> (i16, i16) {
         // SAFETY: `pad` is live; axes 0/1 are LEFTX/LEFTY.
@@ -672,5 +774,82 @@ impl Drop for Gamepad<'_> {
     fn drop(&mut self) {
         // SAFETY: closing the owned gamepad.
         unsafe { SDL_CloseGamepad(self.pad.as_ptr()) };
+    }
+}
+
+/// Physical connection reported by SDL (DEV-64-01).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Connection {
+    Unknown,
+    Wired,
+    Wireless,
+}
+
+impl Connection {
+    fn from_raw(v: c_int) -> Self {
+        match v {
+            1 => Connection::Wired,
+            2 => Connection::Wireless,
+            _ => Connection::Unknown,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Connection::Unknown => "desconhecida",
+            Connection::Wired => "com fio (USB)",
+            Connection::Wireless => "sem fio (Bluetooth)",
+        }
+    }
+}
+
+/// A joystick without a standard gamepad mapping (DEV-64-02).
+pub struct Joystick<'a> {
+    joy: NonNull<SdlJoystick>,
+    _ctx: PhantomData<&'a Context>,
+}
+
+impl Joystick<'_> {
+    pub fn id(&self) -> u32 {
+        // SAFETY: `joy` is live.
+        unsafe { SDL_GetJoystickID(self.joy.as_ptr()) }
+    }
+    pub fn name(&self) -> String {
+        // SAFETY: `joy` is live.
+        c_str_to_string(unsafe { SDL_GetJoystickName(self.joy.as_ptr()) })
+    }
+    pub fn connection(&self) -> Connection {
+        // SAFETY: `joy` is live.
+        Connection::from_raw(unsafe { SDL_GetJoystickConnectionState(self.joy.as_ptr()) })
+    }
+    pub fn button(&self, b: i32) -> bool {
+        // SAFETY: `joy` is live; out-of-range indices return false.
+        unsafe { SDL_GetJoystickButton(self.joy.as_ptr(), b) }
+    }
+    pub fn axis(&self, a: i32) -> i16 {
+        // SAFETY: `joy` is live; out-of-range indices return 0.
+        unsafe { SDL_GetJoystickAxis(self.joy.as_ptr(), a) }
+    }
+    pub fn hat(&self, h: i32) -> u8 {
+        // SAFETY: `joy` is live; out-of-range indices return 0.
+        unsafe { SDL_GetJoystickHat(self.joy.as_ptr(), h) }
+    }
+    /// (buttons, axes, hats).
+    pub fn counts(&self) -> (i32, i32, i32) {
+        // SAFETY: `joy` is live.
+        unsafe {
+            (
+                SDL_GetNumJoystickButtons(self.joy.as_ptr()),
+                SDL_GetNumJoystickAxes(self.joy.as_ptr()),
+                SDL_GetNumJoystickHats(self.joy.as_ptr()),
+            )
+        }
+    }
+}
+
+impl Drop for Joystick<'_> {
+    fn drop(&mut self) {
+        // SAFETY: closing the owned joystick.
+        unsafe { SDL_CloseJoystick(self.joy.as_ptr()) };
     }
 }

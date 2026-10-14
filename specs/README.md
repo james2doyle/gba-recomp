@@ -63,3 +63,6 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-059 — APU do núcleo `gba-core`](SPEC-059-apu.md)
 - [SPEC-060 — BIOS HLE, backup do cartucho e estado inicial do núcleo](SPEC-060-hle-bios-backup.md)
 - [SPEC-061 — Runner headless e frontend desktop do núcleo](SPEC-061-runner-frontend.md)
+- [SPEC-062 — Blocos nativos LLVM sobre o núcleo `gba-core` (`aot-compatible`)](SPEC-062-native-blocks-aot-compatible.md)
+- [SPEC-063 — Frontend do pacote recompilado, configurações e menu de contexto nativo](SPEC-063-recompiled-frontend-settings.md)
+- [SPEC-064 — Janela externa de configurações e dispositivos de entrada (USB, Bluetooth, GPIO)](SPEC-064-settings-app-input-devices.md)

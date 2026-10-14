@@ -4,6 +4,7 @@ members = [
     "crates/gba-run",
     "crates/gba-native-rt",
     "crates/gba-desktop",
+    "crates/gba-settings",
     "crates/gba-ir",
     "crates/gba-runtime-abi",
     "crates/gba-llvm",

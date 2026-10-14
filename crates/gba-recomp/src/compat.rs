@@ -253,6 +253,54 @@ fn bundle_sdl(
     Ok(())
 }
 
+/// Copy `gba-settings` (EXT-64-03) when it was built next to gba-recomp.
+fn bundle_settings_app(package: &Path, sdl_name: &str) -> Result<bool, String> {
+    let exe = env::current_exe().map_err(|e| e.to_string())?;
+    let Some(source) = exe
+        .parent()
+        .map(|d| d.join("gba-settings"))
+        .filter(|p| p.is_file())
+    else {
+        return Ok(false);
+    };
+    let target = package.join("gba-settings");
+    fs::copy(&source, &target).map_err(|e| format!("cannot bundle gba-settings: {e}"))?;
+    #[cfg(target_os = "macos")]
+    {
+        let prefix =
+            PathBuf::from(env::var_os("LLVM_SYS_231_PREFIX").ok_or("LLVM_SYS_231_PREFIX unset")?);
+        let tool = prefix.join("bin/llvm-install-name-tool");
+        let otool = Command::new(prefix.join("bin/llvm-otool"))
+            .arg("-L")
+            .arg(&target)
+            .output()
+            .map_err(|e| format!("cannot run llvm-otool: {e}"))?;
+        let listing = String::from_utf8_lossy(&otool.stdout);
+        if let Some(old) = listing
+            .lines()
+            .map(str::trim)
+            .find(|l| l.contains("libSDL3"))
+            .and_then(|l| l.split(" (").next())
+        {
+            let new = format!("@executable_path/{sdl_name}");
+            run(
+                Command::new(&tool)
+                    .args(["-change", old, &new])
+                    .arg(&target),
+                "llvm-install-name-tool -change",
+            )?;
+            run(
+                Command::new("codesign")
+                    .args(["--force", "--sign", "-"])
+                    .arg(&target),
+                "codesign",
+            )?;
+        }
+    }
+    let _ = sdl_name;
+    Ok(true)
+}
+
 fn link(
     objects: &[PathBuf],
     runtime: &Path,
@@ -368,6 +416,7 @@ pub fn build_package(
         let started = Instant::now();
         link(&objects, &runtime, &executable, &sdl_dir)?;
         bundle_sdl(&temporary, &executable, &sdl_dir, &sdl_name)?;
+        let settings_app = bundle_settings_app(&temporary, &sdl_name)?;
         let link_seconds = started.elapsed().as_secs_f64();
         for object in &objects {
             fs::remove_file(object).map_err(|e| format!("cannot remove build object: {e}"))?;
@@ -379,7 +428,7 @@ pub fn build_package(
             .map(|(f, l, k)| format!("\"{f}:{l}:0x{k:03X}\""))
             .collect();
         let manifest = format!(
-            "{{\n  \"format_version\": 2,\n  \"execution_mode\": \"aot-compatible\",\n  \"rom_sha256\": \"{sha_hex}\",\n  \"rom_size\": {},\n  \"core_version\": {},\n  \"hle_bios_version\": {},\n  \"native_abi_version\": 1,\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"interpreter\": \"gba-core (linked, used for shells, misses and non-ROM code)\",\n  \"jit\": false,\n  \"profile\": {{\"frames\": {}, \"inputs\": [{}], \"instructions\": {}, \"rom_instructions\": {}, \"outside_rom_instructions\": {}, \"entries\": {}, \"seconds\": {:.3}}},\n  \"native\": {{\"runs\": {}, \"instructions\": {}, \"shell_sites\": {}, \"static_entries\": {}, \"follow_direct_branches\": {}, \"emit_seconds\": {:.3}, \"link_seconds\": {:.3}}},\n  \"frontend\": \"sdl3 window by default (bundled {sdl_name}); --headless for scripted runs\",\n  \"coverage_limits\": \"only ROM code is native; RAM code, shells and misses run in the interpreter and are counted at runtime\"\n}}\n",
+            "{{\n  \"format_version\": 2,\n  \"execution_mode\": \"aot-compatible\",\n  \"rom_sha256\": \"{sha_hex}\",\n  \"rom_size\": {},\n  \"core_version\": {},\n  \"hle_bios_version\": {},\n  \"native_abi_version\": 1,\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"interpreter\": \"gba-core (linked, used for shells, misses and non-ROM code)\",\n  \"jit\": false,\n  \"profile\": {{\"frames\": {}, \"inputs\": [{}], \"instructions\": {}, \"rom_instructions\": {}, \"outside_rom_instructions\": {}, \"entries\": {}, \"seconds\": {:.3}}},\n  \"native\": {{\"runs\": {}, \"instructions\": {}, \"shell_sites\": {}, \"static_entries\": {}, \"follow_direct_branches\": {}, \"emit_seconds\": {:.3}, \"link_seconds\": {:.3}}},\n  \"frontend\": \"sdl3 window by default (bundled {sdl_name}); --headless for scripted runs\",\n  \"settings_app\": {settings_app},\n  \"coverage_limits\": \"only ROM code is native; RAM code, shells and misses run in the interpreter and are counted at runtime\"\n}}\n",
             rom.len(),
             gba_core::CORE_VERSION,
             gba_core::bios::HLE_VERSION,

@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 use gba_core::{BackupKind, Gba, GbaConfig, NativeExec, SCREEN_HEIGHT, SCREEN_WIDTH};
 
 use crate::ctxmenu::{self, CtxItem, action, submenu};
-use crate::input::{Bindings, PadState};
+use crate::gpio::GpioInput;
+use crate::input::{Bindings, JoyControl, JoyState, PadState};
 use crate::menu::{Command, Menu, Nav, Page};
 use crate::sdl::{self, Event, button, scancode};
 use crate::settings::{self, BUTTONS, Filter, Settings};
@@ -119,6 +120,15 @@ fn resolve(input: &settings::Input) -> (Bindings, Vec<String>) {
                 None => warnings.push(format!("unknown key `{name}` for {}", BUTTONS[i])),
             }
         }
+        for name in &input.joystick[i] {
+            match JoyControl::parse(name) {
+                Some(c) => b.joystick.push((c, mask)),
+                None => warnings.push(format!(
+                    "invalid joystick control `{name}` for {}",
+                    BUTTONS[i]
+                )),
+            }
+        }
         for name in &input.gamepad[i] {
             match sdl::pad_button_from_name(name) {
                 Some(btn) => b.gamepad.push((btn, mask)),
@@ -152,6 +162,28 @@ const A_RESET: u32 = 61;
 const A_SAVE: u32 = 62;
 const A_MENU: u32 = 63;
 const A_QUIT: u32 = 64;
+const A_EXTERNAL: u32 = 65;
+
+/// Launch `gba-settings` (EXT-64-02): next to this executable, then PATH.
+fn open_external_settings(settings_path: Option<&Path>) -> Result<(), String> {
+    let path = settings_path.ok_or("no settings file location")?;
+    let exe_name = if cfg!(windows) {
+        "gba-settings.exe"
+    } else {
+        "gba-settings"
+    };
+    let local = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(exe_name)))
+        .filter(|p| p.is_file());
+    let program = local.unwrap_or_else(|| PathBuf::from(exe_name));
+    std::process::Command::new(&program)
+        .arg("--settings")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("cannot start {} ({e})", program.display()))
+}
 
 fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
     let v = &s.video;
@@ -229,7 +261,8 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
         action(A_PAUSE, if paused { "Continuar" } else { "Pausar" }, false),
         action(A_RESET, "Reiniciar jogo", false),
         action(A_SAVE, "Salvar agora", false),
-        action(A_MENU, "Menu completo…", false),
+        action(A_EXTERNAL, "Configurações…", false),
+        action(A_MENU, "Menu na janela…", false),
         ctxmenu::CtxItem::Separator,
         action(A_QUIT, "Sair", false),
     ]
@@ -240,6 +273,7 @@ enum Effect {
     Settings(Settings),
     OpenMenu(Page),
     TogglePause,
+    OpenExternal,
     Reset,
     SaveNow,
     Quit,
@@ -271,6 +305,7 @@ fn context_effect(id: u32, s: &Settings) -> Effect {
         A_SAVE => return Effect::SaveNow,
         A_MENU => return Effect::OpenMenu(Page::Main),
         A_QUIT => return Effect::Quit,
+        A_EXTERNAL => return Effect::OpenExternal,
         _ => return Effect::None,
     }
     Effect::Settings(n)
@@ -352,6 +387,8 @@ pub fn run_app(
         }
     };
     let mut pads: Vec<sdl::Gamepad<'_>> = Vec::new();
+    let mut joys: Vec<sdl::Joystick<'_>> = Vec::new();
+    let mut gpio: Option<GpioInput> = None;
 
     let mut bindings = Bindings::default();
     let mut presentation = Presentation { lut: None };
@@ -360,7 +397,8 @@ pub fn run_app(
                      video: &mut sdl::Video<'_>,
                      audio: &mut Option<sdl::Audio<'_>>,
                      bindings: &mut Bindings,
-                     presentation: &mut Presentation| {
+                     presentation: &mut Presentation,
+                     gpio: &mut Option<GpioInput>| {
         let prev = applied.clone();
         let v = &s.video;
         video.set_presentation(v.filter == Filter::Linear, v.integer_scale, v.vsync);
@@ -378,6 +416,14 @@ pub fn run_app(
                 f32::from(s.audio.volume) / 100.0
             });
         }
+        if prev.as_ref().map(|p| &p.gpio) != Some(&s.gpio) {
+            // Release lines before requesting the new configuration.
+            *gpio = None;
+            match GpioInput::open(&s.gpio) {
+                Ok(g) => *gpio = g,
+                Err(e) => eprintln!("gba-desktop: GPIO disabled ({e})"),
+            }
+        }
         let (b, warnings) = resolve(&s.input);
         for w in warnings {
             eprintln!("gba-desktop: {w}");
@@ -391,13 +437,24 @@ pub fn run_app(
         &mut audio,
         &mut bindings,
         &mut presentation,
+        &mut gpio,
     );
 
-    let persist_settings = |s: &Settings, invalid: &mut bool| -> Option<String> {
+    let mtime = |path: Option<&Path>| {
+        path.and_then(|p| fs::metadata(p).ok())
+            .and_then(|m| m.modified().ok())
+    };
+    let mut known_mtime = mtime(settings_path.as_deref());
+    let mut last_settings_check = Instant::now();
+    let persist_settings = |s: &Settings,
+                            invalid: &mut bool,
+                            known: &mut Option<std::time::SystemTime>|
+     -> Option<String> {
         let path = settings_path.as_deref()?;
         match settings::save(path, s, *invalid) {
             Ok(()) => {
                 *invalid = false;
+                *known = mtime(Some(path));
                 None
             }
             Err(e) => {
@@ -440,6 +497,16 @@ pub fn run_app(
                     }
                 }
                 Event::GamepadRemoved(id) => pads.retain(|p| p.id() != id),
+                Event::JoystickAdded(id) => {
+                    if !ctx.is_gamepad(id) && !joys.iter().any(|j| j.id() == id) {
+                        match ctx.open_joystick(id) {
+                            Ok(j) => joys.push(j),
+                            Err(e) => eprintln!("gba-desktop: {e}"),
+                        }
+                    }
+                }
+                Event::JoystickRemoved(id) => joys.retain(|j| j.id() != id),
+                Event::JoyButtonDown { .. } | Event::JoyHat { .. } | Event::JoyAxis { .. } => {}
                 Event::KeyDown {
                     scancode: sc,
                     repeat,
@@ -520,14 +587,22 @@ pub fn run_app(
                 Command::Reset => effect = Effect::Reset,
                 Command::SaveNow => effect = Effect::SaveNow,
                 Command::Quit => effect = Effect::Quit,
+                Command::OpenExternal => effect = Effect::OpenExternal,
                 Command::Apply(s) => effect = Effect::Settings(s),
             }
         }
         match effect {
             Effect::None => {}
             Effect::Settings(s) => {
-                apply(&s, &mut video, &mut audio, &mut bindings, &mut presentation);
-                let failure = persist_settings(&s, &mut settings_invalid_on_disk);
+                apply(
+                    &s,
+                    &mut video,
+                    &mut audio,
+                    &mut bindings,
+                    &mut presentation,
+                    &mut gpio,
+                );
+                let failure = persist_settings(&s, &mut settings_invalid_on_disk, &mut known_mtime);
                 status = Some((
                     failure.unwrap_or_else(|| "Configuracoes salvas".into()),
                     Instant::now(),
@@ -536,6 +611,16 @@ pub fn run_app(
             }
             Effect::OpenMenu(page) => menu.open_at(page, &current),
             Effect::TogglePause => paused = !paused,
+            Effect::OpenExternal => {
+                let msg = match open_external_settings(settings_path.as_deref()) {
+                    Ok(()) => "Janela de configuracoes aberta".to_owned(),
+                    Err(e) => {
+                        eprintln!("gba-desktop: {e}");
+                        "gba-settings nao encontrado".to_owned()
+                    }
+                };
+                status = Some((msg, Instant::now()));
+            }
             Effect::Reset => {
                 let backup = gba.bus.backup.data().to_vec();
                 let dirty = gba.bus.backup.dirty;
@@ -559,6 +644,36 @@ pub fn run_app(
                 status = Some((msg, Instant::now()));
             }
             Effect::Quit => break 'main,
+        }
+
+        // Live reload when another process (gba-settings) changed the file.
+        if last_settings_check.elapsed() >= Duration::from_millis(500) {
+            last_settings_check = Instant::now();
+            let now_mtime = mtime(settings_path.as_deref());
+            if now_mtime.is_some() && now_mtime != known_mtime {
+                known_mtime = now_mtime;
+                if let Some(path) = settings_path.as_deref() {
+                    let loaded = settings::load(path);
+                    match loaded.warning {
+                        None => {
+                            apply(
+                                &loaded.settings,
+                                &mut video,
+                                &mut audio,
+                                &mut bindings,
+                                &mut presentation,
+                                &mut gpio,
+                            );
+                            current = loaded.settings;
+                            if !menu.open {
+                                menu = Menu::new(current.clone());
+                            }
+                            status = Some(("Configuracoes recarregadas".into(), Instant::now()));
+                        }
+                        Some(w) => eprintln!("gba-desktop: {w}"),
+                    }
+                }
+            }
         }
 
         let suspended = menu.open || paused;
@@ -608,8 +723,29 @@ pub fn run_app(
                 left_y: y,
             })
             .collect();
+        let joy_fns: Vec<_> = joys
+            .iter()
+            .map(|j| {
+                (
+                    Box::new(move |b| j.button(b)) as Box<dyn Fn(i32) -> bool + '_>,
+                    Box::new(move |a| j.axis(a)) as Box<dyn Fn(i32) -> i16 + '_>,
+                    Box::new(move |h| j.hat(h)) as Box<dyn Fn(i32) -> u8 + '_>,
+                )
+            })
+            .collect();
+        let joy_states: Vec<JoyState<'_>> = joy_fns
+            .iter()
+            .map(|(b, a, h)| JoyState {
+                button: b.as_ref(),
+                axis: a.as_ref(),
+                hat: h.as_ref(),
+            })
+            .collect();
         let fast_forward = ctx.key_down(scancode::TAB);
-        gba.set_keys(bindings.mask(|sc| ctx.key_down(sc), &states));
+        let gpio_mask = gpio.as_ref().map_or(0, GpioInput::mask);
+        gba.set_keys(bindings.mask_all(|sc| ctx.key_down(sc), &states, &joy_states, gpio_mask));
+        drop(joy_states);
+        drop(joy_fns);
         drop(states);
         drop(pad_buttons);
 
@@ -692,6 +828,7 @@ pub fn run_app(
     report.guest_cycles = gba.bus.cycles;
     report.frame_hash = gba.frame_hash();
     drop(pads);
+    drop(joys);
     drop(audio);
     drop(video);
     drop(ctx);
