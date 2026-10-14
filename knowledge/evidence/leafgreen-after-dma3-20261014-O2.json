@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "source_commit": "75aaf8d43e5e5887a9525002cb2822ffe8cb71a7",
+  "compiler_sha256": "dee76bef22f55b0ee2966559792699ff5ea9bb2b38dfa878b1c4615fb84abe10",
+  "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+  "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+  "analysis": "static AOT discovery only; not guest execution",
+  "command": "GBA_RECOMP_LINK_THREADS=10 /usr/bin/time -p target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-dma3-20261014-O2 --opt O2 --steps 100",
+  "result": {
+    "exit_code": 1,
+    "diagnostic": "unsupported_thumb_instruction at 0x08000AE6: 0xE00A",
+    "real_seconds": 1.11,
+    "user_seconds": 0.60,
+    "system_seconds": 0.01,
+    "package_created": false,
+    "rom_executed": false
+  },
+  "observations": [
+    "This compile no longer reports the earlier bx_target_unresolved at 0x08000B6A; static discovery reached a later unsupported instruction diagnostic.",
+    "The diagnostic records raw Thumb halfword 0xE00A at 0x08000AE6. Interpreting it as an unconditional Thumb B with target 0x08000AFE is an encoding-based inference, corroborated by SRC-44; no guest execution was observed."
+  ],
+  "evidence_files": [
+    {
+      "path": "knowledge/evidence/leafgreen-after-dma3-20261014-O2.log",
+      "sha256": "02a751de704faa55ba3f6e6db520f260ce5792fc0bfbf6a75a60e166d10827fb"
+    }
+  ],
+  "limitations": [
+    "The result records static compiler discovery, not the game's dynamic path or runtime state.",
+    "No package was created, the ROM was not executed, and no REA decompilation or Evidence ID was produced.",
+    "The recognized DMA rule does not add runtime DMA; MMIO DMA accesses still fault under the local runtime ABI.",
+    "The run stops before LLVM emission and link, so it is not a measure of end-to-end compile performance."
+  ]
+}
