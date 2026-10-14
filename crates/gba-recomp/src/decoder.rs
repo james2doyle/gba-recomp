@@ -209,6 +209,16 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xFFC0 == 0x4000 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::AndRegister {
+                rd: (encoding & 0x7) as u8,
+                rs: ((encoding >> 3) & 0x7) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0x6000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -761,11 +771,34 @@ mod tests {
         }
 
         for encoding in (0x4000..0x4400_u16).step_by(0x40) {
-            if encoding != 0x4300 {
+            if encoding != 0x4000 && encoding != 0x4300 {
                 assert!(decode_thumb(0x0800_0084, encoding).is_err());
             }
         }
         assert!(decode_thumb(0x0800_0085, 0x4318).is_err());
+    }
+
+    #[test]
+    fn decodes_only_thumb_and_register_format_4_suboperation() {
+        for rs in 0..8_u16 {
+            for rd in 0..8_u16 {
+                let encoding = 0x4000 | (rs << 3) | rd;
+                assert_eq!(
+                    decode_thumb(0x0800_0084, encoding).unwrap().operation,
+                    ThumbOperation::AndRegister {
+                        rd: rd as u8,
+                        rs: rs as u8,
+                    }
+                );
+            }
+        }
+
+        for encoding in (0x4000..0x4400_u16).step_by(0x40) {
+            if encoding != 0x4000 && encoding != 0x4300 {
+                assert!(decode_thumb(0x0800_0084, encoding).is_err());
+            }
+        }
+        assert!(decode_thumb(0x0800_0085, 0x4000).is_err());
     }
 
     #[test]
@@ -818,7 +851,7 @@ mod tests {
                 expected
             );
         }
-        assert!(decode_thumb(0x0800_0084, 0x4008).is_err());
+        assert!(decode_thumb(0x0800_0084, 0x4058).is_err());
     }
 
     #[test]
@@ -1261,7 +1294,7 @@ mod tests {
                 }
             }
         }
-        assert!(decode_thumb(0x0800_03AA, 0x4008).is_err());
+        assert!(decode_thumb(0x0800_03AA, 0x4058).is_err());
         assert!(decode_thumb(0x0800_03AB, 0x3201).is_err());
     }
 

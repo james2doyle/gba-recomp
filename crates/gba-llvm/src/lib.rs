@@ -3287,6 +3287,115 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::AndRegister { rd, rs } => {
+            // Read both inputs before writing Rd so Rd == Rs uses the
+            // pre-instruction value for both operands.
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            let old_destination = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    destination_pointer,
+                    c"thumb_and_old_rd".as_ptr(),
+                )
+            };
+            let source_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rs) };
+            let old_source = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    source_pointer,
+                    c"thumb_and_old_rs".as_ptr(),
+                )
+            };
+            let result = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    old_destination,
+                    old_source,
+                    c"thumb_and_result".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, result, destination_pointer) };
+
+            let cpsr_pointer = unsafe {
+                LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr())
+            };
+            let old_cpsr =
+                unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+            // ANDS with LSL #0 updates N/Z and preserves C, V, and all
+            // non-condition bits in CPSR.
+            let preserved_cpsr = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    old_cpsr,
+                    LLVMConstInt(i32_type, u64::from(!0xC000_0000_u32), 0),
+                    c"thumb_and_cpsr_without_nz".as_ptr(),
+                )
+            };
+            let negative_flag = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    result,
+                    LLVMConstInt(i32_type, 0x8000_0000, 0),
+                    c"thumb_and_negative_flag".as_ptr(),
+                )
+            };
+            let is_zero = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    result,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_and_is_zero".as_ptr(),
+                )
+            };
+            let zero_flag = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    is_zero,
+                    LLVMConstInt(i32_type, 0x4000_0000, 0),
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_and_zero_flag".as_ptr(),
+                )
+            };
+            let flags_with_n = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    preserved_cpsr,
+                    negative_flag,
+                    c"thumb_and_cpsr_with_n".as_ptr(),
+                )
+            };
+            let updated_cpsr = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    flags_with_n,
+                    zero_flag,
+                    c"thumb_and_updated_cpsr".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, updated_cpsr, cpsr_pointer) };
+
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::BlPrefix { lr_partial } => {
             let lr_pointer =
                 unsafe { register_pointer(builder, context, runtime_type, runtime, 14) };

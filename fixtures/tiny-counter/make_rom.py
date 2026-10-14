@@ -35,8 +35,8 @@ def generate(mode: str = "valid") -> bytes:
     ):
         target_unsupported = mode == "thumb-bcond-target-unsupported"
         fallthrough_unsupported = mode == "thumb-bcond-fallthrough-unsupported"
-        fallthrough = 0x4008 if fallthrough_unsupported else 0x2011
-        target = 0x4008 if target_unsupported else 0x2022
+        fallthrough = 0x4058 if fallthrough_unsupported else 0x2011
+        target = 0x4058 if target_unsupported else 0x2022
         image[0x84:0x94] = struct.pack(
             "<8H",
             0xD004,  # BEQ 0x08000090; fallthrough is 0x08000086.
@@ -66,8 +66,8 @@ def generate(mode: str = "valid") -> bytes:
         if mode == "thumb-b-out-of-range":
             thumb = [0xE3FF, 0x46C0, 0x46C0, 0x46C0, 0x4718]
         else:
-            target = 0x4008 if mode == "thumb-b-target-unsupported" else 0x2022
-            thumb = [0xE001, 0x4008, 0x46C0, target, 0x4718]
+            target = 0x4058 if mode == "thumb-b-target-unsupported" else 0x2022
+            thumb = [0xE001, 0x4058, 0x46C0, target, 0x4718]
         image[0x84:0x8E] = struct.pack("<5H", *thumb)
         image[0xC0:0xD4] = struct.pack(
             "<5I",
@@ -396,7 +396,7 @@ def generate(mode: str = "valid") -> bytes:
             "thumb-f3-sub-borrow": (0x3801, 0, 0xF000009F),
             "thumb-f3-sub-overflow": (0x3801, 0x80000000, 0xF000009F),
             # The immediately following Thumb format family remains unsupported.
-            "thumb-f3-neighbor-unsupported": (0x4008, 0x12345678, 0xF000009F),
+            "thumb-f3-neighbor-unsupported": (0x4058, 0x12345678, 0xF000009F),
         }
         encoding, initial_r0, initial_cpsr = cases[mode]
         image[0x84:0x88] = struct.pack(
@@ -498,7 +498,7 @@ def generate(mode: str = "valid") -> bytes:
             "thumb-addsub-sub-imm-seven": (0x1FC8, 6, 0x80000000),
             "thumb-addsub-add-imm-carry": (0x1C48, 0xFFFFFFFF, 0x80000000),
             "thumb-addsub-sub-imm-overflow": (0x1E48, 0x80000000, 0x80000000),
-            "thumb-addsub-out-of-family": (0x4008, 0x12345678, 0x80000000),
+            "thumb-addsub-out-of-family": (0x4058, 0x12345678, 0x80000000),
         }
         encoding, source, compare = cases[mode]
         image[0x84:0x88] = struct.pack(
@@ -530,14 +530,52 @@ def generate(mode: str = "valid") -> bytes:
         image[0xD0:0xD4] = struct.pack("<I", 0x08000085)
         image[0xD8:0xDC] = struct.pack("<I", 0x080000C8)
     elif mode in (
+        "thumb-ands-zero-branch",
+        "thumb-ands-positive-branch",
+        "thumb-ands-negative-branch",
+    ):
+        cases = {
+            "thumb-ands-zero-branch": (1, 0x100, 0xE3500001),
+            "thumb-ands-positive-branch": (3, 2, 0xE3500003),
+            "thumb-ands-negative-branch": (0x80000000, 0x80000000, 0xE3500001),
+        }
+        source, destination, compare_instruction = cases[mode]
+        image[0x84:0x9A] = struct.pack(
+            "<11H",
+            0x4008,  # ANDS r0,r1.
+            0xD003,  # BEQ 0x08000090; discovery must also keep fallthrough.
+            0xE006,  # Fallthrough B 0x08000098.
+            0x46C0,
+            0x46C0,
+            0x46C0,
+            0xE002,  # Taken-path B 0x08000098.
+            0x46C0,
+            0x46C0,
+            0x46C0,
+            0xE7FE,  # Shared self-loop.
+        )
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE59F1018,  # LDR r1,[pc,#0x18] -> AND source at 0xE0.
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> AND destination at 0xE4.
+            compare_instruction,  # Seed C/V; ANDS replaces only N/Z.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE59F3004,  # LDR r3,[pc,#4] -> ARM loop at 0xDC.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xE8] = struct.pack(
+            "<4I", 0x08000085, 0x080000E8, source, destination
+        )
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+    elif mode in (
         "thumb-orr-zero",
         "thumb-orr-positive-c0v0",
         "thumb-orr-negative-c1v1",
         "thumb-orr-positive-c0v1",
         "thumb-orr-positive-c1v0",
         "thumb-orr-alias",
-        "thumb-and-unsupported",
         "thumb-eor-unsupported",
+        "thumb-tst-unsupported",
         "thumb-mvn-unsupported",
     ):
         cases = {
@@ -547,9 +585,9 @@ def generate(mode: str = "valid") -> bytes:
             "thumb-orr-positive-c0v1": (0x4308, 0, 0x7FFFFFFF, 0xE3500102),
             "thumb-orr-positive-c1v0": (0x4308, 1, 2, 0xE3500001),
             "thumb-orr-alias": (0x4300, 0x12345678, 0x80000000, 0xE3500001),
-            # Format 4 encodings outside the accepted ORR suboperation.
-            "thumb-and-unsupported": (0x4018, 2, 1, 0xE3500001),
+            # Format 4 encodings outside the accepted AND/ORR suboperations.
             "thumb-eor-unsupported": (0x4058, 2, 1, 0xE3500001),
+            "thumb-tst-unsupported": (0x4208, 2, 1, 0xE3500001),
             "thumb-mvn-unsupported": (0x43D8, 2, 1, 0xE3500001),
         }
         encoding, source, compare, compare_instruction = cases[mode]
@@ -1266,6 +1304,9 @@ def main() -> None:
             "thumb-addsub-sub-imm-overflow",
             "thumb-addsub-out-of-family",
             "thumb-addsub-literal-bx",
+            "thumb-ands-zero-branch",
+            "thumb-ands-positive-branch",
+            "thumb-ands-negative-branch",
             "thumb-orr-zero",
             "thumb-orr-positive-c0v0",
             "thumb-orr-negative-c1v1",
@@ -1273,8 +1314,8 @@ def main() -> None:
             "thumb-orr-positive-c1v0",
             "thumb-orr-alias",
             "thumb-orr-bx",
-            "thumb-and-unsupported",
             "thumb-eor-unsupported",
+            "thumb-tst-unsupported",
             "thumb-mvn-unsupported",
             "thumb-ldr-literal-bx",
             "thumb-ldr-literal-out-of-rom",
