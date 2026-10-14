@@ -33,3 +33,4 @@
 - [ADR-031-thumb-ie-ime-latches](ADR-031-thumb-ie-ime-latches.md)
 - [ADR-032-parallel-thumb-byte-fixtures](ADR-032-parallel-thumb-byte-fixtures.md)
 - [ADR-033-discovery-io-fact-invalidation](ADR-033-discovery-io-fact-invalidation.md)
+- [ADR-034-discovery-safe-dma3-latches](ADR-034-discovery-safe-dma3-latches.md)

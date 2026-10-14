@@ -1,6 +1,6 @@
 # SPEC-048 — Invalidação de fatos I/O por stores na descoberta
 
-Estado do documento: Draft. A invalidação de stores fora de I/O foi implementada em `96687d8`; o refinamento de WAITCNT abaixo antecede sua implementação. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Draft. A invalidação de stores fora de I/O foi implementada em `96687d8`; o refinamento estático de WAITCNT foi implementado em `696b031`. A revisão documental continua pendente. Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 

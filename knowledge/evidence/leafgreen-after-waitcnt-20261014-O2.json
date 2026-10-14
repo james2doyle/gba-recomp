@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "source_commit": "696b031f59f5f820adcaf8bfbf3cb6d0c2ef61ee",
+  "compiler_sha256": "6df074902613cbe3e88b10a6835775741435ffc8737ba1ccae91ab76c906953e",
+  "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+  "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+  "analysis": "static AOT discovery with LLDB inspection of compiler abstract states; not guest execution",
+  "command": "GBA_RECOMP_LINK_THREADS=10 /usr/bin/time -p target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-waitcnt-20261014-O2 --opt O2 --steps 100",
+  "result": {
+    "exit_code": 1,
+    "diagnostic": "bx_target_unresolved at 0x08000B6A: r0 is not statically bounded",
+    "real_seconds": 1.12,
+    "user_seconds": 0.59,
+    "system_seconds": 0.01,
+    "package_created": false,
+    "rom_executed": false
+  },
+  "findings": [
+    "The abstract state at 0x080006B4 has r0=0x040000D4, r5=0x08000248, and IE/IF/IME={0,0,0}.",
+    "At 0x080006B4, Thumb STR word writes DMA3 SAD; the successor at 0x080006B6 has io=[] and memory=[].",
+    "At 0x080006B6, r4=0x03003580 is the DMA3 DAD value for 0x040000D8.",
+    "At 0x080006BA, r1=0x84000200 is the DMA3 count/control word for 0x040000DC.",
+    "The decoded configuration infers immediate 32-bit transfers, source/destination increment, one-shot, no DRQ, and no DMA IRQ. Calculated ranges are ROM [0x08000248,0x08000A48) and IWRAM [0x03003580,0x03003D80)."
+  ],
+  "evidence_files": [
+    {
+      "path": "knowledge/evidence/leafgreen-after-waitcnt-20261014-O2.log",
+      "sha256": "95fe7caf5cd2f678fe2df36eb93df5244320cc3fef6cfc1507c73fd1ef3a1cbe"
+    },
+    {
+      "path": "knowledge/evidence/leafgreen-after-waitcnt-20261014-O2-state-trace.log",
+      "sha256": "d9baf4f24b5ab21ad5e3b860ffc7dbaa8cceb2fd7197a58bda65fce3d9ae8380"
+    },
+    {
+      "path": "knowledge/evidence/leafgreen_after_waitcnt_state_trace.py",
+      "sha256": "86d4d68da37f7a4f78c5a0c2363c1965da9f8261f1995058a64357af3742555f"
+    }
+  ],
+  "limitations": [
+    "The LLDB log contains a Rust DWARF warning for BTreeMap::vals; the selected abstract-state fields were captured.",
+    "Values are compiler abstract-state observations and static inferences, not guest CPU observations.",
+    "No package, guest execution, REA decompilation, or REA Evidence ID was produced.",
+    "Runtime DMA, timing, and asynchronous event sources remain unsupported."
+  ]
+}

@@ -50,3 +50,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-046 — Estado inicial do runner strict-AOT e seed de discovery](SPEC-046-strict-aot-entry-state.md)
 - [SPEC-047 — Orçamento de CPUs lógicas para o gate GBA-020](SPEC-047-logical-cpu-budget.md)
 - [SPEC-048 — Invalidação de fatos I/O por stores na descoberta](SPEC-048-discovery-io-fact-invalidation.md)
+- [SPEC-049 — Preservar fatos de latches após DMA3 imediato ROM→IWRAM](SPEC-049-discovery-safe-dma3-latches.md)

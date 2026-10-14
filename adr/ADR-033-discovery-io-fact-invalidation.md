@@ -1,6 +1,6 @@
 # ADR-033 — Preservar fatos I/O em stores fora da região I/O
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 - Supersede: —
 
@@ -10,7 +10,7 @@ A análise estática de LeafGreen observou uma store para Palette RAM em B3B8, c
 
 O `AbstractState` recebe finite sets de endereços. O fluxo atual retorna no primeiro endereço não-RAM; isso pode deixar de considerar outra alternativa de store que também atinja um latch. Portanto, a correção precisa reunir os efeitos de todas as alternativas, e não somente mudar um limite.
 
-## Decisão proposta
+## Decisão
 
 Conforme [SPEC-048](../specs/SPEC-048-discovery-io-fact-invalidation.md), classificar `[0x04000000, 0x05000000)` como região de decode 0x04 / possível I/O, distinguindo-a da janela ordinária de registradores de 0x400 bytes. Classificar o intervalo depois de aplicar a normalização de alinhamento da instrução. Endereços comprovadamente fora dessa região preservam IE/IF/IME, embora continuem limpando `memory_words` quando AMEM-04 assim exige. Para bytes de IE/IF/IME, invalidar os latches sobrepostos. Para o halfword exato WAITCNT `[0x04000204,0x04000206)`, preservar apenas os fatos abstratos IE/IF/IME; o efeito temporal do registrador permanece fora do modelo. Se qualquer byte de uma alternativa pertencer a outra região MMIO não modelada, invalidar todos. O join é por latch e `Unknown` em qualquer alternativa domina. EA desconhecido, overflow e alternativas não limitadas continuam invalidando todos. A transferência deve visitar cada alternativa e combinar efeitos sem depender da ordem.
 
@@ -25,7 +25,7 @@ Esta decisão altera somente a precisão da descoberta estática no perfil atual
 
 ## Consequências e validação pendente
 
-A decisão pode recuperar a prova de IF zero em estados posteriores a stores comprovados em Palette RAM e WAITCNT. A sombra de RAM permanece conservadora; lowering e runtime permanecem inalterados. Por isso, emitir a instrução não implica execução: `gba_store16_v5` ainda retorna fault de região para WAITCNT. A aceitação depende de testes unitários para endereços singulares e alternativos, fronteiras/overflow, e de uma nova análise estática da ROM fixada. Nenhum resultado deve ser descrito como execução guest.
+A decisão recupera a prova de IF zero em estados posteriores a stores comprovados em Palette RAM e WAITCNT. A sombra de RAM permanece conservadora; lowering e runtime permanecem inalterados. `cargo test --locked --workspace --jobs 10` passou com 64 testes em `gba-ir` e 101 em `gba-recomp`; o binário strict-AOT foi reconstruído e a descoberta estática pós-WAITCNT foi registrada em [KNO-004](../knowledge/KNO-004-rom-intake.md). A análise ainda termina no BX de LeafGreen e não é execução guest. O runtime ainda retorna fault de região para WAITCNT.
 
 ## Referências
 

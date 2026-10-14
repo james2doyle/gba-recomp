@@ -1,0 +1,15 @@
+(lldb) target create "target/debug/gba-recomp"
+Current executable set to '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64).
+(lldb) settings set -- target.run-args "compile" "--rom" "roms/Pokemon - Leaf Green Version (U) (V1.1).gba" "--out" "/tmp/leafgreen-after-io-invalidation-state-trace" "--opt" "O2" "--steps" "100"
+(lldb) command script import knowledge/evidence/leafgreen_after_io_invalidation_state_trace.py
+STATIC_STATE_TRACE breakpoints=75
+(lldb) run
+error: gba_recomp-588a877ce83702fe.25peu8k76hjbk5vddj8nxzpq2.1onkdbt.rcgu.o 0x40000f0000005016: DW_TAG_member 'vals' refers to type 0x0000000000007f74 which extends beyond the bounds of 0x40000f0000004fcc
+STATIC_STATE pc=0x080003B8 encoding=0x8008 registers={'r0': [32767], 'r1': [83886080], 'r2': [32767], 'r3': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'sp': [50363944], 'lr': [134218673]} memory=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+STATIC_STATE pc=0x080003C4 encoding=0x8008 registers={'r0': [16404], 'r1': [67109380], 'r2': [16404], 'r3': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'sp': [50363944], 'lr': [134218687]} memory=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+STATIC_STATE pc=0x08000B58 encoding=0x8014 registers={'r0': 'Unknown', 'r1': 'Unknown', 'r2': [67109384], 'r3': [136224684], 'r4': [0], 'r5': [50331841], 'sp': [50363912], 'lr': [134220693]} memory=[(50363912, [50331842]), (50363916, [134218312]), (50363920, [134220693]), (50363924, [50345344]), (50363928, [134219489])] io=[]
+STATIC_STATE pc=0x08000B60 encoding=0x8018 registers={'r0': 'Unknown', 'r1': 'Unknown', 'r2': [67109384], 'r3': [67109376], 'r4': [0], 'r5': [50331841], 'sp': [50363912], 'lr': [134220693]} memory=[] io=[]
+STATIC_STATE pc=0x08000B62 encoding=0x8011 registers={'r0': 'Unknown', 'r1': 'Unknown', 'r2': [67109384], 'r3': [67109376], 'r4': [0], 'r5': [50331841], 'sp': [50363912], 'lr': [134220693]} memory=[] io=[]
+gba-recomp: bx_target_unresolved at 0x08000B6A: r0 is not statically bounded
+Process 53841 launched: '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64)
+Process 53841 exited with status = 1 (0x00000001)
