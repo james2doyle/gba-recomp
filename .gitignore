@@ -3,3 +3,4 @@ roms/
 /target/
 .DS_Store
 .claude/worktrees/
+out/
