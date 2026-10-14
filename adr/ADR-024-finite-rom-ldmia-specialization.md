@@ -28,7 +28,7 @@ Uma base não incluída na tabela falha explicitamente em runtime com `EXIT_FAUL
 
 ## Consequências
 
-GBA IR passa da versão 1 à 2 por causa da side table e máscara de sucessores. ABI layouts e versions não mudam; somente o enum de fault ganha valor aditivo. Cada tabela é pequena, ordenada, validada por IR e limitada a 16 entradas. Branches cuja impossibilidade foi provada ainda contêm o teste de CPSR no binário; se um estado externo violar a especialização, o dispatcher produz saída missing-code/fault em vez de interpretar.
+GBA IR passa da versão 1 à 2 por causa da side table e máscara de sucessores. ABI layouts e versions não mudam; somente o enum de fault ganha valor aditivo. Cada tabela é pequena, ordenada, validada por IR e limitada a 16 entradas. Branches cuja impossibilidade foi provada ainda contêm o teste de CPSR no binário; o lowering guarda explicitamente cada resultado não marcado e retorna `EXIT_MISSING_CODE`, mesmo se aquele PC também tiver tradução por outro predecessor. A união de estados é exata e deduplica somente alternativas completas idênticas; Unknown nunca subsume uma alternativa ROM.
 
 A implementação deve testar condições com overflow/carry, entrada alternativa sem o CMP, preservação de relações em loop, orçamento de alternativas por PC e orçamento global no limite e acima do limite, orçamento de casos ROM separado, fork de instruções ARM predicadas, loop sem limite, base desconhecida vista antes do primeiro caso ROM, table miss, atomicidade do estado guest, O0/O2, e regressão de LDMIA singleton/RAM. A tentativa de LeafGreen continua classificada como análise estática e não deve ser descrita como execução ou compatibilidade.
 
