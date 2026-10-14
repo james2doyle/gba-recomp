@@ -14,6 +14,8 @@ SPEC-030 implementa ORRS Thumb Format 4 strict-AOT, SPEC-031 implementa MOVS/CMP
 
 SPEC-035/ADR-022 implementam LDMIA Thumb strict-AOT. O helper aditivo é restrito a EWRAM/IWRAM; SPEC-037 especializa em constantes AOT LDMIA ROM com 2–16 bases provadas e testa falta de tabela como fault explícito. SPEC-036 implementa STMIA T1 strict-AOT para RAM física; as fixtures O0/O2 e os casos multi-base LDMIA estão cobertos nos relatórios em [evidence](../knowledge/evidence/). Na LeafGreen, a tentativa pós-SPEC-037 parou no orçamento de estados completos em `0x08000996`, sem comprovar passagem pelo LDMIA em `0x080006A8`, geração de pacote ou execução do título. A análise e geração LLVM de um único jogo ainda usam fluxo serial; o benchmark do gate mede as fixtures sintéticas.
 
+Para avançar a discovery da ROM fixada, SPEC-048/ADR-033 primeiro restringem quando um store pode invalidar os fatos abstratos de IE/IF/IME, preservando separadamente AMEM-04 para a sombra de RAM. Implementar com casos singulares, alternativas finitas e bordas do domínio; executar as suítes strict-AOT O0/O2, depois repetir discovery O2 da LeafGreen e registrar a próxima fronteira. Não ampliar suporte de runtime ou declarar execução do jogo com base nessa análise.
+
 ## 3. Perfis e produto — GBA-060/070/080
 
 Implementar parser v1 e validação de evidências, cache por digest, preferências separadas e menu aplicável em jogo. Validar perda de dispositivo, pause/resume, fullscreen rollback e herança global/jogo. Empacotar para Linux x86-64 e macOS arm64 e executar sem LLVM instalado. Gate: fluxo completo com controles, áudio, vídeo e save.
