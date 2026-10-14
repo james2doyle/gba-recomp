@@ -14,7 +14,8 @@ use crate::gpio::GpioInput;
 use crate::input::{Bindings, JoyControl, JoyState, PadState};
 use crate::menu::{Command, Menu, Nav, Page};
 use crate::sdl::{self, Event, button, scancode};
-use crate::settings::{self, BUTTONS, Filter, Settings};
+use crate::settings::{self, BUTTONS, Filter, Settings, TouchMode};
+use crate::touch;
 
 /// Guest clock and frame length: 16777216 Hz / 280896 cycles ≈ 59.7275 fps.
 pub const GUEST_HZ: u64 = 16_777_216;
@@ -432,6 +433,10 @@ pub fn run_app(
     let mut pads: Vec<sdl::Gamepad<'_>> = Vec::new();
     let mut joys: Vec<sdl::Joystick<'_>> = Vec::new();
     let mut gpio: Option<GpioInput> = None;
+    // Touch screens (SPEC-068 TOUCH-68-01): active fingers in logical coords.
+    let mut fingers: std::collections::HashMap<u64, (f32, f32)> = Default::default();
+    let has_touchscreen = ctx.has_touchscreen();
+    let mut touch_seen = false;
 
     let mut bindings = Bindings::default();
     let mut presentation = Presentation { lut: None };
@@ -654,6 +659,20 @@ pub fn run_app(
                         effect = Effect::OpenMenu(Page::Main);
                     }
                 }
+                Event::FingerDown { finger, x, y } => {
+                    touch_seen = true;
+                    match video.window_to_logical(x, y) {
+                        Some(p) => {
+                            fingers.insert(finger, p);
+                        }
+                        None => {
+                            fingers.remove(&finger);
+                        }
+                    }
+                }
+                Event::FingerUp { finger } => {
+                    fingers.remove(&finger);
+                }
                 Event::MouseDown { .. } | Event::Other => {}
             }
         }
@@ -839,7 +858,22 @@ pub fn run_app(
             .collect();
         let fast_forward = ctx.key_down(scancode::TAB);
         let gpio_mask = gpio.as_ref().map_or(0, GpioInput::mask);
-        gba.set_keys(bindings.mask_all(|sc| ctx.key_down(sc), &states, &joy_states, gpio_mask));
+        let show_touch = match current.input.touch_controls {
+            TouchMode::On => true,
+            TouchMode::Off => false,
+            TouchMode::Auto => has_touchscreen || touch_seen,
+        };
+        let touch_mask = if show_touch {
+            touch::mask(fingers.values().copied())
+        } else {
+            0
+        };
+        gba.set_keys(bindings.mask_all(
+            |sc| ctx.key_down(sc),
+            &states,
+            &joy_states,
+            gpio_mask | touch_mask,
+        ));
         drop(joy_states);
         drop(joy_fns);
         drop(states);
@@ -875,13 +909,19 @@ pub fn run_app(
         let now = Instant::now();
         if !fast_forward || now.duration_since(last_present) >= frame_time {
             presentation.convert(gba.framebuffer(), &mut pixels);
-            if let Some((msg, at)) = &status
-                && at.elapsed() < Duration::from_secs(3)
-            {
-                let msg = msg.clone();
+            let msg = status
+                .as_ref()
+                .filter(|(_, at)| at.elapsed() < Duration::from_secs(3))
+                .map(|(m, _)| m.clone());
+            if msg.is_some() || show_touch {
                 video.present_with(&pixels, |p| {
-                    p.fill(0.0, 146.0, 240.0, 14.0, [0, 0, 0, 180]);
-                    p.text(4.0, 149.0, &msg, [255, 255, 160]);
+                    if show_touch {
+                        draw_touch(p, touch_mask);
+                    }
+                    if let Some(msg) = &msg {
+                        p.fill(0.0, 146.0, 240.0, 14.0, [0, 0, 0, 180]);
+                        p.text(4.0, 149.0, msg, [255, 255, 160]);
+                    }
                 })?;
             } else {
                 video.present(&pixels)?;
@@ -968,4 +1008,30 @@ fn draw_menu(
         .unwrap_or("Setas/Enter/Esc  ou  D-pad/A/B");
     p.fill(0.0, 150.0, 240.0, 10.0, [0, 0, 0, 220]);
     p.text(4.0, 151.0, footer, [200, 200, 200]);
+}
+
+/// Semi-transparent on-screen gamepad; pressed controls are highlighted.
+fn draw_touch(p: &mut sdl::Painter<'_>, pressed: u16) {
+    use gba_core::keys;
+    let alpha = |on: bool| if on { 150 } else { 60 };
+    let (cx, cy, r) = touch::DPAD;
+    let arm = r * 0.55;
+    for (key, x, y) in [
+        (keys::UP, cx - arm / 2.0, cy - r),
+        (keys::DOWN, cx - arm / 2.0, cy + r - arm),
+        (keys::LEFT, cx - r, cy - arm / 2.0),
+        (keys::RIGHT, cx + r - arm, cy - arm / 2.0),
+    ] {
+        p.fill(x, y, arm, arm, [255, 255, 255, alpha(pressed & key != 0)]);
+    }
+    for b in &touch::BUTTONS {
+        let on = pressed & b.key != 0;
+        let (x, y, w, h) = match b.shape {
+            touch::Shape::Circle { x, y, r } => (x - r, y - r, r * 2.0, r * 2.0),
+            touch::Shape::Rect { x, y, w, h } => (x, y, w, h),
+        };
+        p.fill(x, y, w, h, [255, 255, 255, alpha(on)]);
+        let tx = x + (w - 8.0 * b.label.len() as f32) / 2.0;
+        p.text(tx, y + (h - 8.0) / 2.0, b.label, [20, 20, 40]);
+    }
 }
