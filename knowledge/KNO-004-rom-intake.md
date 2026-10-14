@@ -157,3 +157,9 @@ O guard que falha está em `process_thumb_instruction` durante a revisita ao LDM
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.
+
+## Tentativa após SPEC-037 — LeafGreen e estados disjuntivos
+
+Em 2026-10-14, para a ROM de SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a compilação estática O0 com limite de 100 steps terminou com `discovery_state_alternative_limit at 0x08000996: more than 64 complete states at Thumb PC`. O processo levou 0,59 s wall e encerrou antes de criar o pacote. A mensagem observa o limite de alternativas completas do analisador naquela PC; não identifica a instrução ali, não prova que a descoberta processou o LDMIA multi-base em `0x080006A8`, e não é execução guest. LeafGreen continua sem pacote e sem execução.
+
+A tentativa exigida pelo fluxo de artefatos chamou `binary_session` no MCP REA e recebeu `Transport closed`; o executável `rea` não foi encontrado no PATH. O registro anterior de `open_binary` permanece `target_unavailable / unsupported binary format / retryable=false`. Não foi criado Evidence ID novo e não há decompilação. A evidência SPEC-037 vem do compilador local e dos fixtures sintéticos O0/O2, não do REA; consulte o [relatório com hashes e limites](evidence/gba020-thumb-ldmia-rom-cases-macos-arm64.json).

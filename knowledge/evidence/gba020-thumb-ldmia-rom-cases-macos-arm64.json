@@ -1,0 +1,172 @@
+{
+  "record_type": "strict-aot-thumb-ldmia-finite-rom-cases-and-parallelism-evidence",
+  "date": "2026-10-14",
+  "spec_commit": "86945e7dfc942c8a43e79ae37cf8fb0545d97066",
+  "implementation_commit": "07f6afb4dbfe783fbde6b82a53fe38c0d1f4f722",
+  "environment": {
+    "host": "Mac mini M4",
+    "os": "macOS 15.3.1 (Darwin 24.3.0)",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "memory_bytes": 17179869184,
+    "rust": "1.99.0 (b940084d7 2026-09-28)",
+    "llvm_backend": "23.1.3",
+    "llvm_prefix": "target/toolchains/LLVM-23.1.3-macOS-ARM64",
+    "target": "aarch64-apple-darwin"
+  },
+  "implementation": {
+    "spec": "SPEC-037",
+    "ir_version": 2,
+    "abi_version": 4,
+    "discovery": "Exact disjunctive guest states; up to 64 complete states per (mode, PC), 100000 globally, and 64 abstract memory words per state. Adjacent immediate CMP/conditional-branch refinement supports ARM and Thumb. Branch successor masks are finalized after convergence.",
+    "rom_ldmia": "Thumb LDMIA uses an ordered AOT table for 2..=16 proven ROM bases; runtime table miss returns EXIT_FAULT with fault code 7. No ROM image pointer or interpreter/JIT fallback is emitted.",
+    "source_commit": "07f6afb05d962be39ce630fa4d4910250dfef4cb",
+    "compiler_binary_sha256": "10558f2cfe3129b430fe30686692e2403fb394b9b30e4131b49365a19c7604df",
+    "fixture_generator_sha256": "f1e1cb7f3f0ad24a01c4649d6393b5ee5016cfa06d46093f79e5a06ae4fb2e04"
+  },
+  "verification": {
+    "workspace_tests": {
+      "command": "cargo test --locked --workspace --jobs 10",
+      "result": "passed",
+      "gba_ir_tests": 56,
+      "gba_recomp_tests": 77,
+      "runtime_abi_rust_tests": 0,
+      "runtime_integration_tests": [
+        "arm_branch_guard_rejects_unmarked_edge_even_when_pc_has_another_predecessor",
+        "thumb_ldmia_table_miss_faults_at_guest_base_without_fallback"
+      ]
+    },
+    "targeted_runtime_tests": {
+      "command": "cargo test --locked -p gba-recomp --bin gba-recomp 'link_thread_tests::' -- --nocapture",
+      "result": "passed",
+      "tests": 3
+    },
+    "static_checks": {
+      "cargo_fmt_all_check": "passed",
+      "git_diff_check": "passed",
+      "shell_syntax": "passed for scripts/verify-gba020.sh and scripts/verify-gba020-lsl.sh"
+    },
+    "full_gate": {
+      "command": "PATH=/Users/celsoinacio/.cargo/bin:/Users/celsoinacio/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/Users/celsoinacio/projects/gba-recomp/target/toolchains/LLVM-23.1.3-macOS-ARM64/bin:/usr/bin:/bin LLVM_SYS_231_PREFIX=/Users/celsoinacio/projects/gba-recomp/target/toolchains/LLVM-23.1.3-macOS-ARM64 CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=/Users/celsoinacio/projects/gba-recomp/target/toolchains/LLVM-23.1.3-macOS-ARM64/bin/clang CARGO_BUILD_JOBS=10 GBA020_JOBS=8 GBA020_LINK_THREADS=1 /usr/bin/time -lp sh scripts/verify-gba020.sh > target/gba020/spec037-full-8x1.log 2>&1",
+      "result": "passed",
+      "wall_seconds": 130.22,
+      "user_cpu_seconds": 488.33,
+      "system_cpu_seconds": 15.26,
+      "average_logical_cpus_from_time": 3.87,
+      "maximum_resident_set_bytes_reported_by_time": 2083323904,
+      "swap_operations": 0,
+      "log_sha256": "cd731e9fc92ac7587ecc1561147bc499024deb9f0c3f2fd88824ac2a1c158504",
+      "includes_cargo_build": true,
+      "group_parallelism": "Eight independent Thumb ADD/SUB fixtures at up to eight workers, one LLD thread per package; product constrained to ten configured worker/link slots. Other gate sections remain sequential.",
+      "measurement_limit": "The full command includes Cargo build/link and serial gate sections. The aggregate wall time does not isolate fixture throughput or single-ROM compilation speed."
+    },
+    "warmed_gate_sample": {
+      "command_context": "A warmed /usr/bin/time -lp run of scripts/verify-gba020.sh with GBA020_JOBS=8, GBA020_LINK_THREADS=1, and the LLVM 23.1.3 environment set; the complete environment invocation was not preserved.",
+      "result": "passed",
+      "wall_seconds": 48.85,
+      "user_cpu_seconds": 20.26,
+      "system_cpu_seconds": 9.81,
+      "maximum_resident_set_bytes_reported_by_time": 41320448,
+      "swap_operations": 0,
+      "log_sha256": "61937bacc52b05afaf6c5ea4c1ccc6c809fa50b18b4c4c6003fdbff36c12efe4",
+      "measurement_limit": "One warmed run; it predates the final test-only additions and does not have an equivalent baseline. Its source tree was uncommitted at the time; the later implementation commit contains the same non-test code."
+    },
+    "link_cpu_sample": {
+      "command_context": "Cargo link of gba-recomp during the full GBA-020 gate, sampled with ps while ld64.lld was active",
+      "observed_process": "ld64.lld",
+      "observed_cpu_percent": 817.5,
+      "interpretation": "One instantaneous sample, approximately 8.2 logical CPUs; not a sustained utilization measurement."
+    }
+  },
+  "finite_rom_fixtures": [
+    {
+      "mode": "thumb-ldmia-rom-multibase-ne",
+      "rom_sha256": "d91358869cd98f30da60b1220d920925de3e7ec918301d8a79961e9318880de8",
+      "expected_r0": 2271560481,
+      "expected_guest_state": "budget_exhausted after 9 steps at PC 0x08000090; CPSR 0x0000003F",
+      "optimizations": {
+        "O0": {
+          "execution_mode": "strict-aot",
+          "ir_version": 2,
+          "instructions_aot": 13,
+          "game_sha256": "37cd8174f9c6c0818a2e25f6a0f43e284d1d6eb59f2c2c45a41d7dd09b67ac9f",
+          "manifest_sha256": "bb3d6c668b8b8031aedbf52d6dd3fd09fb9a6e19424495f50cc25932ff3b2820"
+        },
+        "O2": {
+          "execution_mode": "strict-aot",
+          "ir_version": 2,
+          "instructions_aot": 13,
+          "game_sha256": "4fe12c833239fe2548bf8ad4349d24fa43f13e6b1b56e6af55723fc52a8b7a43",
+          "manifest_sha256": "2ab5a090209d4bb4b83e9efa70adff853fdbbe1df900d4817ba0fbfb11140522"
+        }
+      }
+    },
+    {
+      "mode": "thumb-ldmia-rom-multibase-eq",
+      "rom_sha256": "bdbde8f9adf316ff60c58fd45c2dbb361314a97df6e35ce622b6f7b3c6fc0d36",
+      "expected_r0": 305419896,
+      "expected_guest_state": "budget_exhausted after 9 steps at PC 0x08000090; CPSR 0x0000003F",
+      "optimizations": {
+        "O0": {
+          "execution_mode": "strict-aot",
+          "ir_version": 2,
+          "instructions_aot": 13,
+          "game_sha256": "63541c96d0666e406825c4570c6c77bfa1d5a848d969993e9d8280d5476f5d0b",
+          "manifest_sha256": "bb24f4e278dba0adbe095ef0297ca95adba4b7b60678fda0e1ff423fb898090e"
+        },
+        "O2": {
+          "execution_mode": "strict-aot",
+          "ir_version": 2,
+          "instructions_aot": 13,
+          "game_sha256": "958847bf0bd0802fdf9b8eed0827f0d08907e5d93be9db92a8558826b753317d",
+          "manifest_sha256": "0f1b6430e5eabb50b96cd464234a84507eb5e198a2c112e003aa2f879bb5eff8"
+        }
+      }
+    }
+  ],
+  "parallelism_benchmark": {
+    "scope": "Eight independent ADD/SUB fixture modes, each compiled and executed at O0/O2 with manifest checks; full gate was not executed per benchmark sample.",
+    "comparison": "7 workers x 1 LLD thread versus 1 worker x 10 LLD threads; three samples per configuration in interleaved pairs.",
+    "seven_by_one": {
+      "wall_seconds": [2.36, 2.04, 2.07],
+      "median_wall_seconds": 2.07,
+      "user_cpu_seconds": [2.23, 2.23, 2.24],
+      "system_cpu_seconds": [1.2, 0.98, 0.99],
+      "maximum_resident_set_bytes_reported_per_command": [40419328, 40615936, 40517632]
+    },
+    "one_by_ten": {
+      "wall_seconds": [4.24, 4.23, 4.22],
+      "median_wall_seconds": 4.23,
+      "user_cpu_seconds": [1.86, 1.86, 1.86],
+      "system_cpu_seconds": [0.8, 0.78, 0.78],
+      "maximum_resident_set_bytes_reported_per_command": [38584320, 38600704, 38617088]
+    },
+    "median_wall_reduction_percent": 51.06,
+    "fixture_checks": "All eight modes passed O0/O2 runtime state and strict-AOT manifest checks.",
+    "harness_method": "A temporary harness extracted verify_thumb_addsub() and its eight calls from scripts/verify-gba020.sh before thumb_addsub_bx_rom. A Python subprocess wrapper ran /usr/bin/time -lp for each trial.",
+    "limitations": [
+      "The temporary harness and complete wrapper were not preserved, and the exact order of the six samples was not recorded.",
+      "The compiler binary hash at the time of each sample was not saved; the current binary hash above is not asserted to identify those historical samples.",
+      "No hard scheduler CPU cap, continuous CPU sampling, or aggregate worker RSS measurement was collected; time -lp RSS is per command and does not sum workers.",
+      "The result measures synthetic fixture throughput, not a single commercial ROM compilation."
+    ]
+  },
+  "leafgreen_static_attempt": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "optimization": "O0",
+    "steps": 100,
+    "result": "discovery_state_alternative_limit at 0x08000996: more than 64 complete states at Thumb PC",
+    "wall_seconds": 0.59,
+    "package_created": false,
+    "game_executed": false,
+    "log_sha256": "8ac871c1010e6de44ababc481ab1c7ef1c44a528beded6b377373b6e430117fd",
+    "limitation": "This static discovery failure does not establish that LDMIA at 0x080006A8 was processed, does not identify the instruction at 0x08000996, and is not a guest execution trace."
+  },
+  "rea": {
+    "binary_session": "Transport closed",
+    "cli_on_path": false,
+    "prior_open_binary_result": "target_unavailable: unsupported binary format; retryable=false",
+    "new_evidence_id": null,
+    "decompilation_obtained": false
+  }
+}

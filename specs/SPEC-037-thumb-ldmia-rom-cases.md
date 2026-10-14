@@ -1,6 +1,6 @@
 # SPEC-037 — Thumb LDMIA de ROM com conjunto finito de bases
 
-Estado do documento: Accepted. Progresso no [ROADMAP](../ROADMAP.md); decisão arquitetural em [ADR-024](../adr/ADR-024-finite-rom-ldmia-specialization.md).
+Estado do documento: Accepted. Implementação concluída para os contratos e critérios cobertos abaixo; LeafGreen segue sem pacote ou execução. Progresso e limites no [ROADMAP](../ROADMAP.md); decisão arquitetural em [ADR-024](../adr/ADR-024-finite-rom-ldmia-specialization.md); evidência com hashes em [gba020-thumb-ldmia-rom-cases-macos-arm64.json](../knowledge/evidence/gba020-thumb-ldmia-rom-cases-macos-arm64.json).
 
 ## Problema e objetivo
 
@@ -66,7 +66,7 @@ Para LeafGreen, hash `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fa
 | CMP imediato seguido de BEQ/BGE | Particiona cada alternativa para zeros, positivos, negativos, carry e overflow; runtime usa CPSR real |
 | CMP com `Unknown`, branch sem CMP adjacente ou outro produtor de flags | Essa alternativa mantém ambos sucessores |
 | Entrada alternativa ao branch sem o mesmo fato CMP | Essa alternativa mantém ambos sucessores; outras podem continuar refinadas |
-| Branch loop com contador/base correlacionados | Estados completos disjuntivos mantêm pares; fixed point converge e produz até 16 bases; LeafGreen ultrapassa `0x080006A8` na descoberta estática ou registra a próxima fronteira |
+| Branch loop com contador/base correlacionados | Estados completos disjuntivos mantêm pares; fixed point converge e produz até 16 bases na fixture sintética; a tentativa LeafGreen registra o erro de budget em `0x08000996`, mas não prova passagem pelo `0x080006A8` |
 | LDMIA ROM com 2..16 bases | IR valida tabela; O0/O2 dispatcham cada base à word correta |
 | Base ausente em runtime | EXIT_FAULT com PC, endereço e código 7; estado guest e ciclo inalterados |
 | 65+ alternativas completas por PC, 17+ bases ROM, loop não limitado após candidato ROM ou `Unknown` | Erro de compile, sem pacote parcial e sem fallback |

@@ -8,7 +8,7 @@
 
 SPEC-035 só materializa LDMIA de ROM quando Rb é singleton. O helper runtime v3 atende RAM física e rejeita ROM. Após SPEC-036, a análise estática de LeafGreen observa `LDMIA r3!,{r0}` em `0x080006A8` com duas bases abstratas iniciais. Os bytes seguintes formam, por inferência, um loop com `CMP r1,#0; BGE`; a análise atual mantém ambos os sucessores e não converge a um conjunto finito útil.
 
-## Decisão
+## Decisão implementada
 
 Preservar a imagem ROM como dado de compilação e introduzir uma side table IR de até 16 casos base→words, com LLVM emitindo despacho por base guest e constantes AOT. Singleton continua no caminho SPEC-035. O pacote recebe apenas as words lidas por cada caso; não recebe ROM inteira nem ponteiros de host.
 
@@ -30,7 +30,7 @@ Uma base não incluída na tabela falha explicitamente em runtime com `EXIT_FAUL
 
 GBA IR passa da versão 1 à 2 por causa da side table e máscara de sucessores. ABI layouts e versions não mudam; somente o enum de fault ganha valor aditivo. Cada tabela é pequena, ordenada, validada por IR e limitada a 16 entradas. Branches cuja impossibilidade foi provada ainda contêm o teste de CPSR no binário; o lowering guarda explicitamente cada resultado não marcado e retorna `EXIT_MISSING_CODE`, mesmo se aquele PC também tiver tradução por outro predecessor. A união de estados é exata e deduplica somente alternativas completas idênticas; Unknown nunca subsume uma alternativa ROM.
 
-Antes da implementação, testar condições com overflow/carry, entrada alternativa sem CMP, preservação de relações em loop, limites por PC e globais, orçamento ROM separado, fork de instruções ARM predicadas, loop sem limite, base desconhecida observada antes do primeiro caso ROM, table miss, atomicidade do estado guest, O0/O2 e regressão de LDMIA singleton/RAM. A tentativa de LeafGreen deve continuar classificada como análise estática, sem alegação de execução ou compatibilidade.
+Implementação verificada no commit `07f6afb4dbfe783fbde6b82a53fe38c0d1f4f722`: testes cobrem refinamento ARM e Thumb, limites de discovery, sucessores certificados, validação das side tables e branch runtime em edge não marcado. Fixtures strict-AOT O0/O2 cobrem duas bases LDMIA ROM e seleção correta de cada word; testes de integração cobrem table miss e guard de branch. O gate GBA-020 passou no macOS arm64. A tentativa de LeafGreen continua classificada como análise estática e não deve ser descrita como execução ou compatibilidade.
 
 ## Critérios para revisitar
 
