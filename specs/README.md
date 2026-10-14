@@ -34,3 +34,5 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-030 — ORRS Thumb Format 4 por registrador em AOT estrito](SPEC-030-thumb-orr-register.md)
 - [SPEC-031 — Thumb Format 3 imediato em AOT estrito](SPEC-031-thumb-immediate-format-3.md)
 - [SPEC-032 — Branch condicional Thumb Format 16 em AOT estrito](SPEC-032-thumb-conditional-branch.md)
+- [SPEC-033 — POP Thumb de registradores baixos em AOT estrito](SPEC-033-thumb-pop.md)
+- [SPEC-034 — Memória abstrata limitada para descoberta AOT](SPEC-034-abstract-memory-discovery.md)
