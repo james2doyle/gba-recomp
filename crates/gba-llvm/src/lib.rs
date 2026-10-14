@@ -483,6 +483,29 @@ unsafe fn build_arm_program_function(
     if pop_helper.is_null() {
         return Err("LLVMAddFunction for gba_pop_thumb_v3 returned null".to_owned());
     }
+    let mut ldmia_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(exit_type, 0),
+            i32_type,
+            i32_type,
+        ]
+    };
+    let ldmia_helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            ldmia_parameters.as_mut_ptr(),
+            ldmia_parameters.len() as u32,
+            0,
+        )
+    };
+    let ldmia_helper_name =
+        CString::new("gba_ldmia_thumb_v3").expect("static name contains no NUL");
+    let ldmia_helper =
+        unsafe { LLVMAddFunction(module, ldmia_helper_name.as_ptr(), ldmia_helper_type) };
+    if ldmia_helper.is_null() {
+        return Err("LLVMAddFunction for gba_ldmia_thumb_v3 returned null".to_owned());
+    }
     let entry = unsafe { append_block(context, function, "entry") };
     let validation_failed = unsafe { append_block(context, function, "validation_failed") };
     let validated = unsafe { append_block(context, function, "validated") };
@@ -735,6 +758,8 @@ unsafe fn build_arm_program_function(
                 push_helper_type,
                 push_helper,
                 pop_helper,
+                ldmia_helper_type,
+                ldmia_helper,
                 store16_helper_type,
                 store16_helper,
                 store8_helper_type,
@@ -1223,6 +1248,8 @@ unsafe fn lower_thumb_instruction(
     push_helper_type: LLVMTypeRef,
     push_helper: LLVMValueRef,
     pop_helper: LLVMValueRef,
+    ldmia_helper_type: LLVMTypeRef,
+    ldmia_helper: LLVMValueRef,
     store16_helper_type: LLVMTypeRef,
     store16_helper: LLVMValueRef,
     store8_helper_type: LLVMTypeRef,
@@ -2058,6 +2085,121 @@ unsafe fn lower_thumb_instruction(
             unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
             unsafe { LLVMBuildRet(builder, status) };
             unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::LoadMultipleIncrementAfter {
+            base_register,
+            register_list,
+        } => {
+            let mut arguments = [
+                runtime,
+                exit,
+                unsafe { LLVMConstInt(i32_type, u64::from(base_register), 0) },
+                unsafe { LLVMConstInt(i32_type, u64::from(register_list), 0) },
+            ];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    ldmia_helper_type,
+                    ldmia_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"thumb_ldmia_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_ldmia_succeeded".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_ldmia_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_ldmia_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
+            unsafe { LLVMBuildRet(builder, status) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::LoadRomMultipleIncrementAfter {
+            base_register,
+            register_list,
+            base_address,
+            values_by_register,
+        } => {
+            if register_list & (1 << base_register) == 0 {
+                let base_pointer = unsafe {
+                    register_pointer(builder, context, runtime_type, runtime, base_register)
+                };
+                let writeback =
+                    base_address.wrapping_add(register_list.count_ones().wrapping_mul(4));
+                unsafe {
+                    LLVMBuildStore(
+                        builder,
+                        LLVMConstInt(i32_type, u64::from(writeback), 0),
+                        base_pointer,
+                    )
+                };
+            }
+            for register in 0..8 {
+                if register_list & (1 << register) != 0 {
+                    let destination = unsafe {
+                        register_pointer(builder, context, runtime_type, runtime, register as u8)
+                    };
+                    unsafe {
+                        LLVMBuildStore(
+                            builder,
+                            LLVMConstInt(i32_type, u64::from(values_by_register[register]), 0),
+                            destination,
+                        )
+                    };
+                }
+            }
             let next_pc = unsafe {
                 LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
             };

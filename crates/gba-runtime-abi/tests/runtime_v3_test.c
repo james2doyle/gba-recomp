@@ -774,6 +774,129 @@ static void test_thumb_pop_null_runtime_and_output(void) {
     assert(memcmp(&memory, &before_memory, sizeof(before_memory)) == 0);
 }
 
+static void test_thumb_ldmia_order_writeback_and_alignment(void) {
+    GbaRuntimeV3 rt;
+    GbaMemoryV1 memory;
+    GbaMemoryV1 before_memory;
+    GbaExitV3 exit;
+    init(&rt, &memory);
+    for (uint32_t reg = 0; reg < 8; ++reg) {
+        rt.cpu.r[reg] = UINT32_C(0xA0000000) + reg;
+    }
+    rt.cpu.r[3] = UINT32_C(0x02000021);
+    rt.cpu.r[15] = UINT32_C(0x08001234);
+    rt.cpu.cpsr = UINT32_C(0xA000003F);
+    rt.cpu.guest_cycle = UINT64_C(0x123456789);
+    write_le32(&memory.ewram[0x20], UINT32_C(0x11223344));
+    write_le32(&memory.ewram[0x24], UINT32_C(0x55667788));
+    write_le32(&memory.ewram[0x28], UINT32_C(0x90ABCDEF));
+    write_le32(&memory.ewram[0x2C], UINT32_C(0x0BADF00D));
+    GbaRuntimeV2 expected = rt.cpu;
+    memcpy(&before_memory, &memory, sizeof(before_memory));
+
+    /* r0, r2, r5 and r7 receive words from aligned ascending addresses. */
+    assert(gba_ldmia_thumb_v3(&rt, &exit, 3, UINT32_C(0xA5)) ==
+           GBA_EXIT_CONTINUE_V2);
+    expected.r[0] = UINT32_C(0x11223344);
+    expected.r[2] = UINT32_C(0x55667788);
+    expected.r[5] = UINT32_C(0x90ABCDEF);
+    expected.r[7] = UINT32_C(0x0BADF00D);
+    expected.r[3] = UINT32_C(0x02000031);
+    assert(memcmp(&rt.cpu, &expected, sizeof(expected)) == 0);
+    assert(memcmp(&memory, &before_memory, sizeof(before_memory)) == 0);
+    assert(exit.reason == GBA_EXIT_CONTINUE_V2);
+    assert(exit.next_pc == UINT32_C(0x08001234));
+    assert(exit.fault_address == 0);
+    assert(exit.fault_code == GBA_MEMORY_FAULT_NONE_V3);
+
+    /* Base r3 is in the middle of the mask: its loaded word wins. */
+    init(&rt, &memory);
+    rt.cpu.r[3] = UINT32_C(0x03000011);
+    write_le32(&memory.iwram[0x10], UINT32_C(0x11111111));
+    write_le32(&memory.iwram[0x14], UINT32_C(0x33333333));
+    write_le32(&memory.iwram[0x18], UINT32_C(0x55555555));
+    expected = rt.cpu;
+    memcpy(&before_memory, &memory, sizeof(before_memory));
+    assert(gba_ldmia_thumb_v3(&rt, &exit, 3, UINT32_C(0x2A)) ==
+           GBA_EXIT_CONTINUE_V2);
+    expected.r[1] = UINT32_C(0x11111111);
+    expected.r[3] = UINT32_C(0x33333333);
+    expected.r[5] = UINT32_C(0x55555555);
+    assert(memcmp(&rt.cpu, &expected, sizeof(expected)) == 0);
+    assert(memcmp(&memory, &before_memory, sizeof(before_memory)) == 0);
+
+    /* Eight aligned words ending at the last EWRAM word are valid. */
+    init(&rt, &memory);
+    rt.cpu.r[0] = UINT32_C(0x0203FFE1);
+    for (uint32_t reg = 0; reg < 8; ++reg) {
+        write_le32(&memory.ewram[0x3FFE0 + reg * 4], UINT32_C(0x1000) + reg);
+    }
+    expected = rt.cpu;
+    assert(gba_ldmia_thumb_v3(&rt, &exit, 0, UINT32_C(0xFF)) ==
+           GBA_EXIT_CONTINUE_V2);
+    for (uint32_t reg = 0; reg < 8; ++reg) {
+        expected.r[reg] = UINT32_C(0x1000) + reg;
+    }
+    assert(memcmp(&rt.cpu, &expected, sizeof(expected)) == 0);
+}
+
+static void expect_atomic_ldmia_fault(GbaRuntimeV3 *rt, GbaMemoryV1 *memory,
+                                      GbaExitV3 *exit, uint32_t base_register,
+                                      uint32_t list, uint32_t fault_address,
+                                      GbaMemoryFaultV3 expected_code) {
+    GbaMemoryV1 before_memory;
+    GbaRuntimeV2 before_cpu = rt->cpu;
+    memcpy(&before_memory, memory, sizeof(before_memory));
+    assert(gba_ldmia_thumb_v3(rt, exit, base_register, list) == GBA_EXIT_FAULT_V2);
+    assert(exit->reason == GBA_EXIT_FAULT_V2);
+    assert(exit->next_pc == before_cpu.r[15]);
+    assert(exit->fault_address == fault_address);
+    assert(exit->fault_code == (uint32_t)expected_code);
+    assert(memcmp(memory, &before_memory, sizeof(before_memory)) == 0);
+    assert(memcmp(&rt->cpu, &before_cpu, sizeof(before_cpu)) == 0);
+}
+
+static void test_thumb_ldmia_faults_are_atomic(void) {
+    GbaRuntimeV3 rt;
+    GbaMemoryV1 memory;
+    GbaExitV3 exit;
+    init(&rt, &memory);
+    rt.cpu.r[3] = UINT32_C(0x0203FFFD);
+    rt.cpu.r[0] = UINT32_C(0xAAAAAAAA);
+    rt.cpu.r[1] = UINT32_C(0xBBBBBBBB);
+    write_le32(&memory.ewram[0x3FFFC], UINT32_C(0xCCCCCCCC));
+    /* The second EA is invalid; r0 must not be committed from the first. */
+    expect_atomic_ldmia_fault(&rt, &memory, &exit, 3, UINT32_C(0x03),
+                              UINT32_C(0x02040000), GBA_MEMORY_FAULT_REGION_V3);
+
+    rt.cpu.r[3] = UINT32_C(0x08000000);
+    expect_atomic_ldmia_fault(&rt, &memory, &exit, 3, UINT32_C(0x01),
+                              UINT32_C(0x08000000), GBA_MEMORY_FAULT_REGION_V3);
+    rt.cpu.r[3] = UINT32_C(0x02000020);
+    expect_atomic_ldmia_fault(&rt, &memory, &exit, 8, UINT32_C(0x01), 0,
+                              GBA_MEMORY_FAULT_REGISTER_LIST_V3);
+    expect_atomic_ldmia_fault(&rt, &memory, &exit, 3, 0,
+                              UINT32_C(0x02000020), GBA_MEMORY_FAULT_REGISTER_LIST_V3);
+    expect_atomic_ldmia_fault(&rt, &memory, &exit, 3, UINT32_C(0x100),
+                              UINT32_C(0x02000020), GBA_MEMORY_FAULT_REGISTER_LIST_V3);
+
+    rt.abi_version = GBA_ABI_VERSION_V3 + 1;
+    expect_atomic_ldmia_fault(&rt, &memory, &exit, 3, UINT32_C(0x01),
+                              UINT32_C(0x02000020), GBA_MEMORY_FAULT_ABI_V3);
+    rt.abi_version = GBA_ABI_VERSION_V3;
+    rt.cpu.abi_version = GBA_ABI_VERSION_V2 + 1;
+    expect_atomic_ldmia_fault(&rt, &memory, &exit, 3, UINT32_C(0x01),
+                              UINT32_C(0x02000020), GBA_MEMORY_FAULT_ABI_V3);
+    rt.cpu.abi_version = GBA_ABI_VERSION_V2;
+    rt.memory = NULL;
+    GbaRuntimeV2 before_cpu = rt.cpu;
+    assert(gba_ldmia_thumb_v3(&rt, &exit, 3, UINT32_C(0x01)) ==
+           GBA_EXIT_FAULT_V2);
+    assert(exit.fault_code == GBA_MEMORY_FAULT_NULL_MEMORY_V3);
+    assert(exit.fault_address == UINT32_C(0x02000020));
+    assert(memcmp(&rt.cpu, &before_cpu, sizeof(before_cpu)) == 0);
+}
+
 int main(void) {
     GbaRuntimeV3 rt;
     GbaMemoryV1 memory;
@@ -794,10 +917,14 @@ int main(void) {
     test_thumb_pop_order_writeback_and_boundaries();
     test_thumb_pop_rejections_are_atomic();
     test_thumb_pop_null_runtime_and_output();
+    test_thumb_ldmia_order_writeback_and_alignment();
+    test_thumb_ldmia_faults_are_atomic();
     init(&rt, &memory);
     assert(gba_store32_v3(NULL, &exit, 0, 0) == GBA_EXIT_FAULT_V2);
     assert(exit.fault_code == GBA_MEMORY_FAULT_RUNTIME_V3);
     assert(gba_push_thumb_v3(NULL, &exit, UINT32_C(1)) == GBA_EXIT_FAULT_V2);
+    assert(exit.fault_code == GBA_MEMORY_FAULT_RUNTIME_V3);
+    assert(gba_ldmia_thumb_v3(NULL, &exit, 3, UINT32_C(1)) == GBA_EXIT_FAULT_V2);
     assert(exit.fault_code == GBA_MEMORY_FAULT_RUNTIME_V3);
     assert(gba_store32_v3(&rt, NULL, 0, 0) == GBA_EXIT_FAULT_V2);
     assert(gba_store16_v3(&rt, NULL, 0, 0) == GBA_EXIT_FAULT_V2);
@@ -805,5 +932,6 @@ int main(void) {
     assert(gba_load8_v3(&rt, NULL, 0, NULL) == GBA_EXIT_FAULT_V2);
     assert(gba_push_thumb_v3(&rt, NULL, UINT32_C(1)) == GBA_EXIT_FAULT_V2);
     assert(gba_pop_thumb_v3(&rt, NULL, UINT32_C(1)) == GBA_EXIT_FAULT_V2);
+    assert(gba_ldmia_thumb_v3(&rt, NULL, 3, UINT32_C(1)) == GBA_EXIT_FAULT_V2);
     return 0;
 }

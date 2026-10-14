@@ -357,6 +357,22 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             operation: ThumbOperation::Push { register_list },
         });
     }
+    if encoding & 0xF800 == 0xC800 {
+        let register_list = encoding & 0x00FF;
+        if register_list == 0 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (empty LDMIA register list is unpredictable)"
+            ));
+        }
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: ((encoding >> 8) & 0x7) as u8,
+                register_list,
+            },
+        });
+    }
     if encoding & 0xFC00 == 0x4400 {
         let opcode = (encoding >> 8) & 0x3;
         if opcode != 0x2 {
@@ -959,6 +975,26 @@ mod tests {
         }
         assert!(decode_thumb(0x0800_03AA, 0x4008).is_err());
         assert!(decode_thumb(0x0800_03AB, 0x3201).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_ldmia_and_rejects_empty_list_and_stmia() {
+        let instruction = decode_thumb(0x0800_03A8, 0xCB01).unwrap();
+        assert_eq!(instruction.guest_pc, 0x0800_03A8);
+        assert_eq!(instruction.encoding, 0xCB01);
+        assert_eq!(
+            instruction.operation,
+            ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 1
+            }
+        );
+        assert!(
+            decode_thumb(0x0800_03A8, 0xC800)
+                .unwrap_err()
+                .contains("empty LDMIA register list is unpredictable")
+        );
+        assert!(decode_thumb(0x0800_03A8, 0xC001).is_err());
     }
 
     #[test]

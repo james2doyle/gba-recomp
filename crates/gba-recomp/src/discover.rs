@@ -6,7 +6,7 @@ use gba_ir::{
     ThumbInstruction, ThumbOperation,
 };
 
-use crate::rom::{ROM_BASE, RomImage};
+use crate::rom::{MAX_ROM_SIZE, ROM_BASE, RomImage};
 
 const MAX_DISCOVERED_INSTRUCTIONS: usize = 1_000_000;
 const MAX_CONSTANT_TARGETS: usize = 16;
@@ -151,6 +151,7 @@ pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
             }
         }
     }
+    resolve_thumb_ldmia_rom(&image, &incoming, &mut decoded_thumb)?;
     let program = ArmProgram {
         version: GBA_IR_VERSION,
         instructions: decoded_arm.into_values().collect(),
@@ -388,6 +389,16 @@ impl AbstractState {
         result.unwrap_or(AbstractValue::Unknown)
     }
 
+    fn load_memory_word(&self, address: u32) -> AbstractValue {
+        if address & 3 != 0 || !supported_ram_interval(address, 4) {
+            return AbstractValue::Unknown;
+        }
+        self.memory_words
+            .get(&address)
+            .cloned()
+            .unwrap_or(AbstractValue::Unknown)
+    }
+
     fn forget_popped_words(&mut self, stack_pointers: &AbstractValue, byte_count: u32) {
         let Some(stack_pointers) = stack_pointers.values() else {
             return;
@@ -450,6 +461,71 @@ fn supported_ram_interval(address: u32, byte_count: u32) -> bool {
         return false;
     };
     (address >= 0x0200_0000 && end <= 0x0204_0000) || (address >= 0x0300_0000 && end <= 0x0300_8000)
+}
+
+fn is_rom_window_address(address: u32) -> bool {
+    address >= ROM_BASE && address < ROM_BASE.wrapping_add(MAX_ROM_SIZE as u32)
+}
+
+fn resolve_thumb_ldmia_rom(
+    image: &RomImage,
+    incoming: &BTreeMap<(IsaMode, u32), AbstractState>,
+    decoded_thumb: &mut BTreeMap<u32, ThumbInstruction>,
+) -> Result<(), String> {
+    for (&pc, instruction) in decoded_thumb.iter_mut() {
+        let ThumbOperation::LoadMultipleIncrementAfter {
+            base_register,
+            register_list,
+        } = instruction.operation
+        else {
+            continue;
+        };
+        let Some(base_values) = incoming
+            .get(&(IsaMode::Thumb, pc))
+            .expect("decoded instruction must have incoming state")
+            .registers[base_register as usize]
+            .values()
+        else {
+            continue;
+        };
+        if base_values.len() > 1 {
+            if base_values
+                .iter()
+                .any(|address| is_rom_window_address(*address))
+            {
+                return Err(format!(
+                    "thumb_ldmia_rom_base_not_singleton at 0x{pc:08X}: r{base_register} has multiple possible ROM bases"
+                ));
+            }
+            continue;
+        }
+        let base_address = *base_values.iter().next().expect("one base value");
+        if !is_rom_window_address(base_address) {
+            continue;
+        }
+
+        let mut values_by_register = [0_u32; 8];
+        let mut slot = 0_u32;
+        for register in 0..8 {
+            if register_list & (1 << register) == 0 {
+                continue;
+            }
+            let guest_ea = base_address.wrapping_add(slot.wrapping_mul(4)) & !3;
+            values_by_register[register] = image.read_arm_word(guest_ea).map_err(|error| {
+                format!(
+                    "thumb_ldmia_rom_load_out_of_image at 0x{pc:08X}: guest address 0x{guest_ea:08X}: {error}"
+                )
+            })?;
+            slot = slot.wrapping_add(1);
+        }
+        instruction.operation = ThumbOperation::LoadRomMultipleIncrementAfter {
+            base_register,
+            register_list,
+            base_address,
+            values_by_register,
+        };
+    }
+    Ok(())
 }
 
 fn effective_store_address(base: &AbstractValue, offset: u32, add: bool) -> AbstractValue {
@@ -888,6 +964,102 @@ fn process_thumb_instruction(
                 incoming,
             );
         }
+        ThumbOperation::LoadMultipleIncrementAfter {
+            base_register,
+            register_list,
+        } => {
+            let base = &state.registers[base_register as usize];
+            if let Some(base_values) = base.values() {
+                if base_values.len() > 1
+                    && base_values
+                        .iter()
+                        .any(|value| is_rom_window_address(*value))
+                {
+                    return Err(format!(
+                        "thumb_ldmia_rom_base_not_singleton at 0x{:08X}: r{base_register} has multiple possible ROM bases",
+                        instruction.guest_pc
+                    ));
+                }
+            }
+            let mut loaded: [AbstractValue; 8] = std::array::from_fn(|_| AbstractValue::Unknown);
+            let mut slot = 0_u32;
+            for register in 0..8 {
+                if register_list & (1 << register) == 0 {
+                    continue;
+                }
+                let offset = slot.wrapping_mul(4);
+                loaded[register] = match base.values() {
+                    Some(base_values) => {
+                        let mut merged: Option<AbstractValue> = None;
+                        for base_address in base_values {
+                            let guest_ea = base_address.wrapping_add(offset) & !3;
+                            let value = if is_rom_window_address(guest_ea) {
+                                let rom_word = image.read_arm_word(guest_ea).map_err(|error| {
+                                    format!(
+                                        "thumb_ldmia_rom_load_out_of_image at 0x{:08X}: guest address 0x{guest_ea:08X}: {error}",
+                                        instruction.guest_pc
+                                    )
+                                })?;
+                                AbstractValue::constant(rom_word)
+                            } else {
+                                state.load_memory_word(guest_ea)
+                            };
+                            merged = Some(match merged {
+                                Some(current) => current.merged(&value),
+                                None => value,
+                            });
+                        }
+                        merged.unwrap_or(AbstractValue::Unknown)
+                    }
+                    None => AbstractValue::Unknown,
+                };
+                slot = slot.wrapping_add(1);
+            }
+
+            let mut next_state = state.clone();
+            for register in 0..8 {
+                if register_list & (1 << register) != 0 {
+                    next_state.registers[register] = loaded[register].clone();
+                }
+            }
+            if register_list & (1 << base_register) == 0 {
+                next_state.registers[base_register as usize] =
+                    base.wrapping_add(register_list.count_ones().wrapping_mul(4));
+            }
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
+        ThumbOperation::LoadRomMultipleIncrementAfter {
+            base_register,
+            register_list,
+            base_address,
+            values_by_register,
+        } => {
+            let mut next_state = state.clone();
+            for register in 0..8 {
+                if register_list & (1 << register) != 0 {
+                    next_state.registers[register] =
+                        AbstractValue::constant(values_by_register[register]);
+                }
+            }
+            if register_list & (1 << base_register) == 0 {
+                next_state.registers[base_register as usize] = AbstractValue::constant(
+                    base_address.wrapping_add(register_list.count_ones().wrapping_mul(4)),
+                );
+            }
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::MovImmediate { rd, value } => {
             let mut next_state = state.clone();
             next_state.set_constant(rd, u32::from(value));
@@ -1067,6 +1239,13 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn thumb_ldmia_rom_word() -> RomImage {
+        let mut bytes = counter_rom().bytes().to_vec();
+        bytes[0xF0..0xF4].copy_from_slice(&0x0800_0089_u32.to_le_bytes());
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     fn thumb_addsub_bx_rom() -> RomImage {
         let mut bytes = counter_rom().bytes().to_vec();
         let thumb = [0x4A14_u16, 0x1C10, 0x4700]; // LDR r2,[PC,#0x50]; ADDS r0,r2,#0; BX r0.
@@ -1219,6 +1398,92 @@ mod tests {
         }));
         assert_eq!(program.thumb_instructions.len(), 2);
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn thumb_ldmia_reads_known_ram_shadow_and_preserves_memory_facts() {
+        let image = counter_rom();
+        let guest_pc = 0x0800_0084;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xCB0A, // LDMIA r3!, {r1,r3}.
+            operation: ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 0x0A,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[3] = AbstractValue::constant(0x0300_0001);
+        state.set_memory_word(0x0300_0000, AbstractValue::constant(0x1111_1111));
+        state.set_memory_word(0x0300_0004, AbstractValue::constant(0x3333_3333));
+        let memory_before = state.memory_words.clone();
+        let mut incoming = BTreeMap::from([((IsaMode::Thumb, guest_pc), state.clone())]);
+        let mut pending = VecDeque::new();
+        let mut branch_targets = BTreeSet::new();
+
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut branch_targets,
+        )
+        .unwrap();
+
+        let after = incoming.get(&(IsaMode::Thumb, guest_pc + 2)).unwrap();
+        assert_eq!(after.registers[1], AbstractValue::constant(0x1111_1111));
+        assert_eq!(after.registers[3], AbstractValue::constant(0x3333_3333));
+        assert_eq!(after.memory_words, memory_before);
+    }
+
+    #[test]
+    fn thumb_ldmia_resolves_singleton_rom_base_to_aot_values() {
+        let image = thumb_ldmia_rom_word();
+        let guest_pc = 0x0800_0084;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xCB01,
+            operation: ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 1,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[3] = AbstractValue::constant(ROM_BASE + 0xF1);
+        let mut incoming = BTreeMap::from([((IsaMode::Thumb, guest_pc), state.clone())]);
+        let mut pending = VecDeque::new();
+        let mut branch_targets = BTreeSet::new();
+
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut branch_targets,
+        )
+        .unwrap();
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, guest_pc + 2)].registers[0],
+            AbstractValue::constant(0x0800_0089)
+        );
+        assert_eq!(
+            incoming[&(IsaMode::Thumb, guest_pc + 2)].registers[3],
+            AbstractValue::constant(ROM_BASE + 0xF5)
+        );
+
+        let mut decoded = BTreeMap::from([(guest_pc, instruction)]);
+        resolve_thumb_ldmia_rom(&image, &incoming, &mut decoded).unwrap();
+        assert_eq!(
+            decoded[&guest_pc].operation,
+            ThumbOperation::LoadRomMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 1,
+                base_address: ROM_BASE + 0xF1,
+                values_by_register: [0x0800_0089, 0, 0, 0, 0, 0, 0, 0],
+            }
+        );
     }
 
     #[test]

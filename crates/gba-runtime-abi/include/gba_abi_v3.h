@@ -48,6 +48,8 @@ uint32_t gba_push_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                            uint32_t register_list);
 uint32_t gba_pop_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                           uint32_t register_list);
+uint32_t gba_ldmia_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                            uint32_t base_register, uint32_t register_list);
 
 _Static_assert(sizeof(GbaMemoryV1) == 0x48000, "GbaMemoryV1 size changed");
 _Static_assert(_Alignof(GbaMemoryV1) == 1, "GbaMemoryV1 alignment changed");

@@ -134,6 +134,18 @@ pub enum ThumbOperation {
     Pop {
         register_list: u16,
     },
+    LoadMultipleIncrementAfter {
+        base_register: u8,
+        register_list: u16,
+    },
+    /// LDMIA whose singleton base was resolved against the immutable ROM image.
+    /// Values are indexed by register number; entries outside register_list are ignored.
+    LoadRomMultipleIncrementAfter {
+        base_register: u8,
+        register_list: u16,
+        base_address: u32,
+        values_by_register: [u32; 8],
+    },
     MovImmediate {
         rd: u8,
         value: u8,
@@ -273,6 +285,7 @@ pub enum VerifyError {
     MisalignedThumbPc(u32),
     InvalidThumbPushRegisterList(u16),
     InvalidThumbPopRegisterList(u16),
+    InvalidThumbLdmiaRegisterList(u16),
     InvalidThumbImmediateRegister(u8),
     InvalidThumbFormat3Register(u8),
     InvalidThumbRomLiteralRegister(u8),
@@ -316,6 +329,9 @@ impl fmt::Display for VerifyError {
             }
             Self::InvalidThumbPopRegisterList(list) => {
                 write!(f, "invalid Thumb POP register list 0x{list:04X}")
+            }
+            Self::InvalidThumbLdmiaRegisterList(list) => {
+                write!(f, "invalid Thumb LDMIA register list 0x{list:04X}")
             }
             Self::InvalidThumbImmediateRegister(register) => write!(
                 f,
@@ -735,6 +751,47 @@ impl ArmProgram {
                         )));
                     }
                 }
+                ThumbOperation::LoadMultipleIncrementAfter {
+                    base_register,
+                    register_list,
+                }
+                | ThumbOperation::LoadRomMultipleIncrementAfter {
+                    base_register,
+                    register_list,
+                    ..
+                } => {
+                    let encoding = instruction.encoding;
+                    if base_register > 7 {
+                        return Err(VerifyError::InvalidThumbLdmiaRegisterList(register_list));
+                    }
+                    if register_list == 0 || register_list & !0x00FF != 0 {
+                        return Err(VerifyError::InvalidThumbLdmiaRegisterList(register_list));
+                    }
+                    let encoded_base = ((encoding >> 8) & 0x7) as u8;
+                    if encoding & 0xF800 != 0xC800
+                        || base_register != encoded_base
+                        || register_list != encoding & 0x00FF
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                    if let ThumbOperation::LoadRomMultipleIncrementAfter {
+                        values_by_register,
+                        ..
+                    } = instruction.operation
+                    {
+                        for register in 0..8 {
+                            if register_list & (1 << register) == 0
+                                && values_by_register[register] != 0
+                            {
+                                return Err(VerifyError::UnsupportedInstructionEncoding(
+                                    u32::from(encoding),
+                                ));
+                            }
+                        }
+                    }
+                }
                 ThumbOperation::BlPrefix { lr_partial }
                     if instruction.encoding & 0xF800 != 0xF000
                         || lr_partial
@@ -955,6 +1012,19 @@ impl ArmProgram {
                     }
                 }
                 ThumbOperation::Pop { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if fallthrough & 1 != 0 {
+                        return Err(VerifyError::MisalignedThumbPc(fallthrough));
+                    }
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::LoadMultipleIncrementAfter { .. }
+                | ThumbOperation::LoadRomMultipleIncrementAfter { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if fallthrough & 1 != 0 {
                         return Err(VerifyError::MisalignedThumbPc(fallthrough));
@@ -1216,6 +1286,23 @@ pub fn execute_thumb_instruction(
             state.r[rd as usize] = value;
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
+        ThumbOperation::LoadRomMultipleIncrementAfter {
+            base_register,
+            register_list,
+            base_address,
+            values_by_register,
+        } => {
+            if register_list & (1 << base_register) == 0 {
+                state.r[base_register as usize] =
+                    base_address.wrapping_add(register_list.count_ones().wrapping_mul(4));
+            }
+            for register in 0..8 {
+                if register_list & (1 << register) != 0 {
+                    state.r[register] = values_by_register[register];
+                }
+            }
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
         ThumbOperation::LslImmediate { rd, rs, amount } => {
             let old_source = state.r[rs as usize];
             let result = old_source.wrapping_shl(u32::from(amount));
@@ -1301,7 +1388,9 @@ pub fn execute_thumb_instruction(
                 state.r[REG_PC as usize] = target & !3;
             }
         }
-        ThumbOperation::Push { .. } | ThumbOperation::Pop { .. } => {
+        ThumbOperation::Push { .. }
+        | ThumbOperation::Pop { .. }
+        | ThumbOperation::LoadMultipleIncrementAfter { .. } => {
             return Err(StepFault::MemoryRuntimeRequired);
         }
         ThumbOperation::MovImmediate { rd, value } => {
@@ -1522,6 +1611,32 @@ mod tests {
         }
     }
 
+    fn thumb_ldmia_program(guest_pc: u32, encoding: u16, operation: ThumbOperation) -> ArmProgram {
+        let fallthrough = guest_pc.wrapping_add(2);
+        ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                ThumbInstruction {
+                    guest_pc,
+                    encoding,
+                    operation,
+                },
+                ThumbInstruction {
+                    guest_pc: fallthrough,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: fallthrough,
+                target_mode: IsaMode::Thumb,
+                target_pc: fallthrough,
+            }],
+        }
+    }
+
     fn expected_thumb_condition(condition: u8, cpsr: u32) -> bool {
         let n = cpsr & (1 << 31) != 0;
         let z = cpsr & (1 << 30) != 0;
@@ -1714,6 +1829,115 @@ mod tests {
                 target: 0x0800_0102,
             })
         );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_ldmia_fields_and_successor() {
+        let guest_pc = 0x0800_0100;
+        let mut program = thumb_ldmia_program(
+            guest_pc,
+            0xCB01,
+            ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 1,
+            },
+        );
+        assert!(program.verify().is_ok());
+
+        program.thumb_instructions[0].operation = ThumbOperation::LoadMultipleIncrementAfter {
+            base_register: 2,
+            register_list: 1,
+        };
+        assert_eq!(
+            program.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xCB01))
+        );
+
+        let empty = thumb_ldmia_program(
+            guest_pc,
+            0xCB00,
+            ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 0,
+            },
+        );
+        assert_eq!(
+            empty.verify(),
+            Err(VerifyError::InvalidThumbLdmiaRegisterList(0))
+        );
+
+        let bad_register = thumb_ldmia_program(
+            guest_pc,
+            0xCB01,
+            ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 8,
+                register_list: 1,
+            },
+        );
+        assert!(matches!(
+            bad_register.verify(),
+            Err(VerifyError::InvalidThumbLdmiaRegisterList(_))
+        ));
+
+        let mut missing_successor = thumb_ldmia_program(
+            guest_pc,
+            0xCB01,
+            ThumbOperation::LoadMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 1,
+            },
+        );
+        missing_successor.thumb_instructions.pop();
+        missing_successor.branch_targets.clear();
+        assert_eq!(
+            missing_successor.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn resolved_thumb_rom_ldmia_loads_values_and_obeys_base_overlap() {
+        let guest_pc = 0x0800_0100;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xCB09, // LDMIA r3!, {r0,r3}.
+            operation: ThumbOperation::LoadRomMultipleIncrementAfter {
+                base_register: 3,
+                register_list: 0x09,
+                base_address: 0x0800_00F0,
+                values_by_register: [0x0800_0089, 0, 0, 0xAABB_CCDD, 0, 0, 0, 0],
+            },
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr = 0xA000_003F;
+        cpu.r[3] = 0x0800_00F0;
+        let original_cpsr = cpu.cpsr;
+        let original_cycle = cpu.guest_cycle;
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+        assert_eq!(cpu.r[0], 0x0800_0089);
+        assert_eq!(cpu.r[3], 0xAABB_CCDD);
+        assert_eq!(cpu.r[15], guest_pc + 2);
+        assert_eq!(cpu.cpsr, original_cpsr);
+        assert_eq!(cpu.guest_cycle, original_cycle + 1);
+
+        let mut no_base_in_list = instruction;
+        no_base_in_list.encoding = 0xCB01;
+        no_base_in_list.operation = ThumbOperation::LoadRomMultipleIncrementAfter {
+            base_register: 3,
+            register_list: 1,
+            base_address: 0x0800_00F1,
+            values_by_register: [0x1234_5678, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr |= 0x20;
+        execute_thumb_instruction(&mut cpu, no_base_in_list).unwrap();
+        assert_eq!(cpu.r[0], 0x1234_5678);
+        assert_eq!(cpu.r[3], 0x0800_00F5);
+        assert_eq!(cpu.r[15], guest_pc + 2);
+        assert_eq!(cpu.guest_cycle, 6);
     }
 
     #[test]

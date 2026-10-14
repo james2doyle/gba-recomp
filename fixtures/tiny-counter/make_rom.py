@@ -108,6 +108,59 @@ def generate(mode: str = "valid") -> bytes:
         image[0xF0:0xFC] = struct.pack(
             "<3I", 0x03000014, 0x08000085, 0x080000E8
         )
+    elif mode in (
+        "thumb-ldmia-rom-bx",
+        "thumb-ldmia-iwram-bx",
+        "thumb-ldmia-rom-out-of-range",
+        "thumb-ldmia-empty-unsupported",
+        "thumb-stmia-unsupported",
+    ):
+        encoding = {
+            "thumb-ldmia-rom-bx": 0xCB01,
+            "thumb-ldmia-iwram-bx": 0xCB01,
+            "thumb-ldmia-rom-out-of-range": 0xCB03,
+            "thumb-ldmia-empty-unsupported": 0xC800,
+            "thumb-stmia-unsupported": 0xC001,
+        }[mode]
+        thumb_code = [encoding, 0x4700, 0x2133, 0x4770]
+        if mode == "thumb-ldmia-iwram-bx":
+            thumb_code = [0xB401, 0x466B, encoding, 0x4700, 0x2133, 0x4770]
+        image[0x84 : 0x84 + 2 * len(thumb_code)] = struct.pack(
+            f"<{len(thumb_code)}H", *thumb_code
+        )
+        if mode == "thumb-ldmia-iwram-bx":
+            image[0xC0:0xD4] = struct.pack(
+                "<5I",
+                0xE59F001C,  # LDR r0,[pc,#0x1C] -> Thumb address | 1 at 0xE4.
+                0xE59FD01C,  # LDR sp,[pc,#0x1C] -> IWRAM stack top at 0xE8.
+                0xE59F801C,  # LDR r8,[pc,#0x1C] -> Thumb entry at 0xEC.
+                0xE59FE01C,  # LDR lr,[pc,#0x1C] -> ARM loop address at 0xF0.
+                0xE12FFF18,  # BX r8.
+            )
+            image[0xE4:0xF0] = struct.pack(
+                "<3I", 0x0800008D, 0x03000004, 0x08000085
+            )
+            image[0xF0:0xF4] = struct.pack("<I", 0x080000F8)
+            image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
+        else:
+            rom_base = (
+                0x080000FC
+                if mode == "thumb-ldmia-rom-out-of-range"
+                else 0x080000F0
+            )
+            image[0xC0:0xD4] = struct.pack(
+                "<5I",
+                0xE59F3010,  # LDR r3,[pc,#0x10] -> ROM base at 0xD8.
+                0xE59F8010,  # LDR r8,[pc,#0x10] -> Thumb entry at 0xDC.
+                0xE59FE010,  # LDR lr,[pc,#0x10] -> ARM loop at 0xE0.
+                0xE12FFF18,  # BX r8.
+                branch(0xD0, 0xD0),  # Unreached self-loop.
+            )
+            image[0xD8:0xE4] = struct.pack(
+                "<3I", rom_base, 0x08000085, 0x080000F4
+            )
+            image[0xF0:0xF4] = struct.pack("<I", 0x08000089)
+            image[0xF4:0xF8] = struct.pack("<I", branch(0xF4, 0xF4))
     elif mode == "thumb-pop-r3":
         image[0x84:0x8C] = struct.pack(
             "<4H",
@@ -883,6 +936,11 @@ def main() -> None:
             "thumb-swi-reset",
             "thumb-swi-unsupported",
             "thumb-push",
+            "thumb-ldmia-rom-bx",
+            "thumb-ldmia-iwram-bx",
+            "thumb-ldmia-rom-out-of-range",
+            "thumb-ldmia-empty-unsupported",
+            "thumb-stmia-unsupported",
             "thumb-pop-r3",
             "thumb-pop-multiple",
             "thumb-stack-return",
