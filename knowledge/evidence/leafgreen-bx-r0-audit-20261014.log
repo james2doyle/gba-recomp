@@ -1,0 +1,77 @@
+LeafGreen BX r0 static abstract-state audit
+Repository commit: 298b2967e2a9fec9870f0fe5da4d5f97305450f0
+Compiler SHA-256: 3f880224817c4bddb3f39614d7fc91d824ef25da6d6bc60a0ed70bb736856ee0
+ROM SHA-256: 2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825
+Evidence boundary: compiler discovery abstract states and ROM bytes only; guest ROM not executed.
+Compile result: exit 1: bx_target_unresolved at 0x08000B6A: r0 is not statically bounded; no package emitted
+Discovery seed: AbstractState::unknown() (all registers Unknown; IE/IF/IME abstractly zero).
+Runner template: main.rs:339-350 zeroes runtime then sets CPSR=0x1F and PC=0x08000000; this is synthetic setup, not a real BIOS handoff, and was not run.
+
+=== Exact LLDB discriminant probe and route states ===
+(lldb) target create "target/debug/gba-recomp"
+Current executable set to '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64).
+(lldb) settings set -- target.run-args "compile" "--rom" "roms/Pokemon - Leaf Green Version (U) (V1.1).gba" "--out" "/tmp/leafgreen-discriminant-probe" "--opt" "O2" "--steps" "100"
+(lldb) command script import /tmp/leafgreen_discriminant_probe.py
+DISCRIMINANT_PROBE breakpoints=[1, 1, 1, 1, 1]
+(lldb) run
+warning: This version of LLDB has no plugin for the language "rust". Inspection of frame variables will be limited.
+error: gba_recomp-588a877ce83702fe.c15490jz0tfdzu8z1t3qu1ugg.09za0vq.rcgu.o 0x400068000000368a: DW_TAG_member 'vals' refers to type 0x0000000000004cdb which extends beyond the bounds of 0x4000680000003640
+DISCRIMINANT_PROBE pc=0x08000000 expression=true error=none
+PROBE pc=0x08000000 enc=0xEA00007F regs={'r0': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000208 expression=true error=none
+PROBE pc=0x08000208 enc=0xE129F000 regs={'r0': [18], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x0800020C expression=true error=none
+PROBE pc=0x0800020C enc=0xE59FD028 regs={'r0': [18], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000210 expression=false error=none
+PROBE pc=0x08000210 enc=0xE3A0001F regs={'r0': [18], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50364320], 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000214 expression=false error=none
+PROBE pc=0x08000214 enc=0xE129F000 regs={'r0': [31], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50364320], 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000218 expression=true error=none
+PROBE pc=0x08000218 enc=0xE59FD018 regs={'r0': [31], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x0800021C expression=false error=none
+PROBE pc=0x0800021C enc=0xE59F101C regs={'r0': [31], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363968], 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000230 expression=false error=none
+PROBE pc=0x08000230 enc=0xE12FFF11 regs={'r0': [134218312], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363968], 'r14': [134218292]} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000B48 expression=false error=none
+PROBE pc=0x08000B48 enc=0xB530 regs={'r0': [1], 'r4': [50331842], 'r5': [134218312], 'r13': [50363924], 'r14': [134220693]} locals={'register_list': '304'} shadow=[(50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B50 expression=false error=none
+PROBE pc=0x08000B50 enc=0xD009 regs={'r0': 'Unknown', 'r4': [50331842], 'r5': [50331841], 'r13': [50363912], 'r14': [134220693]} locals={} shadow=[(50363912, [50331842]), (50363916, [134218312]), (50363920, [134220693]), (50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B66 expression=false error=none
+PROBE pc=0x08000B66 enc=0xBC30 regs={'r0': 'Unknown', 'r4': [50331842], 'r5': [50331841], 'r13': [50363912], 'r14': [134220693]} locals={'register_list': '48'} shadow=[(50363912, [50331842]), (50363916, [134218312]), (50363920, [134220693]), (50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B68 expression=false error=none
+PROBE pc=0x08000B68 enc=0xBC01 regs={'r0': 'Unknown', 'r4': [50331842], 'r5': [134218312], 'r13': [50363920], 'r14': [134220693]} locals={'register_list': '1'} shadow=[(50363920, [134220693]), (50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B6A expression=false error=none
+PROBE pc=0x08000B6A enc=0x4700 regs={'r0': [134220693], 'r4': [50331842], 'r5': [134218312], 'r13': [50363924], 'r14': [134220693]} locals={} shadow=[(50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B66 expression=false error=none
+PROBE pc=0x08000B66 enc=0xBC30 regs={'r0': 'Unknown', 'r4': [0], 'r5': [50331841], 'r13': [50363912], 'r14': [134220693]} locals={'register_list': '48'} shadow=[] io=[]
+DISCRIMINANT_PROBE pc=0x08000B68 expression=false error=none
+PROBE pc=0x08000B68 enc=0xBC01 regs={'r0': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363920], 'r14': [134220693]} locals={'register_list': '1'} shadow=[] io=[]
+DISCRIMINANT_PROBE pc=0x08000B6A expression=false error=none
+PROBE pc=0x08000B6A enc=0x4700 regs={'r0': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363924], 'r14': [134220693]} locals={} shadow=[] io=[]
+gba-recomp: bx_target_unresolved at 0x08000B6A: r0 is not statically bounded
+Process 21855 launched: '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64)
+Process 21855 exited with status = 1 (0x00000001)
+
+=== First I/O-latch invalidation trace ===
+(lldb) target create "target/debug/gba-recomp"
+Current executable set to '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64).
+(lldb) settings set -- target.run-args "compile" "--rom" "roms/Pokemon - Leaf Green Version (U) (V1.1).gba" "--out" "/tmp/leafgreen-io-trace" "--opt" "O2" "--steps" "100"
+(lldb) command script import /tmp/leafgreen_io_trace.py
+IO_TRACE breakpoints clear=1 set=1
+(lldb) run
+error: gba_recomp-588a877ce83702fe.25peu8k76hjbk5vddj8nxzpq2.09za0vq.rcgu.o 0x40000f0000005016: DW_TAG_member 'vals' refers to type 0x0000000000007f74 which extends beyond the bounds of 0x40000f0000004fcc
+IO_TRACE clear_io stack=[{'function': '<gba_recomp::discover::AbstractState>::clear_io'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '2', 'align_mask': '1'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x080003B8', 'encoding': '0x8008', 'regs': {'r0': [32767], 'r1': [83886080], 'sp': [50363944]}, 'io': [(67109376, [0]), (67109378, [0]), (67109384, [0])]}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x080003B8', 'encoding': '0x8008'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE clear_io stack=[{'function': '<gba_recomp::discover::AbstractState>::clear_io'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '2', 'align_mask': '1'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x080003C4', 'encoding': '0x8008'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x080003C4', 'encoding': '0x8008'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE clear_io stack=[{'function': '<gba_recomp::discover::AbstractState>::clear_io'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '4', 'align_mask': '0'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x080006B4', 'encoding': '0x6005'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x080006B4', 'encoding': '0x6005'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE clear_io stack=[{'function': '<gba_recomp::discover::AbstractState>::clear_io'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '4', 'align_mask': '0'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x080006B6', 'encoding': '0x6044'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x080006B6', 'encoding': '0x6044'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE clear_io stack=[{'function': '<gba_recomp::discover::AbstractState>::clear_io'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '4', 'align_mask': '0'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x080006BA', 'encoding': '0x6081'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x080006BA', 'encoding': '0x6081'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE set_io_unknown address=0x04000208 stack=[{'function': '<gba_recomp::discover::AbstractState>::set_io_halfword'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '2', 'align_mask': '1'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x080006D8', 'encoding': '0x8008'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x080006D8', 'encoding': '0x8008'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE set_io_unknown address=0x04000208 stack=[{'function': '<gba_recomp::discover::AbstractState>::set_io_halfword'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '2', 'align_mask': '1'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x08000B58', 'encoding': '0x8014'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x08000B58', 'encoding': '0x8014'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE set_io_unknown address=0x04000200 stack=[{'function': '<gba_recomp::discover::AbstractState>::set_io_halfword'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '2', 'align_mask': '1'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x08000B60', 'encoding': '0x8018'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x08000B60', 'encoding': '0x8018'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+IO_TRACE set_io_unknown address=0x04000208 stack=[{'function': '<gba_recomp::discover::AbstractState>::set_io_halfword'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_io_for_unmodeled_store'}, {'function': '<gba_recomp::discover::AbstractState>::invalidate_store', 'addresses': 'Unknown', 'byte_count': '2', 'align_mask': '1'}, {'function': 'gba_recomp::discover::process_thumb_instruction', 'pc': '0x08000B62', 'encoding': '0x8011'}, {'function': 'gba_recomp::discover::discover_arm_program_with_states', 'pc': '0x08000B62', 'encoding': '0x8011'}, {'function': 'gba_recomp::discover::discover_arm_program'}, {'function': 'gba_recomp::run_compile'}, {'function': 'gba_recomp::run'}]
+gba-recomp: bx_target_unresolved at 0x08000B6A: r0 is not statically bounded
+Process 21797 launched: '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64)
+Process 21797 exited with status = 1 (0x00000001)
+
+=== Machine-readable record ===
+See /tmp/leafgreen-bx-r0-audit.json

@@ -1,0 +1,43 @@
+(lldb) target create "target/debug/gba-recomp"
+Current executable set to '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64).
+(lldb) settings set -- target.run-args "compile" "--rom" "roms/Pokemon - Leaf Green Version (U) (V1.1).gba" "--out" "/tmp/leafgreen-discriminant-probe" "--opt" "O2" "--steps" "100"
+(lldb) command script import /tmp/leafgreen_discriminant_probe.py
+DISCRIMINANT_PROBE breakpoints=[1, 1, 1, 1, 1]
+(lldb) run
+warning: This version of LLDB has no plugin for the language "rust". Inspection of frame variables will be limited.
+error: gba_recomp-588a877ce83702fe.c15490jz0tfdzu8z1t3qu1ugg.09za0vq.rcgu.o 0x400068000000368a: DW_TAG_member 'vals' refers to type 0x0000000000004cdb which extends beyond the bounds of 0x4000680000003640
+DISCRIMINANT_PROBE pc=0x08000000 expression=true error=none
+PROBE pc=0x08000000 enc=0xEA00007F regs={'r0': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000208 expression=true error=none
+PROBE pc=0x08000208 enc=0xE129F000 regs={'r0': [18], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x0800020C expression=true error=none
+PROBE pc=0x0800020C enc=0xE59FD028 regs={'r0': [18], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000210 expression=false error=none
+PROBE pc=0x08000210 enc=0xE3A0001F regs={'r0': [18], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50364320], 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000214 expression=false error=none
+PROBE pc=0x08000214 enc=0xE129F000 regs={'r0': [31], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50364320], 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000218 expression=true error=none
+PROBE pc=0x08000218 enc=0xE59FD018 regs={'r0': [31], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': 'Unknown', 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x0800021C expression=false error=none
+PROBE pc=0x0800021C enc=0xE59F101C regs={'r0': [31], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363968], 'r14': 'Unknown'} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000230 expression=false error=none
+PROBE pc=0x08000230 enc=0xE12FFF11 regs={'r0': [134218312], 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363968], 'r14': [134218292]} locals={} shadow=[] io=[(67109376, [0]), (67109378, [0]), (67109384, [0])]
+DISCRIMINANT_PROBE pc=0x08000B48 expression=false error=none
+PROBE pc=0x08000B48 enc=0xB530 regs={'r0': [1], 'r4': [50331842], 'r5': [134218312], 'r13': [50363924], 'r14': [134220693]} locals={'register_list': '304'} shadow=[(50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B50 expression=false error=none
+PROBE pc=0x08000B50 enc=0xD009 regs={'r0': 'Unknown', 'r4': [50331842], 'r5': [50331841], 'r13': [50363912], 'r14': [134220693]} locals={} shadow=[(50363912, [50331842]), (50363916, [134218312]), (50363920, [134220693]), (50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B66 expression=false error=none
+PROBE pc=0x08000B66 enc=0xBC30 regs={'r0': 'Unknown', 'r4': [50331842], 'r5': [50331841], 'r13': [50363912], 'r14': [134220693]} locals={'register_list': '48'} shadow=[(50363912, [50331842]), (50363916, [134218312]), (50363920, [134220693]), (50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B68 expression=false error=none
+PROBE pc=0x08000B68 enc=0xBC01 regs={'r0': 'Unknown', 'r4': [50331842], 'r5': [134218312], 'r13': [50363920], 'r14': [134220693]} locals={'register_list': '1'} shadow=[(50363920, [134220693]), (50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B6A expression=false error=none
+PROBE pc=0x08000B6A enc=0x4700 regs={'r0': [134220693], 'r4': [50331842], 'r5': [134218312], 'r13': [50363924], 'r14': [134220693]} locals={} shadow=[(50363924, [50345344]), (50363928, [134219489])] io=[]
+DISCRIMINANT_PROBE pc=0x08000B66 expression=false error=none
+PROBE pc=0x08000B66 enc=0xBC30 regs={'r0': 'Unknown', 'r4': [0], 'r5': [50331841], 'r13': [50363912], 'r14': [134220693]} locals={'register_list': '48'} shadow=[] io=[]
+DISCRIMINANT_PROBE pc=0x08000B68 expression=false error=none
+PROBE pc=0x08000B68 enc=0xBC01 regs={'r0': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363920], 'r14': [134220693]} locals={'register_list': '1'} shadow=[] io=[]
+DISCRIMINANT_PROBE pc=0x08000B6A expression=false error=none
+PROBE pc=0x08000B6A enc=0x4700 regs={'r0': 'Unknown', 'r4': 'Unknown', 'r5': 'Unknown', 'r13': [50363924], 'r14': [134220693]} locals={} shadow=[] io=[]
+gba-recomp: bx_target_unresolved at 0x08000B6A: r0 is not statically bounded
+Process 21855 launched: '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64)
+Process 21855 exited with status = 1 (0x00000001)

@@ -1,0 +1,82 @@
+{
+  "record_type": "leafgreen-static-abstract-state-debugger-evidence",
+  "date": "2026-10-14",
+  "repository_commit_before_documentation": "298b2967e2a9fec9870f0fe5da4d5f97305450f0",
+  "observation_kind": "compiler abstract-state inspection; no guest execution",
+  "input": {
+    "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825"
+  },
+  "compiler": {
+    "path": "target/debug/gba-recomp",
+    "sha256": "3f880224817c4bddb3f39614d7fc91d824ef25da6d6bc60a0ed70bb736856ee0"
+  },
+  "debugger": {
+    "path": "/usr/bin/lldb",
+    "version": "lldb-1700.0.9.502",
+    "rust_plugin_available": false,
+    "log": "leafgreen-discovery-stack-state-lldb-initial-raw.log",
+    "log_sha256": "324b76dbca499ef55a64c7755bfc8c05f75392720dda702c2a388a21f6c15283"
+  },
+  "compile_command": "target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-state-audit --opt O2 --steps 100",
+  "breakpoints": [
+    {
+      "guest_pc": "0x08000B48",
+      "encoding": "0xB530",
+      "static_decode": "Thumb PUSH {r4,r5,lr}",
+      "observed_abstract_values": {
+        "r0": "Unknown",
+        "r13_sp": "Unknown",
+        "r14_lr": "Unknown"
+      }
+    },
+    {
+      "guest_pc": "0x08000B68",
+      "encoding": "0xBC01",
+      "static_decode": "Thumb POP {r0}",
+      "observed_abstract_values": {
+        "r13_sp": "Unknown",
+        "r14_lr": "Unknown"
+      }
+    },
+    {
+      "guest_pc": "0x08000B6A",
+      "encoding": "0x4700",
+      "static_decode": "Thumb BX r0",
+      "observed_abstract_values": {
+        "r0": "Unknown",
+        "r13_sp": "Unknown",
+        "r14_lr": "Unknown"
+      }
+    }
+  ],
+  "source_semantics": {
+    "push_words": "When SP has no finite values, discovery clears the abstract memory shadow and records no pushed words.",
+    "pop_word": "When SP has no finite values, discovery returns Unknown for the popped word.",
+    "references": [
+      "crates/gba-recomp/src/discover.rs:453-460",
+      "crates/gba-recomp/src/discover.rs:495-518",
+      "crates/gba-recomp/src/discover.rs:1577-1618"
+    ]
+  },
+  "outcome": {
+    "debugger_stop": "breakpoint at discover.rs:1442 before targets.values() is checked",
+    "package_created": false,
+    "rom_executed": false,
+    "rea_session_or_decompilation": false,
+    "separate_uninstrumented_compile": {
+      "diagnostic": "bx_target_unresolved at 0x08000B6A: r0 is not statically bounded",
+      "evidence": "gba020-thumb-ie-ime-latches-macos-arm64.json"
+    }
+  },
+  "limitations": [
+    "The debugger observed compiler abstract values, not guest CPU values during execution.",
+    "The breakpoint captures one processed abstract state at each PC; it does not identify every predecessor or prove runtime reachability.",
+    "LLDB has no Rust language plugin in this environment; enum labels were read from its displayed variant/debug name.",
+    "The REA binary session is unavailable for this .gba input and did not produce a decompilation Evidence ID."
+  ],
+  "record_status": "superseded-interpretation-corrected",
+  "superseded_by": "leafgreen-bx-r0-audit-20261014.json",
+  "correction": "The initial LLDB display labels for AbstractValue were reversed. Preserve this raw record for provenance; use the corrected discriminant probe and route analysis in the superseding record.",
+  "raw_log_sha256": "324b76dbca499ef55a64c7755bfc8c05f75392720dda702c2a388a21f6c15283"
+}

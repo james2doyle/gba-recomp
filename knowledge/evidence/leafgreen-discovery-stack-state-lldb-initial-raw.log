@@ -1,0 +1,212 @@
+Compiler SHA-256: 3f880224817c4bddb3f39614d7fc91d824ef25da6d6bc60a0ed70bb736856ee0
+ROM SHA-256: 2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825
+Debugger: /usr/bin/lldb
+
+(lldb) target create "target/debug/gba-recomp"
+Current executable set to '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64).
+(lldb) settings set -- target.run-args  "compile" "--rom" "roms/Pokemon - Leaf Green Version (U) (V1.1).gba" "--out" "target/leafgreen-after-state-audit" "--opt" "O2" "--steps" "100"
+(lldb) command source -s 0 '/tmp/gba-leafgreen-state.lldb'
+Executing commands in '/tmp/gba-leafgreen-state.lldb'.
+(lldb) breakpoint set --file discover.rs --line 1579 --condition "instruction.guest_pc == 0x08000B48"
+Breakpoint 1: where = gba-recomp`gba_recomp::discover::process_thumb_instruction + 1844 at discover.rs:1579:34, address = 0x00000001011a4f28
+(lldb) breakpoint command add 1
+(lldb) breakpoint set --file discover.rs --line 1606 --condition "instruction.guest_pc == 0x08000B68"
+Breakpoint 2: where = gba-recomp`gba_recomp::discover::process_thumb_instruction + 14596 at discover.rs:1606:84, address = 0x00000001011a80f8
+(lldb) breakpoint command add 2
+(lldb) breakpoint set --file discover.rs --line 1442 --condition "instruction.guest_pc == 0x08000B6A"
+Breakpoint 3: where = gba-recomp`gba_recomp::discover::process_thumb_instruction + 1752 at discover.rs:1442:40, address = 0x00000001011a4ecc
+(lldb) breakpoint command add 3
+(lldb) run
+warning: This version of LLDB has no plugin for the language "rust". Inspection of frame variables will be limited.
+(lldb)  frame variable instruction.guest_pc instruction.encoding state->registers[0] state->registers[13] state->registers[14]
+(unsigned int) instruction.guest_pc = 134220616
+(unsigned short) instruction.encoding = 46384
+(gba_recomp::discover::AbstractValue) state->registers[0] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb3d0)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+(gba_recomp::discover::AbstractValue) state->registers[13] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb570)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+(gba_recomp::discover::AbstractValue) state->registers[14] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb590)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+*** Some of the displayed variables have a greater depth of members than the debugger will show by default. To increase the limit, use the --depth option to frame variable, or raise the limit by changing the target.max-children-depth setting.
+(lldb)  continue
+Process 18938 resuming
+Command #2 'continue' continued the target.
+(lldb)  frame variable instruction.guest_pc instruction.encoding state->registers[0] state->registers[13] state->registers[14]
+(unsigned int) instruction.guest_pc = 134220648
+(unsigned short) instruction.encoding = 48129
+(gba_recomp::discover::AbstractValue) state->registers[0] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 0, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb3d0)
+    $variant$1 = {
+      $discr$ = 0
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+(gba_recomp::discover::AbstractValue) state->registers[13] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb570)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+(gba_recomp::discover::AbstractValue) state->registers[14] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb590)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+(lldb)  continue
+Process 18938 resuming
+Command #2 'continue' continued the target.
+(lldb)  frame variable instruction.guest_pc instruction.encoding rm state->registers[0] state->registers[13] state->registers[14]
+(unsigned int) instruction.guest_pc = 134220650
+(unsigned short) instruction.encoding = 18176
+(unsigned char) rm = '\0'
+(gba_recomp::discover::AbstractValue) state->registers[0] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb3d0)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+(gba_recomp::discover::AbstractValue) state->registers[13] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb570)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+(gba_recomp::discover::AbstractValue) state->registers[14] = {
+  $variants$ = {
+    $variant$0 = ($discr$ = 1, value = gba_recomp::discover::AbstractValue::Unknown:64 @ 0x000000016fdfb590)
+    $variant$1 = {
+      $discr$ = 1
+      value = {
+        __0 = {
+          map = {
+            root ={...}
+            length = 1
+            alloc ={...}
+            _marker ={...}
+          }
+        }
+      }
+    }
+  }
+}
+Process 18938 launched: '/Users/celsoinacio/projects/gba-recomp/target/debug/gba-recomp' (arm64)
+Process 18938 stopped
+* thread #1, name = 'main', queue = 'com.apple.main-thread', stop reason = breakpoint 3.1
+    frame #0: 0x00000001011a4ecc gba-recomp`gba_recomp::discover::process_thumb_instruction(image=0x000000016fdfcfb0, instruction=ThumbInstruction @ 0x000000016fdfbf30, state=0x000000016fdfb3d0, pending=0x000000016fdfaee0, incoming=0x000000016fdfaf00, total_states=0x000000016fdfaf18, branch_targets=0x000000016fdfaf50) at discover.rs:1442:40
+   1439	        }
+   1440	        ThumbOperation::BranchExchange { rm } => {
+   1441	            let targets = read_operand(state, rm, instruction.guest_pc.wrapping_add(4));
+-> 1442	            let Some(values) = targets.values() else {
+    	                                       ^
+   1443	                return Err(format!(
+   1444	                    "bx_target_unresolved at 0x{:08X}: r{rm} is not statically bounded",
+   1445	                    instruction.guest_pc
+Target 0: (gba-recomp) stopped.

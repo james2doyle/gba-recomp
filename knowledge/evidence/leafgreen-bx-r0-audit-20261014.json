@@ -1,0 +1,434 @@
+{
+  "record_type": "leafgreen-static-abstract-state-bx-r0-audit",
+  "date": "2026-10-14",
+  "repository": {
+    "commit": "298b2967e2a9fec9870f0fe5da4d5f97305450f0",
+    "source_path": "crates/gba-recomp/src/discover.rs",
+    "files_changed_by_this_audit": false
+  },
+  "evidence_class": "LLDB inspection of compiler discovery abstract states plus static ROM byte/literal inspection; guest ROM was not executed",
+  "inputs": {
+    "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "compiler_path": "target/debug/gba-recomp",
+    "compiler_sha256": "3f880224817c4bddb3f39614d7fc91d824ef25da6d6bc60a0ed70bb736856ee0",
+    "lldb_path": "/usr/bin/lldb",
+    "lldb_version": "lldb-1700.0.9.502",
+    "rust_language_plugin": false
+  },
+  "commands": {
+    "static_compile": "GBA_RECOMP_LINK_THREADS=10 /usr/bin/time -p target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-spec045-20261014-O2 --opt O2 --steps 100",
+    "static_compile_result": "exit 1: bx_target_unresolved at 0x08000B6A: r0 is not statically bounded; no package emitted",
+    "lldb_probe": "lldb --batch target/debug/gba-recomp -o 'settings set -- target.run-args \"compile\" \"--rom\" \"roms/Pokemon - Leaf Green Version (U) (V1.1).gba\" \"--out\" \"/tmp/leafgreen-discriminant-probe\" \"--opt\" \"O2\" \"--steps\" \"100\"' -o 'command script import knowledge/evidence/leafgreen-bx-r0-discriminant-probe.py' -o run",
+    "io_trace_probe": "lldb --batch target/debug/gba-recomp -o 'settings set -- target.run-args \"compile\" \"--rom\" \"roms/Pokemon - Leaf Green Version (U) (V1.1).gba\" \"--out\" \"/tmp/leafgreen-io-trace\" \"--opt\" \"O2\" \"--steps\" \"100\"' -o 'command script import knowledge/evidence/leafgreen-bx-r0-io-trace.py' -o run"
+  },
+  "debugger_artifacts": {
+    "combined_log": "leafgreen-bx-r0-audit-20261014.log",
+    "discriminant_log": "leafgreen-bx-r0-discriminant-probe.log",
+    "io_trace_log": "leafgreen-bx-r0-io-trace.log",
+    "scripts": {
+      "leafgreen-bx-r0-discriminant-probe.py": "f48a9e8151cba3dc6d04a4a795d12ac3fd1032403e96facce42f8424f4ac1fd1",
+      "leafgreen-bx-r0-io-trace.py": "ce9bfc863d2f66f3cddbe94c9a32e709ab958f0e7e9a437c9e5f7afeda67653f",
+      "leafgreen-bx-r0-lldb-probe.py": "48331481dbf3f20405df8f67c301a244ee73a22197a5946fcd739340240eb672"
+    },
+    "log_sha256": {
+      "leafgreen-bx-r0-discriminant-probe.log": "9cf749594344fe08dadc27c2609d064fc78409ee47258f71fc55aed46b48d1da",
+      "leafgreen-bx-r0-io-trace.log": "b62da93fe109a9a3a06bb51fc86582485380e0cdfdad35af1c14a0cb02e86317"
+    },
+    "combined_log_sha256": "8e8d50e77cb005a5349080f7d81b8425665199d29c83df63c15e5dd4a7047330"
+  },
+  "abstract_value_probe": {
+    "expression": "*(unsigned long *)&state->registers[13] == 0",
+    "meaning_in_this_local_debug_build": {
+      "true": "raw enum discriminant 0: AbstractValue::Unknown",
+      "false": "raw enum discriminant 1: AbstractValue::Constants"
+    },
+    "results": [
+      {
+        "pc": "0x08000000",
+        "result": true,
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x08000208",
+        "result": true,
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x0800020C",
+        "result": true,
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x08000210",
+        "result": false,
+        "r13": "0x03007E40"
+      },
+      {
+        "pc": "0x08000214",
+        "result": false,
+        "r13": "0x03007E40"
+      },
+      {
+        "pc": "0x08000218",
+        "result": true,
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x0800021C",
+        "result": false,
+        "r13": "0x03007FA0"
+      },
+      {
+        "pc": "0x08000230",
+        "result": false,
+        "r13": "0x03007FA0"
+      },
+      {
+        "pc": "0x08000B48",
+        "result": false,
+        "r13": "0x03007E14"
+      },
+      {
+        "pc": "0x08000B50",
+        "result": false,
+        "r13": "0x03007E08"
+      },
+      {
+        "pc": "0x08000B66",
+        "result": false,
+        "r13": "0x03007E08",
+        "states": 2
+      },
+      {
+        "pc": "0x08000B68",
+        "result": false,
+        "r13": "0x03007E10",
+        "states": 2
+      },
+      {
+        "pc": "0x08000B6A",
+        "result": false,
+        "r13": "0x03007E14",
+        "states": 2
+      }
+    ]
+  },
+  "entry_and_boot_path": {
+    "discovery_seed_source": "discover.rs:37-44 seeds AbstractState::unknown(); discover.rs:321-331 makes every register Unknown and initializes abstract IE/IF/IME to zero",
+    "msr_source": "discover.rs:1030-1034 invalidates r8-r14 for CPSR control-field writes because banked registers are not modeled",
+    "observed_static_states": [
+      {
+        "pc": "0x08000000",
+        "raw": "0xEA00007F",
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x08000208",
+        "raw": "0xE129F000",
+        "r0": "0x12",
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x0800020C",
+        "raw": "0xE59FD028",
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x08000210",
+        "raw": "0xE3A0001F",
+        "r13": "0x03007E40"
+      },
+      {
+        "pc": "0x08000214",
+        "raw": "0xE129F000",
+        "r0": "0x1F",
+        "r13": "0x03007E40"
+      },
+      {
+        "pc": "0x08000218",
+        "raw": "0xE59FD018",
+        "r13": "Unknown"
+      },
+      {
+        "pc": "0x0800021C",
+        "raw": "0xE59F101C",
+        "r13": "0x03007FA0"
+      },
+      {
+        "pc": "0x08000230",
+        "raw": "0xE12FFF11",
+        "r13": "0x03007FA0",
+        "r1_target": "0x080003A5 (Thumb entry 0x080003A4)"
+      }
+    ],
+    "literal_bytes": {
+      "0x08000238": "0x03007FA0 (System stack literal used by LDR at 0x08000218)",
+      "0x0800023C": "0x03007E40 (IRQ stack literal used by LDR at 0x0800020C)",
+      "0x08000240": "0x03007FFC",
+      "0x08000244": "0x080003A5"
+    },
+    "interpretation": "SP is Unknown at entry and after each observed MSR bank change, then ROM LDR literals establish finite stack values. This is static ROM initialization under the analyzer seed, not a real BIOS handoff or guest runtime trace. The synthetic runner setup and discovery seed are separate mechanisms.",
+    "synthetic_runner_source": {
+      "location": "crates/gba-recomp/src/main.rs:339-350",
+      "template_behavior": "memset zerado para runtime/machine/exit; cpsr=0x1F; r15=0x08000000",
+      "interpretation": "synthetic runner template only; separate from discovery AbstractState::unknown() and from any real BIOS handoff",
+      "execution_status": "not executed in this audit; strict static compile stopped before package/runner emission"
+    }
+  },
+  "rom_bytes_and_decode": {
+    "b48_region": [
+      {
+        "pc": "0x08000B48",
+        "raw": "0xB530",
+        "decode": "PUSH {r4,r5,lr}"
+      },
+      {
+        "pc": "0x08000B4A",
+        "raw": "0x4D08",
+        "decode": "LDR r5 from literal 0x08000B6C = 0x030000C1"
+      },
+      {
+        "pc": "0x08000B4C",
+        "raw": "0x7828",
+        "decode": "LDRB r0,[r5]"
+      },
+      {
+        "pc": "0x08000B4E",
+        "raw": "0x2800",
+        "decode": "CMP r0,#0"
+      },
+      {
+        "pc": "0x08000B50",
+        "raw": "0xD009",
+        "decode": "BEQ 0x08000B66; unknown compare forks both successors"
+      },
+      {
+        "pc": "0x08000B52",
+        "raw": "0x4A07",
+        "decode": "LDR r2 from literal 0x08000B70 = 0x04000208 (IME)"
+      },
+      {
+        "pc": "0x08000B54",
+        "raw": "0x8811",
+        "decode": "LDRH r1,[r2]"
+      },
+      {
+        "pc": "0x08000B56",
+        "raw": "0x2400",
+        "decode": "MOV r4,#0"
+      },
+      {
+        "pc": "0x08000B58",
+        "raw": "0x8014",
+        "decode": "STRH r4,[r2]"
+      },
+      {
+        "pc": "0x08000B5A",
+        "raw": "0x4B06",
+        "decode": "LDR r3 from literal 0x08000B74 = 0x04000200 (IE)"
+      },
+      {
+        "pc": "0x08000B5C",
+        "raw": "0x4806",
+        "decode": "LDR r0 from literal 0x08000B78 = 0x030000C2"
+      },
+      {
+        "pc": "0x08000B5E",
+        "raw": "0x8800",
+        "decode": "LDRH r0,[r0]; abstract value Unknown"
+      },
+      {
+        "pc": "0x08000B60",
+        "raw": "0x8018",
+        "decode": "STRH r0,[r3]"
+      },
+      {
+        "pc": "0x08000B62",
+        "raw": "0x8011",
+        "decode": "STRH r1,[r2]"
+      },
+      {
+        "pc": "0x08000B64",
+        "raw": "0x702C",
+        "decode": "STRB r4,[r5], effective address 0x030000C1"
+      },
+      {
+        "pc": "0x08000B66",
+        "raw": "0xBC30",
+        "decode": "POP {r4,r5}"
+      },
+      {
+        "pc": "0x08000B68",
+        "raw": "0xBC01",
+        "decode": "POP {r0}"
+      },
+      {
+        "pc": "0x08000B6A",
+        "raw": "0x4700",
+        "decode": "BX r0"
+      }
+    ],
+    "literals": {
+      "0x08000B6C": "0x030000C1",
+      "0x08000B70": "0x04000208",
+      "0x08000B74": "0x04000200",
+      "0x08000B78": "0x030000C2"
+    }
+  },
+  "stack_shadow": {
+    "b48_before_push": {
+      "r0": "0x00000001",
+      "r4": "0x030000C2",
+      "r5": "0x08000248",
+      "sp": "0x03007E14",
+      "lr": "0x08000B95",
+      "shadow": {
+        "0x03007E14": "0x03003580",
+        "0x03007E18": "0x080006E1"
+      }
+    },
+    "b48_push_result": {
+      "sp": "0x03007E08",
+      "shadow_additions": {
+        "0x03007E08": "0x030000C2 (saved r4)",
+        "0x03007E0C": "0x08000248 (saved r5)",
+        "0x03007E10": "0x08000B95 (saved lr)"
+      }
+    },
+    "b50_state_before_conditional_branch": {
+      "r0": "Unknown",
+      "r4": "0x030000C2",
+      "r5": "0x030000C1",
+      "sp": "0x03007E08",
+      "lr": "0x08000B95",
+      "shadow": {
+        "0x03007E08": "0x030000C2",
+        "0x03007E0C": "0x08000248",
+        "0x03007E10": "0x08000B95",
+        "0x03007E14": "0x03003580",
+        "0x03007E18": "0x080006E1"
+      }
+    },
+    "branch_to_b66_route": {
+      "b66_before_pop": {
+        "r0": "Unknown",
+        "r4": "0x030000C2",
+        "r5": "0x030000C1",
+        "sp": "0x03007E08",
+        "lr": "0x08000B95",
+        "shadow": {
+          "0x03007E08": "0x030000C2",
+          "0x03007E0C": "0x08000248",
+          "0x03007E10": "0x08000B95",
+          "0x03007E14": "0x03003580",
+          "0x03007E18": "0x080006E1"
+        }
+      },
+      "b68_before_pop": {
+        "r0": "Unknown",
+        "r4": "0x030000C2",
+        "r5": "0x08000248",
+        "sp": "0x03007E10",
+        "lr": "0x08000B95",
+        "shadow": {
+          "0x03007E10": "0x08000B95",
+          "0x03007E14": "0x03003580",
+          "0x03007E18": "0x080006E1"
+        }
+      },
+      "b6a_after_pop": {
+        "r0": "0x08000B95",
+        "sp": "0x03007E14",
+        "lr": "0x08000B95",
+        "shadow": {
+          "0x03007E14": "0x03003580",
+          "0x03007E18": "0x080006E1"
+        },
+        "bx_target_bounded": true
+      }
+    },
+    "fallthrough_b52_to_b64_route": {
+      "b58_effect": "IF is absent/Unknown, so store_keeps_irq_quiescent is false; STRH to IME enters invalidate_store and clears memory_words before later POPs.",
+      "b66_before_pop": {
+        "r0": "Unknown",
+        "r4": "0x00000000",
+        "r5": "0x030000C1",
+        "sp": "0x03007E08",
+        "lr": "0x08000B95",
+        "shadow": {}
+      },
+      "b68_before_pop": {
+        "r0": "Unknown",
+        "r4": "Unknown",
+        "r5": "Unknown",
+        "sp": "0x03007E10",
+        "lr": "0x08000B95",
+        "shadow": {}
+      },
+      "b6a_after_pop": {
+        "r0": "Unknown",
+        "sp": "0x03007E14",
+        "lr": "0x08000B95",
+        "shadow": {},
+        "bx_target_bounded": false
+      }
+    },
+    "direct_answer": "The failing r0 comes from the fallthrough route's POP {r0} at 0x08000B68. At SP 0x03007E10 the saved-LR word 0x08000B95 is no longer in memory_words, so pop_word returns Unknown. The branch route that skips B52-B64 retains that word and has bounded r0 at B6A."
+  },
+  "io_latch_provenance": {
+    "seed": {
+      "0x04000200_IE": "0",
+      "0x04000202_IF": "0",
+      "0x04000208_IME": "0"
+    },
+    "first_clear_seen_in_static_analyzer_trace": {
+      "pc": "0x080003B8",
+      "encoding": "0x8008",
+      "decode": "Thumb STRH r0,[r1]",
+      "abstract_registers_before_instruction": {
+        "r0": "0x00007FFF",
+        "r1": "0x05000000",
+        "sp": "0x03007E28"
+      },
+      "effective_address": "0x05000000",
+      "io_before": {
+        "0x04000200_IE": "0",
+        "0x04000202_IF": "0",
+        "0x04000208_IME": "0"
+      },
+      "observed_call_path": "process_thumb_instruction(0x080003B8) -> invalidate_store -> invalidate_io_for_unmodeled_store -> clear_io",
+      "source_reason": "discover.rs:546-565 clears memory for unsupported store addresses and calls invalidate_io_for_unmodeled_store; discover.rs:582-584 clears all I/O facts when the address is below 0x04000000. 0x05000000 is outside the modeled I/O interval.",
+      "result": "io_halfwords becomes empty; IF is no longer proven zero at later B58.",
+      "evidence_limit": "The LLDB callback captured r1 and the call stack; its Rust-reference display for invalidate_store.addresses was not decoded. Effective address is established from raw 0x8008 fields (rb=r1, imm5=0), captured singleton r1, and effective_store_address at discover.rs:773."
+    },
+    "b58_guard": {
+      "pc": "0x08000B58",
+      "address": "0x04000208 (IME)",
+      "store_keeps_irq_quiescent": false,
+      "reason": "state.io_halfword(IO_IF) is Unknown because io_halfwords was cleared at 0x080003B8",
+      "source": "discover.rs:1271-1286"
+    },
+    "b64_strb": {
+      "pc": "0x08000B64",
+      "effective_address": "0x030000C1",
+      "effect": "For tracked RAM, invalidate_store removes the aligned 32-bit shadow word at 0x030000C0. This cannot alias the saved LR slot at 0x03007E10. On the failing route the shadow was already empty from B58.",
+      "source": "discover.rs:1311-1315 and 546-575"
+    }
+  },
+  "source_references": {
+    "seed": "discover.rs:37-44, 321-331",
+    "banked_msr": "discover.rs:1030-1034",
+    "push_pop": "discover.rs:453-516, 1577-1618",
+    "store_shadow_invalidation": "discover.rs:546-596, 1271-1286, 1311-1315",
+    "arm_bl_return_also_invalidates_all": "discover.rs:1067-1079; not the identified cause on this trace"
+  },
+  "limitations": [
+    "All register, I/O, and memory values above are abstract compiler states, not observed guest CPU values.",
+    "The branch at B50 has an Unknown compare, so discovery explores both successors; this does not prove which route executes dynamically.",
+    "The 0x080003B8 clear is the first clear_io callback in this static worklist run; it is bounded to this run and does not establish ROM runtime behavior.",
+    "LLDB emitted a Rust DWARF warning for BTreeMap::vals, but the selected register, memory shadow, and I/O values were still read. Rust language plugin was unavailable.",
+    "REA open_binary rejected the raw .gba input as unsupported binary format (target_unavailable/unavailable, retryable false); no session or decompilation Evidence ID was produced."
+  ],
+  "supersedes": "leafgreen-discovery-stack-state-lldb-initial-superseded.json"
+}
