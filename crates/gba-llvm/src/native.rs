@@ -78,6 +78,16 @@ impl TargetSpec {
         })
     }
 
+    /// Symbol of the generated entry point: SDL owns `main` on iOS and
+    /// Android and calls `SDL_main` (SPEC-068).
+    pub fn entry_symbol(&self) -> &'static str {
+        if self.triple.contains("apple-ios") || self.triple.contains("android") {
+            "SDL_main"
+        } else {
+            "main"
+        }
+    }
+
     fn llvm_triple(&self) -> String {
         match self.triple.as_str() {
             // LLVM spells the simulator/Android variants differently.
@@ -1992,7 +2002,14 @@ pub fn emit_native_objects(
             // SAFETY: as above.
             unsafe {
                 with_module(&table_out, optimization, target, |e| {
-                    build_table(e, rom_sha256, &runs, &guards, embed_rom.then_some(rom))
+                    build_table(
+                        e,
+                        rom_sha256,
+                        &runs,
+                        &guards,
+                        embed_rom.then_some(rom),
+                        target.entry_symbol(),
+                    )
                 })
             }
         });
@@ -2176,6 +2193,7 @@ fn build_table(
     runs: &[Run],
     guards: &[Guard],
     rom: Option<&[u8]>,
+    entry: &str,
 ) -> Result<(), String> {
     let context = e.context;
     let module = e.module;
@@ -2278,7 +2296,7 @@ fn build_table(
         let native_main = LLVMAddFunction(module, c"gba_native_main".as_ptr(), native_main_t);
         let mut mp = [e.t.i32, e.t.ptr];
         let main_t = LLVMFunctionType(e.t.i32, mp.as_mut_ptr(), 2, 0);
-        let main = LLVMAddFunction(module, c"main".as_ptr(), main_t);
+        let main = LLVMAddFunction(module, CString::new(entry).expect("no NUL").as_ptr(), main_t);
         let bb = LLVMAppendBasicBlockInContext(context, main, EMPTY);
         e.at(bb);
         let mut args = [
