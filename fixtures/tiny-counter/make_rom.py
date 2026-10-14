@@ -109,6 +109,55 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xE4:0xE8] = struct.pack("<I", 0x80000000)
         image[0xF0:0xF8] = struct.pack("<2I", 0x08000085, 0x080000D4)
+    elif mode in (
+        "thumb-f3-movs-zero",
+        "thumb-f3-movs-ff",
+        "thumb-f3-cmp-equal",
+        "thumb-f3-cmp-borrow",
+        "thumb-f3-cmp-overflow",
+        "thumb-f3-add-carry",
+        "thumb-f3-add-overflow",
+        "thumb-f3-add-alias",
+        "thumb-f3-sub-borrow",
+        "thumb-f3-sub-overflow",
+        "thumb-f3-neighbor-unsupported",
+    ):
+        cases = {
+            # Format 3 opcode 00: MOVS Rd,#imm8.
+            "thumb-f3-movs-zero": (0x2000, 0xDEADBEEF, 0x3000009F),
+            "thumb-f3-movs-ff": (0x20FF, 0xDEADBEEF, 0x3000009F),
+            # Opcode 01: CMP Rd,#imm8; Rd must remain unchanged.
+            "thumb-f3-cmp-equal": (0x2801, 1, 0xF000009F),
+            "thumb-f3-cmp-borrow": (0x2801, 0, 0xF000009F),
+            "thumb-f3-cmp-overflow": (0x2801, 0x80000000, 0xF000009F),
+            # Opcode 10: ADDS Rd,#imm8.
+            "thumb-f3-add-carry": (0x3001, 0xFFFFFFFF, 0xF000009F),
+            "thumb-f3-add-overflow": (0x3001, 0x7FFFFFFF, 0xF000009F),
+            # Rd is both the source and destination in Format 3.
+            "thumb-f3-add-alias": (0x3007, 0x12345678, 0xF000009F),
+            # Opcode 11: SUBS Rd,#imm8.
+            "thumb-f3-sub-borrow": (0x3801, 0, 0xF000009F),
+            "thumb-f3-sub-overflow": (0x3801, 0x80000000, 0xF000009F),
+            # The immediately following Thumb format family remains unsupported.
+            "thumb-f3-neighbor-unsupported": (0x4008, 0x12345678, 0xF000009F),
+        }
+        encoding, initial_r0, initial_cpsr = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # Format 3 operation; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> initial Rd value at 0xE0.
+            0xE59F4018,  # LDR r4,[pc,#0x18] -> CPSR seed at 0xE4.
+            0xE129F004,  # MSR CPSR_fc,r4: seed all flags and preserve I/mode.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE59F3004,  # LDR r3,[pc,#4] -> ARM return at 0xDC.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xE8] = struct.pack(
+            "<4I", 0x08000085, 0x080000E8, initial_r0, initial_cpsr
+        )
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
     elif mode == "thumb-lsl-bx":
         image[0x84:0x88] = struct.pack(
             "<2H", 0x0041, 0x4708
@@ -655,6 +704,17 @@ def main() -> None:
             "thumb-mov",
             "thumb-movs-immediate",
             "thumb-movs-zero",
+            "thumb-f3-movs-zero",
+            "thumb-f3-movs-ff",
+            "thumb-f3-cmp-equal",
+            "thumb-f3-cmp-borrow",
+            "thumb-f3-cmp-overflow",
+            "thumb-f3-add-carry",
+            "thumb-f3-add-overflow",
+            "thumb-f3-add-alias",
+            "thumb-f3-sub-borrow",
+            "thumb-f3-sub-overflow",
+            "thumb-f3-neighbor-unsupported",
             "thumb-lsl-bx",
             "thumb-lsl-zero-carry-clear",
             "thumb-lsl-zero-carry-set",

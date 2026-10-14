@@ -641,6 +641,32 @@ fn process_thumb_instruction(
                 incoming,
             );
         }
+        ThumbOperation::CompareImmediate { .. } => {
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                state.clone(),
+                pending,
+                incoming,
+            );
+        }
+        ThumbOperation::AddSubtractImmediate {
+            rd,
+            immediate,
+            subtract,
+        } => {
+            let result = state.registers[rd as usize]
+                .wrapping_add_subtract(&AbstractValue::constant(u32::from(immediate)), subtract);
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = result;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::MovRegister { rd, rm } => {
             let mut next_state = state.clone();
             next_state.registers[rd as usize] =
@@ -1242,6 +1268,81 @@ mod tests {
             incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
             AbstractValue::constant(0xFF)
         );
+    }
+
+    #[test]
+    fn propagates_thumb_format3_constants_and_preserves_registers_for_cmp() {
+        let image = bx_interwork_rom();
+        let transfer = |instruction: ThumbInstruction, state: &AbstractState| {
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &image,
+                instruction,
+                state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+            incoming[&(IsaMode::Thumb, instruction.guest_pc.wrapping_add(2))].clone()
+        };
+
+        let mov = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x27FF,
+            operation: ThumbOperation::MovImmediate { rd: 7, value: 0xFF },
+        };
+        let next = transfer(mov, &AbstractState::unknown());
+        assert_eq!(next.registers[7], AbstractValue::constant(0xFF));
+
+        let add = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x3201,
+            operation: ThumbOperation::AddSubtractImmediate {
+                rd: 2,
+                immediate: 1,
+                subtract: false,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(2, u32::MAX);
+        let next = transfer(add, &state);
+        assert_eq!(next.registers[2], AbstractValue::constant(0));
+
+        let sub = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x3A01,
+            operation: ThumbOperation::AddSubtractImmediate {
+                rd: 2,
+                immediate: 1,
+                subtract: true,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(2, 0);
+        let next = transfer(sub, &state);
+        assert_eq!(next.registers[2], AbstractValue::constant(u32::MAX));
+
+        let mut unknown_state = AbstractState::unknown();
+        unknown_state.set_constant(3, 0x1234_5678);
+        let next = transfer(add, &unknown_state);
+        assert_eq!(next.registers[2], AbstractValue::Unknown);
+        assert_eq!(next.registers[3], AbstractValue::constant(0x1234_5678));
+
+        let compare = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x2A01,
+            operation: ThumbOperation::CompareImmediate {
+                rd: 2,
+                immediate: 1,
+            },
+        };
+        let mut compare_state = AbstractState::unknown();
+        compare_state.set_constant(2, 0x8000_0000);
+        compare_state.set_constant(3, 0x0800_1234);
+        let next = transfer(compare, &compare_state);
+        assert_eq!(next.registers, compare_state.registers);
     }
 
     #[test]

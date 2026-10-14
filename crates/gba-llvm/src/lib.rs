@@ -1386,7 +1386,7 @@ unsafe fn lower_thumb_instruction(
             immediate,
             subtract,
         } => unsafe {
-            lower_thumb_add_sub_format2(
+            lower_thumb_add_sub(
                 context,
                 builder,
                 runtime_type,
@@ -1400,6 +1400,47 @@ unsafe fn lower_thumb_instruction(
                 operand,
                 immediate,
                 subtract,
+                true,
+            )?
+        },
+        ThumbOperation::CompareImmediate { rd, immediate } => unsafe {
+            lower_thumb_add_sub(
+                context,
+                builder,
+                runtime_type,
+                exit_type,
+                runtime,
+                exit,
+                cycles,
+                instruction,
+                rd,
+                rd,
+                immediate,
+                true,
+                true,
+                false,
+            )?
+        },
+        ThumbOperation::AddSubtractImmediate {
+            rd,
+            immediate,
+            subtract,
+        } => unsafe {
+            lower_thumb_add_sub(
+                context,
+                builder,
+                runtime_type,
+                exit_type,
+                runtime,
+                exit,
+                cycles,
+                instruction,
+                rd,
+                rd,
+                immediate,
+                true,
+                subtract,
+                true,
             )?
         },
         ThumbOperation::StoreHalfwordImmediate { rd, rb, imm5 } => {
@@ -2192,7 +2233,7 @@ unsafe fn lower_thumb_instruction(
     Ok(())
 }
 
-unsafe fn lower_thumb_add_sub_format2(
+unsafe fn lower_thumb_add_sub(
     context: LLVMContextRef,
     builder: LLVMBuilderRef,
     runtime_type: LLVMTypeRef,
@@ -2206,10 +2247,11 @@ unsafe fn lower_thumb_add_sub_format2(
     operand: u8,
     immediate: bool,
     subtract: bool,
+    writeback: bool,
 ) -> Result<(), String> {
-    if rd > 7 || rn > 7 || operand > 7 {
+    if rd > 7 || rn > 7 || (!immediate && operand > 7) {
         return Err(format!(
-            "invalid Thumb ADD/SUB Format 2 registers at 0x{:08X}",
+            "invalid Thumb ADD/SUB registers at 0x{:08X}",
             instruction.guest_pc
         ));
     }
@@ -2229,9 +2271,11 @@ unsafe fn lower_thumb_add_sub_format2(
     } else {
         unsafe { LLVMBuildAdd(builder, lhs, rhs, c"thumb_add_result".as_ptr()) }
     };
-    let destination_pointer =
-        unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
-    unsafe { LLVMBuildStore(builder, result, destination_pointer) };
+    if writeback {
+        let destination_pointer =
+            unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+        unsafe { LLVMBuildStore(builder, result, destination_pointer) };
+    }
 
     let zero = unsafe {
         LLVMBuildICmp(

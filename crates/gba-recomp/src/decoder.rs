@@ -158,6 +158,33 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             "Thumb address 0x{guest_pc:08X} is not halfword aligned"
         ));
     }
+    if encoding & 0xE000 == 0x2000 {
+        let opcode = (encoding >> 11) & 0x3;
+        let rd = ((encoding >> 8) & 0x7) as u8;
+        let immediate = encoding as u8;
+        let operation = match opcode {
+            0 => ThumbOperation::MovImmediate {
+                rd,
+                value: immediate,
+            },
+            1 => ThumbOperation::CompareImmediate { rd, immediate },
+            2 => ThumbOperation::AddSubtractImmediate {
+                rd,
+                immediate,
+                subtract: false,
+            },
+            _ => ThumbOperation::AddSubtractImmediate {
+                rd,
+                immediate,
+                subtract: true,
+            },
+        };
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation,
+        });
+    }
     if encoding & 0xF800 == 0x1800 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -295,16 +322,6 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             guest_pc,
             encoding,
             operation: ThumbOperation::Push { register_list },
-        });
-    }
-    if encoding & 0xF800 == 0x2000 {
-        return Ok(ThumbInstruction {
-            guest_pc,
-            encoding,
-            operation: ThumbOperation::MovImmediate {
-                rd: ((encoding >> 8) & 0x7) as u8,
-                value: (encoding & 0xFF) as u8,
-            },
         });
     }
     if encoding & 0xFC00 == 0x4400 {
@@ -774,18 +791,49 @@ mod tests {
     }
 
     #[test]
-    fn decodes_thumb_movs_immediate_and_rejects_other_format_three_ops() {
+    fn decodes_all_thumb_format3_immediate_operations() {
         assert_eq!(
-            decode_thumb(0x0800_03AA, 0x2000).unwrap().operation,
-            ThumbOperation::MovImmediate { rd: 0, value: 0 }
+            decode_thumb(0x0800_09A2, 0x3201).unwrap().operation,
+            ThumbOperation::AddSubtractImmediate {
+                rd: 2,
+                immediate: 1,
+                subtract: false,
+            }
         );
-        assert_eq!(
-            decode_thumb(0x0800_03AA, 0x27FF).unwrap().operation,
-            ThumbOperation::MovImmediate { rd: 7, value: 0xFF }
-        );
-        for encoding in [0x28FF, 0x30FF, 0x38FF] {
-            assert!(decode_thumb(0x0800_03AA, encoding).is_err());
+
+        for (opcode, operation) in [(0, 0), (1, 1), (2, 2), (3, 3)] {
+            for rd in 0..8_u16 {
+                for immediate in [0, 0xFF] {
+                    let encoding = 0x2000 | (opcode << 11) | (rd << 8) | immediate;
+                    let expected = match operation {
+                        0 => ThumbOperation::MovImmediate {
+                            rd: rd as u8,
+                            value: immediate as u8,
+                        },
+                        1 => ThumbOperation::CompareImmediate {
+                            rd: rd as u8,
+                            immediate: immediate as u8,
+                        },
+                        2 => ThumbOperation::AddSubtractImmediate {
+                            rd: rd as u8,
+                            immediate: immediate as u8,
+                            subtract: false,
+                        },
+                        _ => ThumbOperation::AddSubtractImmediate {
+                            rd: rd as u8,
+                            immediate: immediate as u8,
+                            subtract: true,
+                        },
+                    };
+                    assert_eq!(
+                        decode_thumb(0x0800_03AA, encoding).unwrap().operation,
+                        expected
+                    );
+                }
+            }
         }
+        assert!(decode_thumb(0x0800_03AA, 0x4008).is_err());
+        assert!(decode_thumb(0x0800_03AB, 0x3201).is_err());
     }
 
     #[test]

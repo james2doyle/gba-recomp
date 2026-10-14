@@ -24,13 +24,20 @@ case "$os/$arch" in
         ;;
 esac
 
+cargo build --locked -p gba-recomp
+recomp_bin="$root/target/debug/gba-recomp"
+if [ ! -x "$recomp_bin" ]; then
+    echo "built gba-recomp binary is missing: $recomp_bin" >&2
+    exit 2
+fi
+
 rom="$root/target/gba020/tiny-counter.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$rom"
 
 for optimization in O0 O2; do
     package="$root/target/gba020/package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$rom" --out "$package" --opt "$optimization" --steps 100
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":100,"r0":10,"r1":0,"pc":"0x080000D0","cpsr":"0x6000001F","guest_cycle":100,"ewram_word0":0,"iwram_word0":0}'
@@ -132,7 +139,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$msr_rom" --mode msr-mode
 for optimization in O0 O2; do
     package="$root/target/gba020/msr-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$msr_rom" --out "$package" --opt "$optimization" --steps 4
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":4,"r0":19,"r1":0,"pc":"0x080000C8","cpsr":"0x00000013","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
@@ -158,7 +165,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$literal_rom" --mode literal-lo
 for optimization in O0 O2; do
     package="$root/target/gba020/literal-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$literal_rom" --out "$package" --opt "$optimization" --steps 3
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":3,"r0":305419896,"r1":0,"pc":"0x080000C4","cpsr":"0x0000001F","guest_cycle":3,"ewram_word0":0,"iwram_word0":0}'
@@ -183,7 +190,7 @@ condition_rom="$root/target/gba020/literal-condition-false.gba"
 condition_package="$root/target/gba020/literal-condition-false-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$condition_rom" --mode literal-condition-false
 rm -rf "$condition_package"
-cargo run --locked --quiet -p gba-recomp -- compile \
+"$recomp_bin" compile \
     --rom "$condition_rom" --out "$condition_package" --opt O2 --steps 4
 actual=$("$condition_package/game")
 expected='{"status":"budget_exhausted","steps":4,"r0":165,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
@@ -197,7 +204,7 @@ literal_range_package="$root/target/gba020/literal-out-of-range-package"
 literal_range_output="$root/target/gba020/literal-out-of-range.txt"
 python3 fixtures/tiny-counter/make_rom.py --out "$literal_range_rom" --mode literal-out-of-range
 rm -rf "$literal_range_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$literal_range_rom" --out "$literal_range_package" --opt O0 --steps 4 \
     >"$literal_range_output" 2>&1; then
     echo "out-of-ROM literal unexpectedly produced a package" >&2
@@ -218,7 +225,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$add_pc_rom" --mode add-pc
 for optimization in O0 O2; do
     package="$root/target/gba020/add-pc-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$add_pc_rom" --out "$package" --opt "$optimization" --steps 3
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":3,"r0":134217960,"r1":0,"pc":"0x080000C4","cpsr":"0x0000001F","guest_cycle":3,"ewram_word0":0,"iwram_word0":0}'
@@ -240,7 +247,7 @@ add_pc_condition_rom="$root/target/gba020/add-pc-condition-false.gba"
 add_pc_condition_package="$root/target/gba020/add-pc-condition-false-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$add_pc_condition_rom" --mode add-pc-condition-false
 rm -rf "$add_pc_condition_package"
-cargo run --locked --quiet -p gba-recomp -- compile \
+"$recomp_bin" compile \
     --rom "$add_pc_condition_rom" --out "$add_pc_condition_package" --opt O2 --steps 4
 actual=$("$add_pc_condition_package/game")
 expected='{"status":"budget_exhausted","steps":4,"r0":165,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
@@ -254,7 +261,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$mov_rom" --mode mov-register-p
 for optimization in O0 O2; do
     package="$root/target/gba020/mov-register-pc-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$mov_rom" --out "$package" --opt "$optimization" --steps 4
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":4,"r0":134217928,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
@@ -278,7 +285,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$mov_false_rom" --mode mov-regi
 for optimization in O0 O2; do
     package="$root/target/gba020/mov-register-condition-false-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$mov_false_rom" --out "$package" --opt "$optimization" --steps 4
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":4,"r0":165,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
@@ -293,7 +300,7 @@ mov_shift_package="$root/target/gba020/mov-register-shift-package"
 mov_shift_output="$root/target/gba020/mov-register-shift.txt"
 python3 fixtures/tiny-counter/make_rom.py --out "$mov_shift_rom" --mode mov-register-shift
 rm -rf "$mov_shift_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$mov_shift_rom" --out "$mov_shift_package" --opt O0 --steps 4 \
     >"$mov_shift_output" 2>&1; then
     echo "shifted MOV unexpectedly produced a package" >&2
@@ -315,7 +322,7 @@ for mode in store-ewram store-iwram; do
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$store_rom" --out "$package" --opt "$optimization" --steps 4
         actual=$("$package/game")
         if [ "$mode" = store-ewram ]; then
@@ -345,7 +352,7 @@ store_false_rom="$root/target/gba020/store-condition-false.gba"
 store_false_package="$root/target/gba020/store-condition-false-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$store_false_rom" --mode store-condition-false
 rm -rf "$store_false_package"
-cargo run --locked --quiet -p gba-recomp -- compile \
+"$recomp_bin" compile \
     --rom "$store_false_rom" --out "$store_false_package" --opt O2 --steps 4
 actual=$("$store_false_package/game")
 expected='{"status":"budget_exhausted","steps":4,"r0":120,"r1":67108864,"pc":"0x080000CC","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
@@ -360,7 +367,7 @@ for mode in store-out-of-range store-unaligned; do
     store_output="$root/target/gba020/$mode.txt"
     python3 fixtures/tiny-counter/make_rom.py --out "$store_rom" --mode "$mode"
     rm -rf "$store_package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$store_rom" --out "$store_package" --opt O2 --steps 4
     if "$store_package/game" >"$store_output" 2>&1; then
         echo "$mode STR unexpectedly executed without a fault" >&2
@@ -386,7 +393,7 @@ verify_thumb_strh() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$rom" --out "$package" --opt "$optimization" --steps 10
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -425,7 +432,7 @@ thumb_strh_invalid_output="$root/target/gba020/thumb-strh-invalid-odd.txt"
 python3 fixtures/tiny-counter/make_rom.py \
     --out "$thumb_strh_invalid_rom" --mode thumb-strh-invalid-odd
 rm -rf "$thumb_strh_invalid_package"
-cargo run --locked --quiet -p gba-recomp -- compile \
+"$recomp_bin" compile \
     --rom "$thumb_strh_invalid_rom" --out "$thumb_strh_invalid_package" \
     --opt O2 --steps 10
 python3 - "$thumb_strh_invalid_package/manifest.json" <<'PY'
@@ -460,7 +467,7 @@ for mode in thumb-ldrh-unsupported thumb-strh-register-unsupported; do
     output="$root/target/gba020/$mode.txt"
     python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
     rm -rf "$package"
-    if cargo run --locked --quiet -p gba-recomp -- compile \
+    if "$recomp_bin" compile \
         --rom "$rom" --out "$package" --opt O0 --steps 8 >"$output" 2>&1; then
         echo "$mode unexpectedly produced a package" >&2
         exit 1
@@ -484,7 +491,7 @@ verify_thumb_strb() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$rom" --out "$package" --opt "$optimization" --steps 12
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -527,7 +534,7 @@ verify_thumb_ldrb() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$rom" --out "$package" --opt "$optimization" --steps 12
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -569,7 +576,7 @@ for mode in thumb-ldrb-invalid-odd thumb-ldrb-wraparound; do
         package="$root/target/gba020/$mode-package-$optimization"
         output="$root/target/gba020/$mode-$optimization.txt"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$rom" --out "$package" --opt "$optimization" --steps 12
         python3 - "$package/manifest.json" "$optimization" <<'PY'
 import json
@@ -609,7 +616,7 @@ for optimization in O0 O2; do
     thumb_strb_invalid_package="$root/target/gba020/thumb-strb-invalid-odd-package-$optimization"
     thumb_strb_invalid_output="$root/target/gba020/thumb-strb-invalid-odd-$optimization.txt"
     rm -rf "$thumb_strb_invalid_package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$thumb_strb_invalid_rom" --out "$thumb_strb_invalid_package" \
         --opt "$optimization" --steps 12
     python3 - "$thumb_strb_invalid_package/manifest.json" "$optimization" <<'PY'
@@ -646,7 +653,7 @@ for optimization in O0 O2; do
     thumb_strb_wrap_package="$root/target/gba020/thumb-strb-wraparound-package-$optimization"
     thumb_strb_wrap_output="$root/target/gba020/thumb-strb-wraparound-$optimization.txt"
     rm -rf "$thumb_strb_wrap_package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$thumb_strb_wrap_rom" --out "$thumb_strb_wrap_package" \
         --opt "$optimization" --steps 12
     python3 - "$thumb_strb_wrap_package/manifest.json" "$optimization" <<'PY'
@@ -682,7 +689,7 @@ for mode in thumb-ldrb-register-unsupported thumb-strb-register-unsupported; do
     output="$root/target/gba020/$mode.txt"
     python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
     rm -rf "$package"
-    if cargo run --locked --quiet -p gba-recomp -- compile \
+    if "$recomp_bin" compile \
         --rom "$rom" --out "$package" --opt O0 --steps 12 >"$output" 2>&1; then
         echo "$mode unexpectedly produced a package" >&2
         exit 1
@@ -703,7 +710,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$push_rom" --mode thumb-push
 for optimization in O0 O2; do
     package="$root/target/gba020/thumb-push-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$push_rom" --out "$package" --opt "$optimization" --steps 15
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":15,"r0":50331648,"r1":134217861,"pc":"0x080000EC","cpsr":"0x0000001F","guest_cycle":15,"ewram_word0":0,"iwram_word0":68}'
@@ -727,7 +734,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$thumb_mov_rom" --mode thumb-mo
 for optimization in O0 O2; do
     package="$root/target/gba020/thumb-mov-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$thumb_mov_rom" --out "$package" --opt "$optimization" --steps 11
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":11,"r0":119,"r1":134217866,"pc":"0x080000D8","cpsr":"0x0000001F","guest_cycle":11,"ewram_word0":0,"iwram_word0":0}'
@@ -754,7 +761,7 @@ verify_thumb_movs() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$thumb_movs_rom" --out "$package" --opt "$optimization" --steps 9
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -770,6 +777,69 @@ verify_thumb_movs() {
 verify_thumb_movs thumb-movs-immediate '{"status":"budget_exhausted","steps":9,"r0":255,"r1":255,"pc":"0x080000D8","cpsr":"0x3000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_movs thumb-movs-zero '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000D8","cpsr":"0x7000001F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
 
+verify_thumb_format3() {
+    mode=$1
+    expected=$2
+    thumb_format3_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$thumb_format3_rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        "$recomp_bin" compile \
+            --rom "$thumb_format3_rom" --out "$package" --opt "$optimization" --steps 9
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["abi_version"] == 4
+assert manifest["instructions_aot"] == 10
+PY
+    done
+}
+
+verify_thumb_format3 thumb-f3-movs-zero '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x7000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-movs-ff '{"status":"budget_exhausted","steps":9,"r0":255,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-cmp-equal '{"status":"budget_exhausted","steps":9,"r0":1,"r1":0,"pc":"0x080000E8","cpsr":"0x6000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-cmp-borrow '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x8000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-cmp-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-add-carry '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x6000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-add-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":0,"pc":"0x080000E8","cpsr":"0x9000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-add-alias '{"status":"budget_exhausted","steps":9,"r0":305419903,"r1":0,"pc":"0x080000E8","cpsr":"0x0000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-sub-borrow '{"status":"budget_exhausted","steps":9,"r0":4294967295,"r1":0,"pc":"0x080000E8","cpsr":"0x8000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+verify_thumb_format3 thumb-f3-sub-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483647,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+
+thumb_format3_bad_mode=thumb-f3-neighbor-unsupported
+thumb_format3_bad_rom="$root/target/gba020/$thumb_format3_bad_mode.gba"
+thumb_format3_bad_package="$root/target/gba020/$thumb_format3_bad_mode-package"
+thumb_format3_bad_output="$root/target/gba020/$thumb_format3_bad_mode.txt"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$thumb_format3_bad_rom" --mode "$thumb_format3_bad_mode"
+rm -rf "$thumb_format3_bad_package"
+if "$recomp_bin" compile \
+    --rom "$thumb_format3_bad_rom" --out "$thumb_format3_bad_package" --opt O0 --steps 8 \
+    >"$thumb_format3_bad_output" 2>&1; then
+    echo "neighboring Thumb Format 4 opcode unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$thumb_format3_bad_output"; then
+    cat "$thumb_format3_bad_output" >&2
+    echo "neighboring Thumb Format 4 opcode did not report its source PC" >&2
+    exit 1
+fi
+if [ -e "$thumb_format3_bad_package" ]; then
+    echo "failed neighboring Thumb Format 4 compile left a partial package" >&2
+    exit 1
+fi
+
 verify_thumb_lsl() {
     mode=$1
     expected=$2
@@ -779,7 +849,7 @@ verify_thumb_lsl() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$thumb_lsl_rom" --out "$package" --opt "$optimization" --steps "$steps"
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -812,7 +882,7 @@ for mode in thumb-lsr-unsupported thumb-asr-unsupported thumb-lsl-register-unsup
     thumb_shift_output="$root/target/gba020/$mode.txt"
     python3 fixtures/tiny-counter/make_rom.py --out "$thumb_shift_rom" --mode "$mode"
     rm -rf "$thumb_shift_package"
-    if cargo run --locked --quiet -p gba-recomp -- compile \
+    if "$recomp_bin" compile \
         --rom "$thumb_shift_rom" --out "$thumb_shift_package" --opt O0 --steps 8 \
         >"$thumb_shift_output" 2>&1; then
         echo "$mode unexpectedly produced a package" >&2
@@ -837,7 +907,7 @@ verify_thumb_addsub() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$thumb_addsub_rom" --out "$package" --opt "$optimization" --steps 8
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -870,7 +940,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$thumb_addsub_bx_rom" --mode th
 for optimization in O0 O2; do
     package="$root/target/gba020/thumb-addsub-literal-bx-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$thumb_addsub_bx_rom" --out "$package" --opt "$optimization" --steps 6
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":6,"r0":134217928,"r1":0,"pc":"0x080000C8","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}'
@@ -895,7 +965,7 @@ thumb_addsub_bad_package="$root/target/gba020/thumb-addsub-out-of-family-package
 thumb_addsub_bad_output="$root/target/gba020/thumb-addsub-out-of-family.txt"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_addsub_bad_rom" --mode thumb-addsub-out-of-family
 rm -rf "$thumb_addsub_bad_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$thumb_addsub_bad_rom" --out "$thumb_addsub_bad_package" --opt O0 --steps 8 \
     >"$thumb_addsub_bad_output" 2>&1; then
     echo "out-of-family Thumb ADD/SUB fixture unexpectedly produced a package" >&2
@@ -919,7 +989,7 @@ verify_thumb_orr() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        cargo run --locked --quiet -p gba-recomp -- compile \
+        "$recomp_bin" compile \
             --rom "$thumb_orr_rom" --out "$package" --opt "$optimization" --steps 8
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -951,7 +1021,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$thumb_orr_bx_rom" --mode thumb
 for optimization in O0 O2; do
     package="$root/target/gba020/thumb-orr-bx-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$thumb_orr_bx_rom" --out "$package" --opt "$optimization" --steps 8
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":8,"r0":0,"r1":134217976,"pc":"0x080000F8","cpsr":"0x0000001F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
@@ -978,7 +1048,7 @@ for mode in thumb-and-unsupported thumb-eor-unsupported thumb-mvn-unsupported; d
     thumb_orr_bad_output="$root/target/gba020/$mode.txt"
     python3 fixtures/tiny-counter/make_rom.py --out "$thumb_orr_bad_rom" --mode "$mode"
     rm -rf "$thumb_orr_bad_package"
-    if cargo run --locked --quiet -p gba-recomp -- compile \
+    if "$recomp_bin" compile \
         --rom "$thumb_orr_bad_rom" --out "$thumb_orr_bad_package" --opt O0 --steps 8 \
         >"$thumb_orr_bad_output" 2>&1; then
         echo "$mode unexpectedly produced a package" >&2
@@ -1000,7 +1070,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$thumb_ldr_rom" --mode thumb-ld
 for optimization in O0 O2; do
     package="$root/target/gba020/thumb-ldr-literal-bx-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$thumb_ldr_rom" --out "$package" --opt "$optimization" --steps 6
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":6,"r0":0,"r1":134217940,"pc":"0x080000D4","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}'
@@ -1025,7 +1095,7 @@ thumb_ldr_bad_package="$root/target/gba020/thumb-ldr-literal-out-of-rom-package"
 thumb_ldr_bad_output="$root/target/gba020/thumb-ldr-literal-out-of-rom.txt"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_ldr_bad_rom" --mode thumb-ldr-literal-out-of-rom
 rm -rf "$thumb_ldr_bad_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$thumb_ldr_bad_rom" --out "$thumb_ldr_bad_package" --opt O0 --steps 6 \
     >"$thumb_ldr_bad_output" 2>&1; then
     echo "out-of-ROM Thumb LDR literal unexpectedly produced a package" >&2
@@ -1046,7 +1116,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$thumb_bl_rom" --mode thumb-bl
 for optimization in O0 O2; do
     package="$root/target/gba020/thumb-bl-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$thumb_bl_rom" --out "$package" --opt "$optimization" --steps 10
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":10,"r0":66,"r1":134217936,"pc":"0x080000D0","cpsr":"0x0000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":0}'
@@ -1071,7 +1141,7 @@ for mode in thumb-bl-broken-pair thumb-bl-suffix-without-prefix thumb-bl-out-of-
     output="$root/target/gba020/$mode.txt"
     python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
     rm -rf "$package"
-    if cargo run --locked --quiet -p gba-recomp -- compile \
+    if "$recomp_bin" compile \
         --rom "$rom" --out "$package" --opt O0 --steps 10 >"$output" 2>&1; then
         echo "$mode unexpectedly produced a package" >&2
         exit 1
@@ -1103,7 +1173,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$bx_rom" --mode bx-interwork
 for optimization in O0 O2; do
     package="$root/target/gba020/bx-interwork-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$bx_rom" --out "$package" --opt "$optimization" --steps 6
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":6,"r0":134217861,"r1":134217934,"pc":"0x080000CC","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}'
@@ -1127,7 +1197,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$bx_false_rom" --mode bx-condit
 for optimization in O0 O2; do
     package="$root/target/gba020/bx-condition-false-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$bx_false_rom" --out "$package" --opt "$optimization" --steps 4
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":4,"r0":134217861,"r1":134217934,"pc":"0x080000CC","cpsr":"0x0000001F","guest_cycle":4,"ewram_word0":0,"iwram_word0":0}'
@@ -1151,7 +1221,7 @@ bx_range_package="$root/target/gba020/bx-out-of-range-package"
 bx_range_output="$root/target/gba020/bx-out-of-range.txt"
 python3 fixtures/tiny-counter/make_rom.py --out "$bx_range_rom" --mode bx-out-of-range
 rm -rf "$bx_range_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$bx_range_rom" --out "$bx_range_package" --opt O0 --steps 4 \
     >"$bx_range_output" 2>&1; then
     echo "out-of-ROM BX target unexpectedly produced a package" >&2
@@ -1172,7 +1242,7 @@ python3 fixtures/tiny-counter/make_rom.py --out "$swi_rom" --mode thumb-swi-rese
 for optimization in O0 O2; do
     package="$root/target/gba020/thumb-swi-reset-package-$optimization"
     rm -rf "$package"
-    cargo run --locked --quiet -p gba-recomp -- compile \
+    "$recomp_bin" compile \
         --rom "$swi_rom" --out "$package" --opt "$optimization" --steps 9
     actual=$("$package/game")
     expected='{"status":"budget_exhausted","steps":9,"r0":2,"r1":0,"pc":"0x0800008A","cpsr":"0x0000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
@@ -1200,7 +1270,7 @@ swi_unsupported_output="$root/target/gba020/thumb-swi-unsupported.txt"
 python3 fixtures/tiny-counter/make_rom.py \
     --out "$swi_unsupported_rom" --mode thumb-swi-unsupported
 rm -rf "$swi_unsupported_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$swi_unsupported_rom" --out "$swi_unsupported_package" --opt O2 --steps 9 \
     >"$swi_unsupported_output" 2>&1; then
     echo "unsupported Thumb SWI unexpectedly produced a package" >&2
@@ -1220,7 +1290,7 @@ bad_rom="$root/target/gba020/unsupported.gba"
 bad_package="$root/target/gba020/unsupported-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$bad_rom" --mode unsupported
 rm -rf "$bad_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$bad_rom" --out "$bad_package" --opt O0 --steps 100; then
     echo "unsupported instruction unexpectedly produced a package" >&2
     exit 1
@@ -1234,7 +1304,7 @@ range_rom="$root/target/gba020/out-of-range.gba"
 range_package="$root/target/gba020/out-of-range-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$range_rom" --mode out-of-range
 rm -rf "$range_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$range_rom" --out "$range_package" --opt O0 --steps 100; then
     echo "out-of-ROM branch unexpectedly produced a package" >&2
     exit 1
@@ -1248,7 +1318,7 @@ checksum_rom="$root/target/gba020/bad-checksum.gba"
 checksum_package="$root/target/gba020/bad-checksum-package"
 python3 fixtures/tiny-counter/make_rom.py --out "$checksum_rom" --mode bad-checksum
 rm -rf "$checksum_package"
-if cargo run --locked --quiet -p gba-recomp -- compile \
+if "$recomp_bin" compile \
     --rom "$checksum_rom" --out "$checksum_package" --opt O0 --steps 100; then
     echo "invalid header checksum unexpectedly produced a package" >&2
     exit 1
