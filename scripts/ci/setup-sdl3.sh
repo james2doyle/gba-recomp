@@ -18,8 +18,20 @@ case "$(uname -s)" in
     echo "SDL3_LIB_DIR=/usr/local/lib" >> "$GITHUB_ENV"
     ;;
   Darwin)
-    brew install sdl3
-    echo "SDL3_LIB_DIR=$(brew --prefix)/lib" >> "$GITHUB_ENV"
+    if [ "${SDL_ARCH:-}" = "x86_64" ]; then
+      # Intel build on an Apple Silicon runner (cross target x86_64-apple-darwin).
+      src="${RUNNER_TEMP:-/tmp}/SDL"
+      prefix="${RUNNER_TEMP:-/tmp}/sdl3-x86_64"
+      git clone --depth 1 --branch "release-$version" https://github.com/libsdl-org/SDL.git "$src"
+      cmake -S "$src" -B "$src/build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="$prefix"
+      cmake --build "$src/build" --parallel
+      cmake --install "$src/build"
+      echo "SDL3_LIB_DIR=$prefix/lib" >> "$GITHUB_ENV"
+    else
+      brew install sdl3
+      echo "SDL3_LIB_DIR=$(brew --prefix)/lib" >> "$GITHUB_ENV"
+    fi
     ;;
   MINGW*|MSYS*|CYGWIN*)
     dest="${RUNNER_TEMP:-/tmp}/sdl3"

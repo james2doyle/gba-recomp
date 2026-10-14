@@ -6,8 +6,17 @@ name="$1"
 exe=""; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) exe=".exe";; esac
 dist=dist; mkdir -p "$dist"
 
+# Cross builds (CROSS_TARGET=<triple>) package only the demo: the host
+# gba-recomp emits code for the target and links the target runtime.
+cross=(); run_prefix=()
+if [ -n "${CROSS_TARGET:-}" ]; then
+  cross=(--target "$CROSS_TARGET" --runtime-lib "target/$CROSS_TARGET/release/libgba_native_rt.a" --sdl-dir "$SDL3_LIB_DIR")
+  case "$CROSS_TARGET" in x86_64-apple-darwin) run_prefix=(arch -x86_64);; esac
+fi
+
 # 1. Toolchain: CLI, runners, companion apps and the runtime library.
 tool="$dist/gba-recomp-$name"
+if [ -z "${CROSS_TARGET:-}" ]; then
 mkdir -p "$tool"
 for bin in gba-recomp gba-run gba-desktop gba-settings gba-party; do
   cp "target/release/$bin$exe" "$tool/"
@@ -19,19 +28,20 @@ gba-recomp toolchain ($name)
 Requires LLVM 23.1.3 (set LLVM_SYS_231_PREFIX) and SDL 3.4 (set SDL3_LIB_DIR).
 Example: ./gba-recomp bundle --rom game.gba --out out/Game
 TXT
+fi
 
 # 2. Demo: recompile every free game with the ROM embedded, verify, archive.
 inputs=(--profile-input 200:5:START --profile-input 300:5:A --profile-input 400:60:LEFT --profile-input 500:60:RIGHT)
 for rom in games/*.gba; do
   game=$(basename "$rom" .gba)
   out="$dist/$game-$name"
-  "target/release/gba-recomp$exe" bundle --rom "$rom" --out "$out" "${inputs[@]}"
+  "target/release/gba-recomp$exe" bundle --rom "$rom" --out "$out" "${inputs[@]}" ${cross[@]+"${cross[@]}"}
   if [ -d "$out.app" ]; then
     game_bin="$out.app/Contents/MacOS/game"
   else
     game_bin="$out/game$exe"
   fi
-  "$game_bin" --headless --frames 1200 --input 200:5:START --input 300:5:A \
+  ${run_prefix[@]+"${run_prefix[@]}"} "$game_bin" --headless --frames 1200 --input 200:5:START --input 300:5:A \
     --input 400:60:LEFT --input 500:60:RIGHT --verify-interpreter
 done
 

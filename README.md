@@ -72,6 +72,7 @@ Arrows = D-pad, **Z** = A, **X** = B, **Enter** = Start, **Backspace** = Select,
 | Target | Triple | Status |
 |---|---|---|
 | macOS (Apple Silicon) | `aarch64-apple-darwin` | ✅ built and verified locally |
+| macOS (Intel) | `x86_64-apple-darwin` | 🚧 CI |
 | Linux x86-64 | `x86_64-unknown-linux-gnu` | 🚧 CI |
 | Linux ARM64 – Raspberry Pi 4/5, Orange Pi | `aarch64-unknown-linux-gnu` | 🚧 CI |
 | Windows x86-64 | `x86_64-pc-windows-msvc` | 🚧 CI |
