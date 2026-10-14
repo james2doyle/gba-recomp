@@ -134,6 +134,10 @@ No commit de implementação `d74148b768261f7fca07cb9fbb20ec3e1c996429`, a desco
 
 Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-amem-20261013-O2 --opt O2 --steps 100` para a ROM SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta passou pelo `BX r0` em `0x080009BE` e parou com `unsupported_thumb_instruction` em `0x080006A8`, raw `0xCB01`. A classificação de `0xCB01` como Thumb LDMIA `r3!,{r0}` é inferida pelos campos do encoding; não foi obtido estado de registradores em runtime. O diretório de pacote não foi criado, a ROM não foi executada e esta tentativa não produziu decompilação REA. A fronteira e os limites constam no relatório de evidência acima.
 
+Uma inspeção LLDB do processo recompilador, imediatamente antes do dispatch do decoder, mostrou que o estado abstrato interno nessa fronteira limita `r3` a `{0x081E9F74}`; `r0–r5` e `r12–r14` também eram singletons, e `r6–r11` eram `Unknown`. Não são registradores observados em execução guest. Na ROM local com o SHA-256 fixado acima, o offset `0x001E9F74` contém `21 08 00 08`, word little-endian `0x08000821`. Condicionada à execução de `0xCB01`, a semântica inferida carrega essa word em r0 e faz writeback de r3 para `0x081E9F78`; o bit baixo sugere o endereço Thumb `0x08000820`, mas não prova que o alvo seja alcançado. Esta evidência estática fundamenta a [SPEC-035](../specs/SPEC-035-thumb-ldmia.md), não valida execução da ROM.
+
+O MCP REA respondeu nesta investigação, mas não abriu o `.gba`: `open_binary` retornou `target_unavailable`, razão `unsupported binary format`, `retryable=false`. Não há Evidence ID de análise ou decompilação REA para esta tentativa. O registro anterior de `Transport closed` permanece associado à chamada anterior.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

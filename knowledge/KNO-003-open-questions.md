@@ -8,7 +8,7 @@
 | Quais overlays/SMC escapam ao AOT? | Cobertura observada e writes por origem | GBA-025; unknown REA |
 | Qual cobertura AOT e quais recursos de hardware LeafGreen exige? | Matriz por etapa em [KNO-005](KNO-005-isa-coverage.md); a descoberta estática mais recente para na instrução Thumb `0xCB01` em `0x080006A8`, inferida como LDMIA `r3!,{r0}`; HLE, periféricos e execução do jogo continuam sem prova | GBA-090 |
 | O fechamento do BX r0 em `0x080009BE` cobre todos os caminhos da ROM? | A sombra limitada da SPEC-034 recuperou o LR salvo e a descoberta estática avançou além do BX nesse compile; repetir a análise após as próximas instruções e registrar qualquer caminho que permaneça desconhecido | GBA-025 |
-| Como traduzir Thumb LDMIA com acesso guest seguro? | Especificar alinhamento, ordem dos registradores, writeback, faults e regiões de bus suportadas; `0xCB01` foi somente inferido do encoding em uma descoberta estática | GBA-025/030 |
+| Como traduzir Thumb LDMIA com acesso guest seguro? | Contrato aceito em [SPEC-035](../specs/SPEC-035-thumb-ldmia.md) e [ADR-022](../adr/ADR-022-additive-thumb-ldmia-abi.md); pendem implementação, fixtures e recompile estático. `0xCB01` continua sendo inferência do encoding e os bytes ROM não são execução | GBA-025/030 |
 | Quais SWIs são necessários à primeira fixture? | Grafo + execução controlada | GBA-045 |
 | Qual adaptador desktop e biblioteca de menu? | Slice acessível teclado/gamepad e comportamento sem GPU/áudio | GBA-070 |
 | Limites de compilação e tamanho por ROM? | Medidas por shard/target e orçamento de memória | GBA-050 |

@@ -12,6 +12,8 @@ GBA-025 implementou ABI v2, estado bancado e `MSR CPSR` da SPEC-013, literal PC-
 
 SPEC-030 implementa ORRS Thumb Format 4 strict-AOT, SPEC-031 implementa MOVS/CMP/ADDS/SUBS Thumb Format 3, SPEC-032 implementa branch condicional Thumb Format 16, SPEC-033 implementa POP de r0–r7 via helper ABI aditivo e SPEC-034 acrescenta uma sombra esparsa, limitada e exclusiva da descoberta. O gate de SPEC-034 passou em O0/O2 com restauração do LR salvo e rejeição do BX quando LR não é conhecido; consulte a [evidência de memória abstrata](../knowledge/evidence/gba020-abstract-memory-macos-arm64.json). A descoberta estática de LeafGreen passou por `0x080009B6` (`0xBC08`, POP `{r3}` inferido), fechou o retorno em `0x080009BE` (`0x4700`, BX r0 inferido) e avançou a `0x080006A8`, raw `0xCB01`, inferido como Thumb LDMIA. Os valores de NZCV e a execução real do título continuam sem observação.
 
+SPEC-035/ADR-022 foram aceitas para LDMIA Thumb. O corte define helper aditivo restrito a EWRAM/IWRAM e materialização AOT de words ROM apenas com base singleton provada; implementação, fixtures e a nova fronteira estática ainda pendem.
+
 ## 3. Perfis e produto — GBA-060/070/080
 
 Implementar parser v1 e validação de evidências, cache por digest, preferências separadas e menu aplicável em jogo. Validar perda de dispositivo, pause/resume, fullscreen rollback e herança global/jogo. Empacotar para Linux x86-64 e macOS arm64 e executar sem LLVM instalado. Gate: fluxo completo com controles, áudio, vídeo e save.

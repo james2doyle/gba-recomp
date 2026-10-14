@@ -21,3 +21,4 @@
 - [ADR-019-additive-byte-load-abi](ADR-019-additive-byte-load-abi.md)
 - [ADR-020-additive-thumb-pop-abi](ADR-020-additive-thumb-pop-abi.md)
 - [ADR-021-bounded-gba020-gate-parallelism](ADR-021-bounded-gba020-gate-parallelism.md)
+- [ADR-022-additive-thumb-ldmia-abi](ADR-022-additive-thumb-ldmia-abi.md)
