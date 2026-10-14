@@ -19,6 +19,7 @@ const IO_REGION_START: u32 = 0x0400_0000;
 const IO_REGION_END: u32 = 0x0500_0000;
 const IO_IE: u32 = 0x0400_0200;
 const IO_IF: u32 = 0x0400_0202;
+const IO_WAITCNT: u32 = 0x0400_0204;
 const IO_IME: u32 = 0x0400_0208;
 
 pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
@@ -569,7 +570,7 @@ impl AbstractState {
                     overwritten_words.insert(address + offset & !3);
                 }
             }
-            self.invalidate_io_for_unmodeled_store(address, byte_count);
+            self.invalidate_io_facts_for_store(address, byte_count);
         }
         if clear_memory {
             self.clear_memory();
@@ -581,7 +582,7 @@ impl AbstractState {
         }
     }
 
-    fn invalidate_io_for_unmodeled_store(&mut self, address: u32, byte_count: u32) {
+    fn invalidate_io_facts_for_store(&mut self, address: u32, byte_count: u32) {
         if !matches!(byte_count, 1 | 2 | 4) {
             self.clear_io();
             return;
@@ -598,17 +599,24 @@ impl AbstractState {
 
         let mut covered_until = io_start;
         let mut overlapped_latches = Vec::new();
-        for latch in [IO_IE, IO_IF, IO_IME] {
-            let latch_end = latch + 2;
-            let overlap_start = io_start.max(latch);
-            let overlap_end = io_end.min(latch_end);
+        let modeled_ranges = [
+            (IO_IE, IO_IE + 2, Some(IO_IE)),
+            (IO_IF, IO_IF + 2, Some(IO_IF)),
+            (IO_WAITCNT, IO_WAITCNT + 2, None),
+            (IO_IME, IO_IME + 2, Some(IO_IME)),
+        ];
+        for (range_start, range_end, latch) in modeled_ranges {
+            let overlap_start = io_start.max(range_start);
+            let overlap_end = io_end.min(range_end);
             if overlap_start < overlap_end {
                 if overlap_start > covered_until {
                     self.clear_io();
                     return;
                 }
                 covered_until = covered_until.max(overlap_end);
-                overlapped_latches.push(latch);
+                if let Some(latch) = latch {
+                    overlapped_latches.push(latch);
+                }
             }
         }
 
@@ -3319,6 +3327,43 @@ mod tests {
     }
 
     #[test]
+    fn thumb_halfword_store_to_waitcnt_preserves_latches_and_clears_ram_shadow() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x8004,
+            operation: ThumbOperation::StoreHalfwordImmediate {
+                rd: 4,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        let mut state = state_with_known_io();
+        state.set_constant(0, IO_WAITCNT);
+        state.set_constant(4, 0x4014);
+        state.set_memory_word(0x0300_0018, AbstractValue::constant(0x0800_0085));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+
+        let successor = only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]);
+        assert_io_facts(
+            &successor,
+            AbstractValue::constant(0x1234),
+            AbstractValue::constant(0x0056),
+            AbstractValue::constant(1),
+        );
+        assert!(successor.memory_words.is_empty());
+    }
+
+    #[test]
     fn palette_ram_stores_preserve_io_facts_and_clear_ram_shadow() {
         for address in [0x0500_0000, 0x0500_0002] {
             let mut state = state_with_known_io();
@@ -3423,6 +3468,7 @@ mod tests {
             (0x0400_01FE, 4, 0),
             (0x0400_0207, 2, 1), // Normalizes to 0x04000206.
             (IO_IME, 4, 0),      // IME plus untracked bytes.
+            (IO_WAITCNT, 4, 0),  // WAITCNT plus untracked bytes.
             (0x04FF_FFFF, 1, 0),
             (0x04FF_FFFF, 2, 1), // Normalizes to 0x04FFFFFE.
             (0x04FF_FFFE, 4, 0), // Crosses from decode region 0x04 into 0x05.
@@ -3437,6 +3483,27 @@ mod tests {
                 AbstractValue::Unknown,
                 AbstractValue::Unknown,
             );
+        }
+    }
+
+    #[test]
+    fn waitcnt_stores_preserve_io_latches_but_clear_ram_shadow() {
+        for (address, byte_count, align_mask) in [
+            (IO_WAITCNT, 1, 0),
+            (IO_WAITCNT + 1, 1, 0),
+            (IO_WAITCNT, 2, 1),
+        ] {
+            let mut state = state_with_known_io();
+            state.set_memory_word(0x0300_0000, AbstractValue::constant(0x0800_0085));
+            state.invalidate_store(&AbstractValue::constant(address), byte_count, align_mask);
+
+            assert_io_facts(
+                &state,
+                AbstractValue::constant(0x1234),
+                AbstractValue::constant(0x0056),
+                AbstractValue::constant(1),
+            );
+            assert!(state.memory_words.is_empty());
         }
     }
 
@@ -3457,6 +3524,12 @@ mod tests {
             ),
             (
                 BTreeSet::from([0x0500_0000, IO_IE]),
+                AbstractValue::Unknown,
+                AbstractValue::constant(0x0056),
+                AbstractValue::constant(1),
+            ),
+            (
+                BTreeSet::from([IO_WAITCNT, IO_IE]),
                 AbstractValue::Unknown,
                 AbstractValue::constant(0x0056),
                 AbstractValue::constant(1),
