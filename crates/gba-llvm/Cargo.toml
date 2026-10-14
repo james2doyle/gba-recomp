@@ -19,10 +19,11 @@ gba-ir.workspace = true
 gba-runtime-abi.workspace = true
 llvm-sys.workspace = true
 
-# The official Windows LLVM build links zstd from a path on its build
-# machine (llvm-config --system-libs); zstd-sys compiles it from source.
+# The official Windows LLVM build names zstd and zlib libraries from its
+# build machine (llvm-config --system-libs); these compile them from source.
 [target.'cfg(windows)'.dependencies]
 zstd-sys = { version = "2", default-features = false }
+libz-sys = { version = "1", default-features = false, features = ["static"] }
 
 [lints]
 workspace = true

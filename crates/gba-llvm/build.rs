@@ -91,6 +91,12 @@ fn llvm_config(binary: &PathBuf, args: &[&str]) -> String {
 }
 
 fn emit_system_library(flag: &str) {
+    // The official Windows LLVM names static zlib and libxml2 builds that
+    // it does not ship. zlib comes from the libz-sys dependency; libxml2 is
+    // only used by LLVMWindowsManifest, which is not linked.
+    if matches!(flag, "zs.lib" | "xml2s.lib") {
+        return;
+    }
     if let Some(name) = flag
         .strip_suffix(".lib")
         .filter(|n| !n.contains(['/', '\\']))

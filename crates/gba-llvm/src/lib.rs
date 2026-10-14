@@ -1,6 +1,8 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-// Provides the zstd symbols LLVM's Support library needs on Windows.
+// Provide the zstd and zlib symbols LLVM's Support library needs on Windows.
+#[cfg(windows)]
+use libz_sys as _;
 #[cfg(windows)]
 use zstd_sys as _;
 

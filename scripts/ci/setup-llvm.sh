@@ -13,7 +13,10 @@ mkdir -p "$dest"
 
 if [ "$(uname -s)" = "Linux" ] && [ -n "${GITHUB_ACTIONS:-}" ]; then
   # Hosted runners keep ~20 GB of SDKs we never use.
-  sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost \
+  # KEEP_ANDROID_SDK=1 keeps the preinstalled Android SDK/NDK.
+  android=/usr/local/lib/android
+  [ "${KEEP_ANDROID_SDK:-}" = "1" ] && android=
+  sudo rm -rf /usr/share/dotnet $android /opt/ghc /usr/local/share/boost \
     /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
 fi
 
