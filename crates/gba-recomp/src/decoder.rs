@@ -270,6 +270,21 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF000 == 0xD000 {
+        let condition = ((encoding >> 8) & 0xF) as u8;
+        if condition <= 0xD {
+            let signed_immediate = i32::from((encoding as u8) as i8);
+            let displacement = signed_immediate.wrapping_shl(1) as u32;
+            return Ok(ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::ConditionalBranch {
+                    condition,
+                    target: guest_pc.wrapping_add(4).wrapping_add(displacement),
+                },
+            });
+        }
+    }
     if encoding & 0xFF00 == 0xDF00 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -483,6 +498,63 @@ mod tests {
             ThumbOperation::MovImmediate { rd: 0, value: 7 }
         );
         assert!(decode_thumb(0x0800_0085, 0x4708).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_conditional_branch_formats_conditions_offsets_and_wrapping_pc() {
+        let guest_pc = 0x0800_0100;
+        for condition in 0..=0xD_u16 {
+            for immediate in [0x00_u16, 0x7F, 0x80, 0xFF] {
+                let encoding = 0xD000 | (condition << 8) | immediate;
+                let instruction = decode_thumb(guest_pc, encoding).unwrap();
+                let displacement = i32::from(immediate as u8 as i8) * 2;
+                assert_eq!(instruction.guest_pc, guest_pc);
+                assert_eq!(instruction.encoding, encoding);
+                assert_eq!(
+                    instruction.operation,
+                    ThumbOperation::ConditionalBranch {
+                        condition: condition as u8,
+                        target: guest_pc.wrapping_add(4).wrapping_add(displacement as u32),
+                    },
+                    "condition 0x{condition:X}, immediate 0x{immediate:02X}"
+                );
+            }
+        }
+
+        assert_eq!(
+            decode_thumb(0x0800_09A6, 0xDDF6).unwrap().operation,
+            ThumbOperation::ConditionalBranch {
+                condition: 0xD,
+                target: 0x0800_0996,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0xFFFF_FFFE, 0xD001).unwrap().operation,
+            ThumbOperation::ConditionalBranch {
+                condition: 0,
+                target: 4,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0, 0xD080).unwrap().operation,
+            ThumbOperation::ConditionalBranch {
+                condition: 0,
+                target: 0xFFFF_FF04,
+            }
+        );
+    }
+
+    #[test]
+    fn preserves_thumb_conditional_branch_undefined_and_swi_classifications() {
+        assert!(
+            decode_thumb(0x0800_0084, 0xDE01)
+                .unwrap_err()
+                .contains("undefined_thumb_instruction at 0x08000084")
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0xDFFF).unwrap().operation,
+            ThumbOperation::Swi { immediate: 0xFF }
+        );
     }
 
     #[test]

@@ -144,6 +144,10 @@ pub enum ThumbOperation {
         immediate: u8,
         subtract: bool,
     },
+    ConditionalBranch {
+        condition: u8,
+        target: u32,
+    },
     MovRegister {
         rd: u8,
         rm: u8,
@@ -273,6 +277,7 @@ pub enum VerifyError {
     InvalidThumbByteStoreRegister(u8),
     InvalidThumbByteLoadRegister(u8),
     InvalidThumbOrrRegister(u8),
+    InvalidThumbBranchCondition(u8),
     EmptyBlock,
     SliceOnlyOneInstruction(usize),
     ProgramCounterRegisterUnsupported,
@@ -336,6 +341,10 @@ impl fmt::Display for VerifyError {
             Self::InvalidThumbOrrRegister(register) => {
                 write!(f, "Thumb ORR register r{register} is not a low register")
             }
+            Self::InvalidThumbBranchCondition(condition) => write!(
+                f,
+                "Thumb conditional branch condition {condition:#X} is outside 0x0..=0xD"
+            ),
             Self::EmptyBlock => f.write_str("GBA IR block contains no instructions"),
             Self::SliceOnlyOneInstruction(count) => {
                 write!(f, "GBA-010 ALU slice accepts one instruction, got {count}")
@@ -667,6 +676,32 @@ impl ArmProgram {
                         )));
                     }
                 }
+                ThumbOperation::ConditionalBranch { condition, target } => {
+                    if condition > 0xD {
+                        return Err(VerifyError::InvalidThumbBranchCondition(condition));
+                    }
+                    let encoded_condition = ((instruction.encoding >> 8) & 0xF) as u8;
+                    let immediate = i32::from(instruction.encoding as u8 as i8) << 1;
+                    let encoded_target = instruction
+                        .guest_pc
+                        .wrapping_add(4)
+                        .wrapping_add(immediate as u32);
+                    if instruction.encoding & 0xF000 != 0xD000
+                        || condition != encoded_condition
+                        || target != encoded_target
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            instruction.encoding,
+                        )));
+                    }
+                    if target & 1 != 0 {
+                        return Err(VerifyError::MisalignedThumbPc(target));
+                    }
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if fallthrough & 1 != 0 {
+                        return Err(VerifyError::MisalignedThumbPc(fallthrough));
+                    }
+                }
                 ThumbOperation::MovRegister { rd, rm } => {
                     verify_general_register(rd)?;
                     verify_operand_register(rm)?;
@@ -905,6 +940,16 @@ impl ArmProgram {
                             pc: instruction.guest_pc,
                             target: fallthrough,
                         });
+                    }
+                }
+                ThumbOperation::ConditionalBranch { target, .. } => {
+                    for successor in [target, instruction.guest_pc.wrapping_add(2)] {
+                        if !thumb_pcs.contains(&successor) {
+                            return Err(VerifyError::MissingSuccessor {
+                                pc: instruction.guest_pc,
+                                target: successor,
+                            });
+                        }
                     }
                 }
                 ThumbOperation::MovRegister { .. } => {
@@ -1240,6 +1285,14 @@ pub fn execute_thumb_instruction(
                 | (u32::from(overflow) << 28);
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
+        ThumbOperation::ConditionalBranch { condition, target } => {
+            let fallthrough = instruction.guest_pc.wrapping_add(2);
+            state.r[REG_PC as usize] = if condition_passes(condition, state.cpsr) {
+                target
+            } else {
+                fallthrough
+            };
+        }
         ThumbOperation::AddSubtractImmediate {
             rd,
             immediate,
@@ -1362,6 +1415,215 @@ mod tests {
         };
         cpu.r[15] = pc;
         cpu
+    }
+
+    fn conditional_branch_program(condition: u8) -> ArmProgram {
+        let guest_pc = 0x0800_0100;
+        ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                ThumbInstruction {
+                    guest_pc,
+                    encoding: 0xD000 | (u16::from(condition) << 8),
+                    operation: ThumbOperation::ConditionalBranch {
+                        condition,
+                        target: guest_pc.wrapping_add(4),
+                    },
+                },
+                ThumbInstruction {
+                    guest_pc: guest_pc + 2,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+                ThumbInstruction {
+                    guest_pc: guest_pc + 4,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            branch_targets: vec![
+                StaticBranchTarget {
+                    source_mode: IsaMode::Thumb,
+                    source_pc: guest_pc + 2,
+                    target_mode: IsaMode::Thumb,
+                    target_pc: guest_pc + 4,
+                },
+                StaticBranchTarget {
+                    source_mode: IsaMode::Thumb,
+                    source_pc: guest_pc + 4,
+                    target_mode: IsaMode::Thumb,
+                    target_pc: guest_pc + 2,
+                },
+            ],
+        }
+    }
+
+    fn expected_thumb_condition(condition: u8, cpsr: u32) -> bool {
+        let n = cpsr & (1 << 31) != 0;
+        let z = cpsr & (1 << 30) != 0;
+        let c = cpsr & (1 << 29) != 0;
+        let v = cpsr & (1 << 28) != 0;
+        match condition {
+            0 => z,
+            1 => !z,
+            2 => c,
+            3 => !c,
+            4 => n,
+            5 => !n,
+            6 => v,
+            7 => !v,
+            8 => c && !z,
+            9 => !c || z,
+            10 => n == v,
+            11 => n != v,
+            12 => !z && n == v,
+            13 => z || n != v,
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn thumb_conditional_branch_matches_all_conditions_and_nzcv_combinations() {
+        let guest_pc = 0x0800_0100;
+        let target = guest_pc + 4;
+        for condition in 0..=0xD {
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding: 0xD000 | (u16::from(condition) << 8),
+                operation: ThumbOperation::ConditionalBranch { condition, target },
+            };
+            for nzcv in 0..16 {
+                let mut cpu = state(guest_pc);
+                cpu.cpsr = (cpu.cpsr & !0xF000_0000) | (nzcv << 28) | 0x20;
+                cpu.r[..15]
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(index, register)| *register = 0x1234_0000 + index as u32);
+                cpu.r[15] = guest_pc;
+                let registers_before = cpu.r;
+                let cpsr_before = cpu.cpsr;
+                let expected_target = if expected_thumb_condition(condition, cpu.cpsr) {
+                    target
+                } else {
+                    guest_pc + 2
+                };
+
+                execute_thumb_instruction(&mut cpu, instruction).unwrap();
+
+                assert_eq!(
+                    cpu.r[15], expected_target,
+                    "condition={condition}, NZCV={nzcv:04b}"
+                );
+                assert_eq!(&cpu.r[..15], &registers_before[..15]);
+                assert_eq!(cpu.cpsr, cpsr_before);
+                assert_eq!(cpu.guest_cycle, 6);
+            }
+        }
+    }
+
+    #[test]
+    fn arm_program_verifier_closes_thumb_conditional_branch_successors() {
+        for condition in 0..=0xD {
+            assert!(conditional_branch_program(condition).verify().is_ok());
+        }
+
+        let mut mismatched_condition = conditional_branch_program(0);
+        mismatched_condition.thumb_instructions[0].encoding |= 1 << 8;
+        assert_eq!(
+            mismatched_condition.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xD100))
+        );
+
+        let mut mismatched_target = conditional_branch_program(0);
+        mismatched_target.thumb_instructions[0].operation = ThumbOperation::ConditionalBranch {
+            condition: 0,
+            target: 0x0800_0106,
+        };
+        assert_eq!(
+            mismatched_target.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xD000))
+        );
+
+        let mut invalid_condition = conditional_branch_program(0);
+        invalid_condition.thumb_instructions[0].operation = ThumbOperation::ConditionalBranch {
+            condition: 0xE,
+            target: 0x0800_0104,
+        };
+        assert_eq!(
+            invalid_condition.verify(),
+            Err(VerifyError::InvalidThumbBranchCondition(0xE))
+        );
+
+        let mut missing_target = conditional_branch_program(0);
+        missing_target
+            .thumb_instructions
+            .retain(|instruction| instruction.guest_pc != 0x0800_0104);
+        missing_target.branch_targets.clear();
+        assert_eq!(
+            missing_target.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: 0x0800_0100,
+                target: 0x0800_0104,
+            })
+        );
+
+        let mut missing_fallthrough = conditional_branch_program(0);
+        missing_fallthrough
+            .thumb_instructions
+            .retain(|instruction| instruction.guest_pc != 0x0800_0102);
+        missing_fallthrough.branch_targets.clear();
+        assert_eq!(
+            missing_fallthrough.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: 0x0800_0100,
+                target: 0x0800_0102,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_accepts_leafgreen_thumb_le_branch_encoding() {
+        let guest_pc = 0x0800_09A6;
+        let program = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                ThumbInstruction {
+                    guest_pc,
+                    encoding: 0xDDF6,
+                    operation: ThumbOperation::ConditionalBranch {
+                        condition: 0xD,
+                        target: 0x0800_0996,
+                    },
+                },
+                ThumbInstruction {
+                    guest_pc: 0x0800_0996,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+                ThumbInstruction {
+                    guest_pc: 0x0800_09A8,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            branch_targets: vec![
+                StaticBranchTarget {
+                    source_mode: IsaMode::Thumb,
+                    source_pc: 0x0800_0996,
+                    target_mode: IsaMode::Thumb,
+                    target_pc: 0x0800_09A8,
+                },
+                StaticBranchTarget {
+                    source_mode: IsaMode::Thumb,
+                    source_pc: 0x0800_09A8,
+                    target_mode: IsaMode::Thumb,
+                    target_pc: 0x0800_0996,
+                },
+            ],
+        };
+        assert!(program.verify().is_ok());
     }
 
     #[test]

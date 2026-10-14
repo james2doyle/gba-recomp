@@ -1913,6 +1913,45 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::ConditionalBranch { condition, target } => {
+            if condition > 13 {
+                return Err(format!(
+                    "invalid Thumb conditional branch condition {condition} at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+            let cpsr_pointer = unsafe {
+                LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr())
+            };
+            let cpsr = unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+            let condition_met = unsafe { arm_condition_value(builder, context, cpsr, condition)? };
+            let fallthrough = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            let target = unsafe { LLVMConstInt(i32_type, u64::from(target), 0) };
+            let next_pc = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    condition_met,
+                    target,
+                    fallthrough,
+                    c"thumb_conditional_branch_next_pc".as_ptr(),
+                )
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::Push { register_list } => {
             let mut arguments = [runtime, exit, unsafe {
                 LLVMConstInt(i32_type, u64::from(register_list), 0)

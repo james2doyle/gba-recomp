@@ -27,7 +27,38 @@ def generate(mode: str = "valid") -> bytes:
     image[0xB0:0xB2] = b"00"
     image[0xB2] = 0x96
     image[0xBC] = 1
-    if mode == "msr-mode":
+    if mode in (
+        "thumb-bcond-eq-taken",
+        "thumb-bcond-eq-fallthrough",
+        "thumb-bcond-target-unsupported",
+        "thumb-bcond-fallthrough-unsupported",
+    ):
+        target_unsupported = mode == "thumb-bcond-target-unsupported"
+        fallthrough_unsupported = mode == "thumb-bcond-fallthrough-unsupported"
+        fallthrough = 0x4008 if fallthrough_unsupported else 0x2011
+        target = 0x4008 if target_unsupported else 0x2022
+        image[0x84:0x94] = struct.pack(
+            "<8H",
+            0xD004,  # BEQ 0x08000090; fallthrough is 0x08000086.
+            fallthrough,
+            0x4718,  # BX r3 -> ARM loop.
+            0x46C0,  # Unreached MOV r8,r8 padding.
+            0x46C0,
+            0x46C0,
+            target,
+            0x4718,  # BX r3 -> ARM loop.
+        )
+        image[0xC0:0xD4] = struct.pack(
+            "<5I",
+            0xE3A00001,  # MOV r0,#1.
+            0xE3500001 if mode != "thumb-bcond-eq-fallthrough" else 0xE3500002,
+            0xE59F2010,  # LDR r2,[pc,#0x10] -> Thumb entry | 1 at 0xE0.
+            0xE59F3010,  # LDR r3,[pc,#0x10] -> ARM loop at 0xE4.
+            0xE12FFF12,  # BX r2; retain CMP flags while entering Thumb.
+        )
+        image[0xE0:0xE8] = struct.pack("<2I", 0x08000085, 0x080000E8)
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+    elif mode == "msr-mode":
         image[0xC0:0xCC] = struct.pack(
             "<3I",
             0xE3A00013,  # MOV r0, #Supervisor mode
@@ -715,6 +746,10 @@ def main() -> None:
             "thumb-f3-sub-borrow",
             "thumb-f3-sub-overflow",
             "thumb-f3-neighbor-unsupported",
+            "thumb-bcond-eq-taken",
+            "thumb-bcond-eq-fallthrough",
+            "thumb-bcond-target-unsupported",
+            "thumb-bcond-fallthrough-unsupported",
             "thumb-lsl-bx",
             "thumb-lsl-zero-carry-clear",
             "thumb-lsl-zero-carry-set",

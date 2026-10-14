@@ -560,6 +560,20 @@ fn process_thumb_instruction(
                 enqueue_state(target_mode, target_pc, state.clone(), pending, incoming);
             }
         }
+        ThumbOperation::ConditionalBranch { target, .. } => {
+            let fallthrough = instruction.guest_pc.wrapping_add(2);
+            ensure_target_in_image(image, instruction.guest_pc, IsaMode::Thumb, target)?;
+            ensure_target_in_image(image, instruction.guest_pc, IsaMode::Thumb, fallthrough)?;
+            // Static discovery keeps both successors and does not reason about NZCV.
+            enqueue_state(IsaMode::Thumb, target, state.clone(), pending, incoming);
+            enqueue_state(
+                IsaMode::Thumb,
+                fallthrough,
+                state.clone(),
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::BlPrefix { lr_partial } => {
             let suffix_pc = instruction.guest_pc.wrapping_add(2);
             let suffix_encoding = image.read_thumb_halfword(suffix_pc).map_err(|error| {
@@ -787,6 +801,15 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn thumb_conditional_branch_rom() -> RomImage {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        bytes[0x84..0x86].copy_from_slice(&0xD001_u16.to_le_bytes()); // BEQ to 0x0800008A.
+        bytes[0x86..0x88].copy_from_slice(&0x4708_u16.to_le_bytes()); // Fallthrough: BX r1.
+        bytes[0x8A..0x8C].copy_from_slice(&0x4708_u16.to_le_bytes()); // Target: BX r1.
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     fn thumb_ldr_literal_rom() -> RomImage {
         let mut bytes = counter_rom().bytes().to_vec();
         // Thumb starts at 0x86 (PC+4 aligns to 0x88); +0x58 reaches the pool at 0xE0.
@@ -827,6 +850,33 @@ mod tests {
                 .iter()
                 .any(|instruction| instruction.guest_pc == ROM_BASE + 0xD0)
         );
+    }
+
+    #[test]
+    fn discovers_thumb_conditional_branch_target_and_fallthrough() {
+        let program = discover_arm_program(&thumb_conditional_branch_rom()).unwrap();
+        let branch = program
+            .thumb_instructions
+            .iter()
+            .find(|instruction| instruction.guest_pc == ROM_BASE + 0x84)
+            .unwrap();
+        assert_eq!(
+            branch.operation,
+            ThumbOperation::ConditionalBranch {
+                condition: 0,
+                target: ROM_BASE + 0x8A,
+            }
+        );
+        for pc in [ROM_BASE + 0x86, ROM_BASE + 0x8A] {
+            assert!(
+                program
+                    .thumb_instructions
+                    .iter()
+                    .any(|instruction| instruction.guest_pc == pc),
+                "conditional successor 0x{pc:08X} was not discovered"
+            );
+        }
+        assert!(program.verify().is_ok());
     }
 
     #[test]
@@ -1268,6 +1318,43 @@ mod tests {
             incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)].registers[0],
             AbstractValue::constant(0xFF)
         );
+    }
+
+    #[test]
+    fn enqueues_both_thumb_conditional_successors_with_identical_abstract_state() {
+        let guest_pc = ROM_BASE + 0x84;
+        let image = counter_rom();
+        let mut state = AbstractState::unknown();
+        state.set_constant(0, 0x1234_5678);
+        state.set_constant(13, 0x0300_7F00);
+        let target = (IsaMode::Thumb, guest_pc + 6);
+        let fallthrough = (IsaMode::Thumb, guest_pc + 2);
+        for condition in 0..=0xD_u8 {
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding: 0xD001 | (u16::from(condition) << 8),
+                operation: ThumbOperation::ConditionalBranch {
+                    condition,
+                    target: guest_pc + 6,
+                },
+            };
+            let mut incoming = BTreeMap::new();
+            let mut pending = VecDeque::new();
+            let mut branch_targets = BTreeSet::new();
+            process_thumb_instruction(
+                &image,
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut branch_targets,
+            )
+            .unwrap();
+            assert_eq!(pending, VecDeque::from([target, fallthrough]));
+            assert_eq!(incoming[&target], state, "condition 0x{condition:X}");
+            assert_eq!(incoming[&fallthrough], state, "condition 0x{condition:X}");
+            assert!(branch_targets.is_empty());
+        }
     }
 
     #[test]
