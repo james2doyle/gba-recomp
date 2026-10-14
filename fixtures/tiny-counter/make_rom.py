@@ -108,6 +108,73 @@ def generate(mode: str = "valid") -> bytes:
         image[0xF0:0xFC] = struct.pack(
             "<3I", 0x03000014, 0x08000085, 0x080000E8
         )
+    elif mode == "thumb-pop-r3":
+        image[0x84:0x8C] = struct.pack(
+            "<4H",
+            0xB408,  # PUSH {r3}: seed the aligned IWRAM stack slot.
+            0xBC08,  # POP {r3}.
+            0x4618,  # MOV r0,r3 to expose the restored value.
+            0x4770,  # BX lr to the ARM continuation.
+        )
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE3A03033,  # MOV r3,#0x33.
+            0xE59FD00C,  # LDR sp,[pc,#0x0C] -> stack top at 0xD8.
+            0xE59F800C,  # LDR r8,[pc,#0x0C] -> Thumb entry at 0xDC.
+            0xE59FE00C,  # LDR lr,[pc,#0x0C] -> ARM continuation at 0xE0.
+            0xE12FFF18,  # BX r8.
+            branch(0xD4, 0xD4),  # Unreached self-loop.
+        )
+        image[0xD8:0xE4] = struct.pack(
+            "<3I", 0x03000004, 0x08000085, 0x080000E8
+        )
+        image[0xE8:0xF0] = struct.pack(
+            "<2I",
+            0xE1A0100D,  # MOV r1,sp to expose POP writeback.
+            branch(0xEC, 0xEC),  # B finished.
+        )
+    elif mode == "thumb-pop-multiple":
+        image[0x84:0x90] = struct.pack(
+            "<6H",
+            0xB40F,  # PUSH {r0-r3}: seed four consecutive IWRAM words.
+            0xBC0F,  # POP {r0-r3}.
+            0x1808,  # ADD r0,r1.
+            0x1810,  # ADD r0,r2.
+            0x1818,  # ADD r0,r3.
+            0x4770,  # BX lr to the ARM continuation.
+        )
+        image[0xC0:0xE0] = struct.pack(
+            "<8I",
+            0xE3A00011,  # MOV r0,#0x11.
+            0xE3A01022,  # MOV r1,#0x22.
+            0xE3A02033,  # MOV r2,#0x33.
+            0xE3A03044,  # MOV r3,#0x44.
+            0xE59FD00C,  # LDR sp,[pc,#0x0C] -> stack top at 0xE4.
+            0xE59F8010,  # LDR r8,[pc,#0x10] -> Thumb entry at 0xEC.
+            0xE59FE014,  # LDR lr,[pc,#0x14] -> ARM continuation at 0xF8.
+            0xE12FFF18,  # BX r8.
+        )
+        image[0xE0:0xE4] = struct.pack("<I", branch(0xE0, 0xE0))
+        image[0xE4:0xF8] = struct.pack(
+            "<5I", 0x03000010, 0, 0x08000085, 0, 0x080000F8
+        )
+        image[0xF8:0x100] = struct.pack(
+            "<2I",
+            0xE1A0100D,  # MOV r1,sp to expose POP writeback.
+            branch(0xFC, 0xFC),  # B finished.
+        )
+    elif mode in ("thumb-pop-empty-unsupported", "thumb-pop-pc-unsupported"):
+        pop = 0xBC00 if mode == "thumb-pop-empty-unsupported" else 0xBD08
+        image[0x84:0x88] = struct.pack(
+            "<2H", pop, 0x4770
+        )  # POP empty / POP {r3,pc}; decoder must reject the POP.
+        image[0xC0:0xD0] = struct.pack(
+            "<4I",
+            0xE59F0004,  # LDR r0,[pc,#4] -> Thumb entry at 0xCC.
+            0xE12FFF10,  # BX r0.
+            branch(0xC8, 0xC8),  # Unreached self-loop.
+            0x08000085,
+        )
     elif mode == "thumb-mov":
         image[0x84:0x8A] = struct.pack(
             "<3H", 0x4647, 0x467B, 0x4710
@@ -789,6 +856,10 @@ def main() -> None:
             "thumb-swi-reset",
             "thumb-swi-unsupported",
             "thumb-push",
+            "thumb-pop-r3",
+            "thumb-pop-multiple",
+            "thumb-pop-empty-unsupported",
+            "thumb-pop-pc-unsupported",
             "bx-interwork",
             "bx-out-of-range",
             "bx-condition-false",

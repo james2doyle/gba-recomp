@@ -478,6 +478,11 @@ unsafe fn build_arm_program_function(
     if push_helper.is_null() {
         return Err("LLVMAddFunction for gba_push_thumb_v3 returned null".to_owned());
     }
+    let pop_helper_name = CString::new("gba_pop_thumb_v3").expect("static name contains no NUL");
+    let pop_helper = unsafe { LLVMAddFunction(module, pop_helper_name.as_ptr(), push_helper_type) };
+    if pop_helper.is_null() {
+        return Err("LLVMAddFunction for gba_pop_thumb_v3 returned null".to_owned());
+    }
     let entry = unsafe { append_block(context, function, "entry") };
     let validation_failed = unsafe { append_block(context, function, "validation_failed") };
     let validated = unsafe { append_block(context, function, "validated") };
@@ -729,6 +734,7 @@ unsafe fn build_arm_program_function(
                 instruction,
                 push_helper_type,
                 push_helper,
+                pop_helper,
                 store16_helper_type,
                 store16_helper,
                 store8_helper_type,
@@ -1216,6 +1222,7 @@ unsafe fn lower_thumb_instruction(
     instruction: &ThumbInstruction,
     push_helper_type: LLVMTypeRef,
     push_helper: LLVMValueRef,
+    pop_helper: LLVMValueRef,
     store16_helper_type: LLVMTypeRef,
     store16_helper: LLVMValueRef,
     store8_helper_type: LLVMTypeRef,
@@ -1987,6 +1994,64 @@ unsafe fn lower_thumb_instruction(
                     context,
                     function,
                     &format!("thumb_push_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
+            unsafe { LLVMBuildRet(builder, status) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::Pop { register_list } => {
+            let mut arguments = [runtime, exit, unsafe {
+                LLVMConstInt(i32_type, u64::from(register_list), 0)
+            }];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    push_helper_type,
+                    pop_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"thumb_pop_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_pop_succeeded".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_pop_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_pop_failure_{:08X}", instruction.guest_pc),
                 )
             };
             unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };

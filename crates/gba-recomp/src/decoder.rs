@@ -326,6 +326,24 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xFE00 == 0xBC00 {
+        if encoding & 0x0100 != 0 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (POP with PC is not implemented)"
+            ));
+        }
+        let register_list = encoding & 0x00FF;
+        if register_list == 0 {
+            return Err(format!(
+                "unsupported_thumb_instruction at 0x{guest_pc:08X}: 0x{encoding:04X} (empty POP register list)"
+            ));
+        }
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::Pop { register_list },
+        });
+    }
     if encoding & 0xFE00 == 0xB400 {
         let register_list = encoding & 0x01FF;
         if register_list == 0 {
@@ -841,6 +859,41 @@ mod tests {
                 .contains("empty PUSH register list")
         );
         assert!(decode_thumb(0x0800_03A4, 0xB600).is_err());
+    }
+
+    #[test]
+    fn decodes_thumb_pop_low_register_list_and_rejects_pc_or_empty_list() {
+        let instruction = decode_thumb(0x0800_03A6, 0xBC08).unwrap();
+        assert_eq!(instruction.guest_pc, 0x0800_03A6);
+        assert_eq!(instruction.encoding, 0xBC08);
+        assert_eq!(
+            instruction.operation,
+            ThumbOperation::Pop {
+                register_list: 0x08
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03A6, 0xBC01).unwrap().operation,
+            ThumbOperation::Pop { register_list: 1 }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03A6, 0xBCFF).unwrap().operation,
+            ThumbOperation::Pop {
+                register_list: 0xFF
+            }
+        );
+        assert!(
+            decode_thumb(0x0800_03A6, 0xBD08)
+                .unwrap_err()
+                .contains("POP with PC")
+        );
+        assert!(
+            decode_thumb(0x0800_03A6, 0xBC00)
+                .unwrap_err()
+                .contains("empty POP register list")
+        );
+        assert!(decode_thumb(0x0800_03A6, 0xBE08).is_err());
+        assert!(decode_thumb(0x0800_03A7, 0xBC08).is_err());
     }
 
     #[test]

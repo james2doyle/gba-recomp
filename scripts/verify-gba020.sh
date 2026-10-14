@@ -705,6 +705,80 @@ for mode in thumb-ldrb-register-unsupported thumb-strb-register-unsupported; do
     fi
 done
 
+verify_thumb_pop() {
+    mode=$1
+    steps=$2
+    instruction_count=$3
+    expected=$4
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        compile_log="$root/target/gba020/$mode-compile-$optimization.txt"
+        rm -rf "$package"
+        if ! "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps "$steps" \
+            >"$compile_log" 2>&1; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode failed to compile" >&2
+            exit 1
+        fi
+        if ! grep -Fxq "instructions_aot: $instruction_count" "$compile_log"; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode reported an unexpected AOT instruction count" >&2
+            exit 1
+        fi
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" "$steps" "$instruction_count" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == int(sys.argv[3])
+assert manifest["instructions_aot"] == int(sys.argv[4])
+PY
+    done
+}
+
+verify_thumb_pop thumb-pop-r3 15 12 \
+    '{"status":"budget_exhausted","steps":15,"r0":51,"r1":50331652,"pc":"0x080000EC","cpsr":"0x0000001F","guest_cycle":15,"ewram_word0":0,"iwram_word0":51}'
+verify_thumb_pop thumb-pop-multiple 20 17 \
+    '{"status":"budget_exhausted","steps":20,"r0":170,"r1":50331664,"pc":"0x080000FC","cpsr":"0x0000001F","guest_cycle":20,"ewram_word0":0,"iwram_word0":17}'
+
+verify_thumb_pop_reject() {
+    mode=$1
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package"
+    compile_log="$root/target/gba020/$mode-compile.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    rm -rf "$package"
+    if "$recomp_bin" compile \
+        --rom "$rom" --out "$package" --opt O2 --steps 9 \
+        >"$compile_log" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        exit 1
+    fi
+    if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$compile_log"; then
+        cat "$compile_log" >&2
+        echo "$mode did not report the unsupported POP at 0x08000084" >&2
+        exit 1
+    fi
+    if [ -e "$package" ]; then
+        echo "failed $mode compile left a partial package" >&2
+        exit 1
+    fi
+}
+
+verify_thumb_pop_reject thumb-pop-empty-unsupported
+verify_thumb_pop_reject thumb-pop-pc-unsupported
+
 push_rom="$root/target/gba020/thumb-push.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$push_rom" --mode thumb-push
 for optimization in O0 O2; do

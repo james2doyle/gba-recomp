@@ -131,6 +131,9 @@ pub enum ThumbOperation {
     Push {
         register_list: u16,
     },
+    Pop {
+        register_list: u16,
+    },
     MovImmediate {
         rd: u8,
         value: u8,
@@ -269,6 +272,7 @@ pub enum VerifyError {
     MisalignedArmPc(u32),
     MisalignedThumbPc(u32),
     InvalidThumbPushRegisterList(u16),
+    InvalidThumbPopRegisterList(u16),
     InvalidThumbImmediateRegister(u8),
     InvalidThumbFormat3Register(u8),
     InvalidThumbRomLiteralRegister(u8),
@@ -309,6 +313,9 @@ impl fmt::Display for VerifyError {
             }
             Self::InvalidThumbPushRegisterList(list) => {
                 write!(f, "invalid Thumb PUSH register list 0x{list:04X}")
+            }
+            Self::InvalidThumbPopRegisterList(list) => {
+                write!(f, "invalid Thumb POP register list 0x{list:04X}")
             }
             Self::InvalidThumbImmediateRegister(register) => write!(
                 f,
@@ -712,6 +719,22 @@ impl ArmProgram {
                     return Err(VerifyError::InvalidThumbPushRegisterList(register_list));
                 }
                 ThumbOperation::Push { .. } => {}
+                ThumbOperation::Pop { register_list } => {
+                    let encoding = instruction.encoding;
+                    if encoding & 0xFE00 != 0xBC00 || encoding & 0x0100 != 0 {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                    if register_list == 0 || register_list & !0x00FF != 0 {
+                        return Err(VerifyError::InvalidThumbPopRegisterList(register_list));
+                    }
+                    if register_list != encoding & 0x00FF {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::BlPrefix { lr_partial }
                     if instruction.encoding & 0xF800 != 0xF000
                         || lr_partial
@@ -924,6 +947,18 @@ impl ArmProgram {
                 ThumbOperation::BranchExchange { .. } => {}
                 ThumbOperation::Push { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::Pop { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if fallthrough & 1 != 0 {
+                        return Err(VerifyError::MisalignedThumbPc(fallthrough));
+                    }
                     if !thumb_pcs.contains(&fallthrough) {
                         return Err(VerifyError::MissingSuccessor {
                             pc: instruction.guest_pc,
@@ -1266,7 +1301,9 @@ pub fn execute_thumb_instruction(
                 state.r[REG_PC as usize] = target & !3;
             }
         }
-        ThumbOperation::Push { .. } => return Err(StepFault::MemoryRuntimeRequired),
+        ThumbOperation::Push { .. } | ThumbOperation::Pop { .. } => {
+            return Err(StepFault::MemoryRuntimeRequired);
+        }
         ThumbOperation::MovImmediate { rd, value } => {
             state.r[rd as usize] = u32::from(value);
             state.cpsr = (state.cpsr & !0xC000_0000) | (u32::from(value == 0) << 30);
@@ -1459,6 +1496,32 @@ mod tests {
         }
     }
 
+    fn thumb_pop_program(guest_pc: u32, encoding: u16, register_list: u16) -> ArmProgram {
+        let fallthrough = guest_pc.wrapping_add(2);
+        ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                ThumbInstruction {
+                    guest_pc,
+                    encoding,
+                    operation: ThumbOperation::Pop { register_list },
+                },
+                ThumbInstruction {
+                    guest_pc: fallthrough,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: fallthrough,
+                target_mode: IsaMode::Thumb,
+                target_pc: fallthrough,
+            }],
+        }
+    }
+
     fn expected_thumb_condition(condition: u8, cpsr: u32) -> bool {
         let n = cpsr & (1 << 31) != 0;
         let z = cpsr & (1 << 30) != 0;
@@ -1575,6 +1638,77 @@ mod tests {
         missing_fallthrough.branch_targets.clear();
         assert_eq!(
             missing_fallthrough.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: 0x0800_0100,
+                target: 0x0800_0102,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_pop_encoding_list_and_successor() {
+        assert!(
+            thumb_pop_program(0x0800_0100, 0xBC08, 0x08)
+                .verify()
+                .is_ok()
+        );
+        assert!(
+            thumb_pop_program(0x0800_0100, 0xBC01, 0x01)
+                .verify()
+                .is_ok()
+        );
+        assert!(
+            thumb_pop_program(0x0800_0100, 0xBCFF, 0xFF)
+                .verify()
+                .is_ok()
+        );
+        assert!(
+            thumb_pop_program(u32::MAX - 1, 0xBC08, 0x08)
+                .verify()
+                .is_ok()
+        );
+
+        let empty_list = thumb_pop_program(0x0800_0100, 0xBC08, 0);
+        assert_eq!(
+            empty_list.verify(),
+            Err(VerifyError::InvalidThumbPopRegisterList(0))
+        );
+
+        let high_list_bit = thumb_pop_program(0x0800_0100, 0xBC08, 0x0108);
+        assert_eq!(
+            high_list_bit.verify(),
+            Err(VerifyError::InvalidThumbPopRegisterList(0x0108))
+        );
+
+        let mismatched_list = thumb_pop_program(0x0800_0100, 0xBC08, 0x10);
+        assert_eq!(
+            mismatched_list.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xBC08))
+        );
+
+        let pc_pop = thumb_pop_program(0x0800_0100, 0xBD08, 0x08);
+        assert_eq!(
+            pc_pop.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xBD08))
+        );
+
+        let wrong_format = thumb_pop_program(0x0800_0100, 0xBE08, 0x08);
+        assert_eq!(
+            wrong_format.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0xBE08))
+        );
+
+        let misaligned_pc = thumb_pop_program(0x0800_0101, 0xBC08, 0x08);
+        assert_eq!(
+            misaligned_pc.verify(),
+            Err(VerifyError::MisalignedThumbPc(0x0800_0101))
+        );
+
+        let mut missing_successor = thumb_pop_program(0x0800_0100, 0xBC08, 0x08);
+        missing_successor.thumb_instructions.pop();
+        missing_successor.branch_targets.clear();
+        assert_eq!(
+            missing_successor.verify(),
             Err(VerifyError::MissingSuccessor {
                 pc: 0x0800_0100,
                 target: 0x0800_0102,
@@ -1811,6 +1945,27 @@ mod tests {
         };
         let mut cpu = state(instruction.guest_pc);
         cpu.cpsr |= 0x20;
+        cpu.r[13] = 0x0300_0020;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn thumb_pop_requires_memory_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0xBC08,
+            operation: ThumbOperation::Pop {
+                register_list: 0x08,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[3] = 0x1234_5678;
         cpu.r[13] = 0x0300_0020;
         let before = cpu;
         assert_eq!(

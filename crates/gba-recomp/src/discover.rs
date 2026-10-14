@@ -644,6 +644,23 @@ fn process_thumb_instruction(
                 incoming,
             );
         }
+        ThumbOperation::Pop { register_list } => {
+            let mut next_state = state.clone();
+            for register in 0..8 {
+                if register_list & (1 << register) != 0 {
+                    next_state.registers[register] = AbstractValue::Unknown;
+                }
+            }
+            let bytes = register_list.count_ones().wrapping_mul(4);
+            next_state.registers[13] = state.registers[13].wrapping_add(bytes);
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::MovImmediate { rd, value } => {
             let mut next_state = state.clone();
             next_state.set_constant(rd, u32::from(value));
@@ -1269,6 +1286,86 @@ mod tests {
         assert_eq!(program.thumb_instructions[0].guest_pc, ROM_BASE + 0x84);
         assert_eq!(program.thumb_instructions[1].guest_pc, ROM_BASE + 0x86);
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn propagates_thumb_pop_register_and_wrapping_stack_effects() {
+        let guest_pc = ROM_BASE + 0x84;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xBC49,
+            operation: ThumbOperation::Pop {
+                register_list: 0x49,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        for register in 0..15 {
+            state.set_constant(register, 0x1000 + u32::from(register));
+        }
+        state.set_constant(13, u32::MAX - 3);
+
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+
+        let successor = (IsaMode::Thumb, guest_pc.wrapping_add(2));
+        assert_eq!(pending, VecDeque::from([successor]));
+        let next = &incoming[&successor];
+        for register in 0..8 {
+            let expected = if 0x49 & (1 << register) != 0 {
+                AbstractValue::Unknown
+            } else {
+                state.registers[register].clone()
+            };
+            assert_eq!(next.registers[register], expected, "r{register}");
+        }
+        assert_eq!(next.registers[13], AbstractValue::constant(8));
+        for register in 8..13 {
+            assert_eq!(
+                next.registers[register], state.registers[register],
+                "r{register}"
+            );
+        }
+        assert_eq!(next.registers[14], state.registers[14]);
+    }
+
+    #[test]
+    fn thumb_pop_preserves_unknown_stack_pointer_abstract_value() {
+        let guest_pc = ROM_BASE + 0x84;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0xBC08,
+            operation: ThumbOperation::Pop {
+                register_list: 0x08,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(3, 0x1234_5678);
+        state.set_constant(4, 0x8765_4321);
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+
+        let next = &incoming[&(IsaMode::Thumb, guest_pc.wrapping_add(2))];
+        assert_eq!(next.registers[3], AbstractValue::Unknown);
+        assert_eq!(next.registers[4], state.registers[4]);
+        assert_eq!(next.registers[13], AbstractValue::Unknown);
     }
 
     #[test]
