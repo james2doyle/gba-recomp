@@ -5,6 +5,10 @@
 <h1 align="center">GBA Recomp</h1>
 
 <p align="center">
+  <a href="https://recomp-paradise.github.io/gba-recomp/"><b>▶ Play the demo in your browser</b></a> · <a href="https://github.com/recomp-paradise/gba-recomp/releases">Downloads</a>
+</p>
+
+<p align="center">
   A static recompiler for Game Boy Advance games: <b>GBA ROM → LLVM → native executable</b>,<br>
   with a cycle-exact interpreted core as safety net, a desktop frontend, an external settings app and WebRTC party play.
 </p>
@@ -36,7 +40,7 @@ Code that cannot be translated safely (exception returns, `MSR`, `SWI`, code out
 | SDL3 window, audio, keyboard, gamepads (USB/Bluetooth), generic joysticks, GPIO buttons (Linux) | ✅ |
 | `gba-settings` (video, audio, controls, GPIO) and native macOS menu bar / context menu | ✅ |
 | `gba-party`: WebRTC rooms with text chat (voice, screens and link cable planned) | 🚧 phase 1 |
-| Targets: macOS, Linux x86-64/ARM64 (Raspberry Pi, Orange Pi), Windows, iOS, Android, WebAssembly | 🚧 see [platforms](#platforms) |
+| Targets: macOS, Linux x86-64/ARM64 (Raspberry Pi, Orange Pi), Windows, iOS, Android, WebAssembly | ✅ desktop + Web, 🟡 mobile – see [platforms](#platforms) |
 
 ## Quick start
 
@@ -72,13 +76,13 @@ Arrows = D-pad, **Z** = A, **X** = B, **Enter** = Start, **Backspace** = Select,
 | Target | Triple | Status |
 |---|---|---|
 | macOS (Apple Silicon) | `aarch64-apple-darwin` | ✅ built and verified locally |
-| macOS (Intel) | `x86_64-apple-darwin` | 🚧 CI |
-| Linux x86-64 | `x86_64-unknown-linux-gnu` | 🚧 CI |
-| Linux ARM64 – Raspberry Pi 4/5, Orange Pi | `aarch64-unknown-linux-gnu` | 🚧 CI |
-| Windows x86-64 | `x86_64-pc-windows-msvc` | 🚧 CI |
-| iOS / iPadOS | `aarch64-apple-ios` | 🚧 in progress |
-| Android | `aarch64-linux-android` | 🚧 in progress |
-| Web | `wasm32-unknown-emscripten` | 🚧 in progress |
+| macOS (Intel) | `x86_64-apple-darwin` | ✅ CI: cross-built, verified under Rosetta 2 |
+| Linux x86-64 | `x86_64-unknown-linux-gnu` | ✅ CI: demo verified against the interpreter |
+| Linux ARM64 – Raspberry Pi 4/5, Orange Pi | `aarch64-unknown-linux-gnu` | ✅ CI: demo verified against the interpreter |
+| Windows x86-64 | `x86_64-pc-windows-msvc` | ✅ CI: demo verified against the interpreter |
+| iOS / iPadOS | `aarch64-apple-ios` | 🟡 CI builds an unsigned `.ipa` and a simulator app; not run yet |
+| Android | `aarch64-linux-android` | 🟡 CI builds a debug-signed APK; not run on a device yet |
+| Web | `wasm32-unknown-emscripten` | ✅ [playable online](https://recomp-paradise.github.io/gba-recomp/) |
 
 Touch screens get an optional on-screen gamepad. See [SPEC-068](specs/SPEC-068-multiplatform-targets.md) for the target contract.
 
