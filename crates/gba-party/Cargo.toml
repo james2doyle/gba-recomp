@@ -1,0 +1,14 @@
+[package]
+name = "gba-party"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+gba-net = { path = "../gba-net" }
+gba-desktop = { path = "../gba-desktop" }
+eframe = { version = "=0.36.2", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
+
+[lints]
+workspace = true

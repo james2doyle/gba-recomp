@@ -68,3 +68,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-064 — Janela externa de configurações e dispositivos de entrada (USB, Bluetooth, GPIO)](SPEC-064-settings-app-input-devices.md)
 - [SPEC-065 — Código em RAM nativo com guards de conteúdo](SPEC-065-native-ram-code-guards.md)
 - [SPEC-066 — `bundle`: executável recompilado com a ROM embutida](SPEC-066-bundle-embedded-rom.md)
+- [SPEC-067 — Party em rede por WebRTC: sala, chat de texto, voz, telas e cabo link](SPEC-067-webrtc-party.md)

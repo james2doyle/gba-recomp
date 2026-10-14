@@ -299,7 +299,7 @@ fn make_app_bundle(dir: &Path, rom: &[u8], sha_hex: &str) -> Result<(), String> 
     let resources = contents.join("Resources");
     fs::create_dir_all(&macos).map_err(|e| e.to_string())?;
     fs::create_dir_all(&resources).map_err(|e| e.to_string())?;
-    for name in ["game", "gba-settings", "libSDL3.0.dylib"] {
+    for name in ["game", "gba-settings", "gba-party", "libSDL3.0.dylib"] {
         let from = dir.join(name);
         if from.exists() {
             fs::rename(&from, macos.join(name)).map_err(|e| format!("cannot move {name}: {e}"))?;
@@ -379,16 +379,19 @@ fn make_app_bundle(dir: &Path, rom: &[u8], sha_hex: &str) -> Result<(), String> 
 
 /// Copy `gba-settings` (EXT-64-03) when it was built next to gba-recomp.
 fn bundle_settings_app(package: &Path, sdl_name: &str) -> Result<bool, String> {
+    let settings = bundle_companion(package, sdl_name, "gba-settings")?;
+    // Party app (SPEC-067); optional like the settings app.
+    bundle_companion(package, sdl_name, "gba-party")?;
+    Ok(settings)
+}
+
+fn bundle_companion(package: &Path, sdl_name: &str, name: &str) -> Result<bool, String> {
     let exe = env::current_exe().map_err(|e| e.to_string())?;
-    let Some(source) = exe
-        .parent()
-        .map(|d| d.join("gba-settings"))
-        .filter(|p| p.is_file())
-    else {
+    let Some(source) = exe.parent().map(|d| d.join(name)).filter(|p| p.is_file()) else {
         return Ok(false);
     };
-    let target = package.join("gba-settings");
-    fs::copy(&source, &target).map_err(|e| format!("cannot bundle gba-settings: {e}"))?;
+    let target = package.join(name);
+    fs::copy(&source, &target).map_err(|e| format!("cannot bundle {name}: {e}"))?;
     #[cfg(target_os = "macos")]
     {
         let prefix =

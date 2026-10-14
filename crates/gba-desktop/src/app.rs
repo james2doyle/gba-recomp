@@ -167,30 +167,43 @@ const A_SAVE: u32 = 62;
 const A_MENU: u32 = 63;
 const A_QUIT: u32 = 64;
 const A_EXTERNAL: u32 = 65;
+const A_PARTY: u32 = 66;
 
 /// Launch `gba-settings` (EXT-64-02): next to this executable, then PATH.
 fn open_external_settings(settings_path: Option<&Path>) -> Result<(), String> {
     let path = settings_path.ok_or("no settings file location")?;
+    open_companion(
+        "gba-settings",
+        &[std::ffi::OsStr::new("--settings"), path.as_os_str()],
+    )
+}
+
+/// Launch a companion app shipped next to this executable (settings,
+/// party), falling back to PATH.
+fn open_companion(name: &str, args: &[&std::ffi::OsStr]) -> Result<(), String> {
     let exe_name = if cfg!(windows) {
-        "gba-settings.exe"
+        format!("{name}.exe")
     } else {
-        "gba-settings"
+        name.to_owned()
     };
+    let exe_name = exe_name.as_str();
     let local = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(|d| d.join(exe_name)))
         .filter(|p| p.is_file());
     let program = local.unwrap_or_else(|| PathBuf::from(exe_name));
     std::process::Command::new(&program)
-        .arg("--settings")
-        .arg(path)
+        .args(args)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("cannot start {} ({e})", program.display()))
 }
 
 /// macOS menu bar (CTX-63-02): app menu entries and top-level menus.
-const APP_MENU: [(u32, &str, &str); 1] = [(A_EXTERNAL, "Configurações…", ",")];
+const APP_MENU: [(u32, &str, &str); 2] = [
+    (A_EXTERNAL, "Configurações…", ","),
+    (A_PARTY, "Party em rede…", "p"),
+];
 
 fn menubar_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
     let mut items: Vec<CtxItem> = context_items(s, paused)
@@ -286,6 +299,7 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
         action(A_RESET, "Reiniciar jogo", false),
         action(A_SAVE, "Salvar agora", false),
         action(A_EXTERNAL, "Configurações…", false),
+        action(A_PARTY, "Party em rede…", false),
         action(A_MENU, "Menu na janela…", false),
         ctxmenu::CtxItem::Separator,
         action(A_QUIT, "Sair", false),
@@ -298,6 +312,7 @@ enum Effect {
     OpenMenu(Page),
     TogglePause,
     OpenExternal,
+    OpenParty,
     Reset,
     SaveNow,
     Quit,
@@ -330,6 +345,7 @@ fn context_effect(id: u32, s: &Settings) -> Effect {
         A_MENU => return Effect::OpenMenu(Page::Main),
         A_QUIT => return Effect::Quit,
         A_EXTERNAL => return Effect::OpenExternal,
+        A_PARTY => return Effect::OpenParty,
         _ => return Effect::None,
     }
     Effect::Settings(n)
@@ -681,6 +697,16 @@ pub fn run_app(
             }
             Effect::OpenMenu(page) => menu.open_at(page, &current),
             Effect::TogglePause => paused = !paused,
+            Effect::OpenParty => {
+                let msg = match open_companion("gba-party", &[]) {
+                    Ok(()) => "Party aberta".to_owned(),
+                    Err(e) => {
+                        eprintln!("gba-desktop: {e}");
+                        "gba-party nao encontrado".to_owned()
+                    }
+                };
+                status = Some((msg, Instant::now()));
+            }
             Effect::OpenExternal => {
                 let msg = match open_external_settings(settings_path.as_deref()) {
                     Ok(()) => "Janela de configuracoes aberta".to_owned(),
