@@ -166,6 +166,11 @@ fn register_ram_reset(bus: &mut Bus, flags: u32) {
         for addr in (0x0400_0000..0x0400_0060).step_by(2) {
             bus.poke16(addr, 0);
         }
+        // Affine BG2/BG3 matrices reset to identity (PA = PD = 1.0), as the
+        // BIOS does; games rely on it (KNO-007 EV-007-04/05).
+        for addr in [0x0400_0020, 0x0400_0026, 0x0400_0030, 0x0400_0036] {
+            bus.poke16(addr, 0x0100);
+        }
         for addr in (0x0400_00B0..0x0400_0120).step_by(2) {
             bus.poke16(addr, 0);
         }
