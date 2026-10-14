@@ -145,6 +145,25 @@ pub struct Bus {
     pub frame_ready: bool,
     pub frame_count: u64,
     pub hle: crate::bios::HleState,
+    /// Write generation per 1 KiB RAM page: EWRAM pages 0..256, IWRAM
+    /// pages 256..288 (SPEC-065 RAM-65-03).
+    pub ram_gen: Vec<u32>,
+    /// Pages holding natively compiled RAM code (RAM-65-04).
+    pub code_pages: Vec<bool>,
+    /// Set once a native program marked its code pages on this bus.
+    pub code_pages_marked: bool,
+}
+
+pub const RAM_PAGES: usize = 288;
+
+/// Page index of a RAM address for [`Bus::ram_gen`] (mirrors folded).
+#[inline]
+pub fn ram_page(addr: u32) -> Option<usize> {
+    match addr >> 24 {
+        0x02 => Some(((addr & 0x3FFFF) >> 10) as usize),
+        0x03 => Some(256 + ((addr & 0x7FFF) >> 10) as usize),
+        _ => None,
+    }
 }
 
 impl Bus {
@@ -200,6 +219,9 @@ impl Bus {
             frame_ready: false,
             frame_count: 0,
             hle: crate::bios::HleState::default(),
+            ram_gen: vec![0; RAM_PAGES],
+            code_pages: vec![false; RAM_PAGES],
+            code_pages_marked: false,
         };
         bus.update_waitstates();
         // Hardware reset values of the affine BG matrices: PA = PD = 1.0
@@ -368,7 +390,37 @@ impl Bus {
         }
     }
 
+    #[inline]
+    fn touch_ram(&mut self, addr: u32) {
+        if let Some(p) = ram_page(addr) {
+            self.ram_gen[p] = self.ram_gen[p].wrapping_add(1);
+        }
+    }
+
+    /// Current bytes of RAM at `addr` (no side effects, no cycles), for
+    /// native-code guards. `None` outside EWRAM/IWRAM or across a mirror end.
+    pub fn ram_bytes(&self, addr: u32, len: usize) -> Option<&[u8]> {
+        match addr >> 24 {
+            0x02 => {
+                let o = (addr & 0x3FFFF) as usize;
+                self.ewram.get(o..o.checked_add(len)?)
+            }
+            0x03 => {
+                let o = (addr & 0x7FFF) as usize;
+                self.iwram.get(o..o.checked_add(len)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a store to `addr` hits a page with compiled RAM code.
+    #[inline]
+    pub fn is_code_page(&self, addr: u32) -> bool {
+        ram_page(addr).is_some_and(|p| self.code_pages[p])
+    }
+
     fn write_raw16(&mut self, addr: u32, value: u16) {
+        self.touch_ram(addr);
         match addr >> 24 {
             0x02 => {
                 let a = (addr & 0x3FFFE) as usize;
@@ -395,6 +447,7 @@ impl Bus {
     }
 
     fn write_raw8(&mut self, addr: u32, value: u8) {
+        self.touch_ram(addr);
         match addr >> 24 {
             0x02 => self.ewram[(addr & 0x3FFFF) as usize] = value,
             0x03 => self.iwram[(addr & 0x7FFF) as usize] = value,

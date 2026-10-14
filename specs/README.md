@@ -66,3 +66,5 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-062 — Blocos nativos LLVM sobre o núcleo `gba-core` (`aot-compatible`)](SPEC-062-native-blocks-aot-compatible.md)
 - [SPEC-063 — Frontend do pacote recompilado, configurações e menu de contexto nativo](SPEC-063-recompiled-frontend-settings.md)
 - [SPEC-064 — Janela externa de configurações e dispositivos de entrada (USB, Bluetooth, GPIO)](SPEC-064-settings-app-input-devices.md)
+- [SPEC-065 — Código em RAM nativo com guards de conteúdo](SPEC-065-native-ram-code-guards.md)
+- [SPEC-066 — `bundle`: executável recompilado com a ROM embutida](SPEC-066-bundle-embedded-rom.md)

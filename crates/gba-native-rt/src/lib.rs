@@ -14,7 +14,7 @@ use gba_core::{NativeExec, NativeOutcome};
 
 mod cli;
 
-pub const NATIVE_ABI_VERSION: u32 = 1;
+pub const NATIVE_ABI_VERSION: u32 = 2;
 
 pub const EXIT_SEQ: u32 = 0;
 pub const EXIT_BRANCH: u32 = 1;
@@ -44,6 +44,26 @@ pub struct AotEntry {
     pub key: u32,
     pub index: u32,
     pub func: NativeFn,
+    /// Index into the guard table, or `u32::MAX` for ROM code (SPEC-065).
+    pub guard: u32,
+    pub reserved: u32,
+}
+
+/// Expected bytes of a RAM run (SPEC-065 RAM-65-02).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AotGuard {
+    pub addr: u32,
+    pub len: u32,
+    pub bytes: *const u8,
+}
+
+struct GuardState {
+    addr: u32,
+    bytes: &'static [u8],
+    pages: std::ops::RangeInclusive<usize>,
+    /// Generation sum of the pages at the last comparison and its result.
+    checked: Option<(u64, bool)>,
 }
 
 pub type NativeFn = unsafe extern "C" fn(*mut NativeCtx, u32) -> u32;
@@ -125,10 +145,11 @@ pub unsafe extern "C" fn gba_rt_read32(
 }
 
 #[inline]
-fn store_exit(addr: u32) -> u32 {
-    // Any I/O write may change IRQ, DMA, HALT, timer or waitstate state:
-    // finish the instruction and return to the dispatcher (NB-62-02).
-    u32::from(addr >> 24 == 0x04)
+fn store_exit(bus: &Bus, addr: u32) -> u32 {
+    // Any I/O write may change IRQ, DMA, HALT, timer or waitstate state
+    // (NB-62-02); a write to a page with compiled RAM code may invalidate
+    // it (RAM-65-04). Finish the instruction and return to the dispatcher.
+    u32::from(addr >> 24 == 0x04 || bus.is_code_page(addr))
 }
 
 /// # Safety
@@ -140,8 +161,12 @@ pub unsafe extern "C" fn gba_rt_write32(
     value: u32,
     seq: u32,
 ) -> u32 {
-    unsafe { with_bus(ctx, |bus| bus.write32(addr, value, seq != 0)) };
-    store_exit(addr)
+    unsafe {
+        with_bus(ctx, |bus| {
+            bus.write32(addr, value, seq != 0);
+            store_exit(bus, addr)
+        })
+    }
 }
 
 /// # Safety
@@ -153,8 +178,12 @@ pub unsafe extern "C" fn gba_rt_write16(
     value: u32,
     seq: u32,
 ) -> u32 {
-    unsafe { with_bus(ctx, |bus| bus.write16(addr, value as u16, seq != 0)) };
-    store_exit(addr)
+    unsafe {
+        with_bus(ctx, |bus| {
+            bus.write16(addr, value as u16, seq != 0);
+            store_exit(bus, addr)
+        })
+    }
 }
 
 /// # Safety
@@ -166,14 +195,20 @@ pub unsafe extern "C" fn gba_rt_write8(
     value: u32,
     seq: u32,
 ) -> u32 {
-    unsafe { with_bus(ctx, |bus| bus.write8(addr, value as u8, seq != 0)) };
-    store_exit(addr)
+    unsafe {
+        with_bus(ctx, |bus| {
+            bus.write8(addr, value as u8, seq != 0);
+            store_exit(bus, addr)
+        })
+    }
 }
 
 // ------------------------------------------------------------------ dispatcher
 
 #[derive(Clone, Debug, Default)]
 pub struct NativeCounters {
+    pub guard_failures: u64,
+    pub guard_compares: u64,
     pub retired: u64,
     pub exits_seq: u64,
     pub exits_branch: u64,
@@ -181,7 +216,9 @@ pub struct NativeCounters {
 }
 
 pub struct NativeProgram {
-    map: HashMap<u32, (NativeFn, u32)>,
+    /// Per key: (function, resume index, guard or `u32::MAX`).
+    map: HashMap<u32, Vec<(NativeFn, u32, u32)>>,
+    guards: Vec<GuardState>,
     wait: Box<[u8; 65]>,
     last_waitcnt: Option<u16>,
     pub counters: NativeCounters,
@@ -189,13 +226,34 @@ pub struct NativeProgram {
 
 impl NativeProgram {
     /// Build the lookup table from the generated entry array.
-    pub fn new(entries: &[AotEntry]) -> Self {
-        let mut map = HashMap::with_capacity(entries.len());
+    pub fn new(entries: &[AotEntry], guards: &[AotGuard]) -> Self {
+        let mut map: HashMap<u32, Vec<(NativeFn, u32, u32)>> =
+            HashMap::with_capacity(entries.len());
         for e in entries {
-            map.insert(e.key, (e.func, e.index));
+            map.entry(e.key)
+                .or_default()
+                .push((e.func, e.index, e.guard));
         }
+        let guards = guards
+            .iter()
+            .map(|g| {
+                // SAFETY: the generated object keeps the guard bytes alive
+                // for the whole program.
+                let bytes: &'static [u8] =
+                    unsafe { std::slice::from_raw_parts(g.bytes, g.len as usize) };
+                let first = gba_core::bus::ram_page(g.addr).unwrap_or(0);
+                let last = gba_core::bus::ram_page(g.addr + g.len.max(1) - 1).unwrap_or(first);
+                GuardState {
+                    addr: g.addr,
+                    bytes,
+                    pages: first..=last.max(first),
+                    checked: None,
+                }
+            })
+            .collect();
         Self {
             map,
+            guards,
             wait: Box::new([0; 65]),
             last_waitcnt: None,
             counters: NativeCounters::default(),
@@ -204,6 +262,36 @@ impl NativeProgram {
 
     pub fn len(&self) -> usize {
         self.map.len()
+    }
+
+    pub fn guard_count(&self) -> usize {
+        self.guards.len()
+    }
+
+    fn mark_code_pages(&self, bus: &mut Bus) {
+        bus.code_pages.fill(false);
+        for g in &self.guards {
+            for p in g.pages.clone() {
+                bus.code_pages[p] = true;
+            }
+        }
+        bus.code_pages_marked = true;
+    }
+
+    /// RAM-65-03: bytes must match; the page generation sum skips the
+    /// comparison when nothing was written since the last check.
+    fn guard_ok(&mut self, i: usize, bus: &Bus) -> bool {
+        let g = &mut self.guards[i];
+        let sum: u64 = g.pages.clone().map(|p| u64::from(bus.ram_gen[p])).sum();
+        if let Some((s, ok)) = g.checked
+            && s == sum
+        {
+            return ok;
+        }
+        self.counters.guard_compares += 1;
+        let ok = bus.ram_bytes(g.addr, g.bytes.len()) == Some(g.bytes);
+        g.checked = Some((sum, ok));
+        ok
     }
 
     pub fn is_empty(&self) -> bool {
@@ -215,7 +303,26 @@ impl NativeExec for NativeProgram {
     fn run(&mut self, cpu: &mut Cpu, bus: &mut Bus) -> NativeOutcome {
         let thumb = cpu.thumb();
         let key = cpu.pc() | u32::from(thumb);
-        let Some(&(func, index)) = self.map.get(&key) else {
+        let Some(candidates) = self.map.get(&key) else {
+            return NativeOutcome::Miss;
+        };
+        let mut chosen = None;
+        let candidates = candidates.clone();
+        for (func, index, guard) in candidates {
+            if guard == u32::MAX {
+                chosen = Some((func, index));
+                break;
+            }
+            if !bus.code_pages_marked {
+                self.mark_code_pages(bus);
+            }
+            if self.guard_ok(guard as usize, bus) {
+                chosen = Some((func, index));
+                break;
+            }
+        }
+        let Some((func, index)) = chosen else {
+            self.counters.guard_failures += 1;
             return NativeOutcome::Miss;
         };
         if self.last_waitcnt != Some(bus.waitcnt) {
@@ -276,12 +383,17 @@ impl NativeExec for NativeProgram {
 /// `argv` must hold `argc` valid C strings; `entries` must point at `count`
 /// rows and `sha256` at 32 bytes, all with static lifetime.
 #[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gba_native_main(
     argc: c_int,
     argv: *const *const c_char,
     entries: *const AotEntry,
     count: u32,
     sha256: *const u8,
+    guards: *const AotGuard,
+    guard_count: u32,
+    rom: *const u8,
+    rom_len: u64,
 ) -> c_int {
     let args: Vec<String> = (0..argc.max(0) as usize)
         .map(|i| {
@@ -297,11 +409,77 @@ pub unsafe extern "C" fn gba_native_main(
     let sha = unsafe { std::slice::from_raw_parts(sha256, 32) };
     let mut expected = [0u8; 32];
     expected.copy_from_slice(sha);
-    match cli::run(&args, entries, expected) {
+    // SAFETY: caller contract (generated table).
+    let guards = if guard_count == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(guards, guard_count as usize) }
+    };
+    // SAFETY: an embedded ROM (SPEC-066) is a static constant in the image.
+    let embedded: Option<&'static [u8]> = (!rom.is_null() && rom_len > 0)
+        .then(|| unsafe { std::slice::from_raw_parts(rom, rom_len as usize) });
+    match cli::run(&args, entries, guards, embedded, expected) {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("gba-native: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gba_core::{Gba, GbaConfig};
+
+    unsafe extern "C" fn fake_run(ctx: *mut NativeCtx, _entry: u32) -> u32 {
+        // Pretend one instruction ran and stay at the same PC.
+        unsafe { (*ctx).retired = 1 };
+        EXIT_SEQ
+    }
+
+    #[test]
+    fn ram_guard_rejects_changed_bytes_and_accepts_restored_ones() {
+        static EXPECTED: [u8; 4] = [0x01, 0x20, 0x70, 0x47]; // movs r0,#1; bx lr
+        let rom = vec![0u8; 0x200];
+        let mut gba = Gba::new(GbaConfig {
+            rom: &rom,
+            bios: None,
+            backup: None,
+            save: None,
+        });
+        let entries = [AotEntry {
+            key: 0x0300_0000 | 1,
+            index: 0,
+            func: fake_run,
+            guard: 0,
+            reserved: 0,
+        }];
+        let guards = [AotGuard {
+            addr: 0x0300_0000,
+            len: 4,
+            bytes: EXPECTED.as_ptr(),
+        }];
+        let mut program = NativeProgram::new(&entries, &guards);
+        gba.cpu.write_cpsr(gba.cpu.cpsr | gba_core::cpu::FLAG_T);
+        gba.cpu.set_pc(0x0300_0000);
+
+        // RAM still zero: guard fails → miss.
+        assert_eq!(program.run(&mut gba.cpu, &mut gba.bus), NativeOutcome::Miss);
+        assert_eq!(program.counters.guard_failures, 1);
+        assert!(gba.bus.is_code_page(0x0300_0010), "code pages are marked");
+
+        for (i, b) in EXPECTED.iter().enumerate() {
+            gba.bus.poke8(0x0300_0000 + i as u32, *b);
+        }
+        assert_eq!(program.run(&mut gba.cpu, &mut gba.bus), NativeOutcome::Ran);
+        let compares = program.counters.guard_compares;
+        // No write since the last check: the generation sum skips memcmp.
+        assert_eq!(program.run(&mut gba.cpu, &mut gba.bus), NativeOutcome::Ran);
+        assert_eq!(program.counters.guard_compares, compares);
+
+        // Overwrite the code (e.g. a DMA or CPU store): miss again.
+        gba.bus.poke8(0x0300_0002, 0xFF);
+        assert_eq!(program.run(&mut gba.cpu, &mut gba.bus), NativeOutcome::Miss);
     }
 }

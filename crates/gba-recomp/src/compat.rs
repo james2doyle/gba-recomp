@@ -10,17 +10,25 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use gba_core::{Gba, GbaConfig};
 use gba_llvm::Optimization;
-use gba_llvm::native::{Entry, emit_native_objects};
+use gba_llvm::native::{Entry, RamEntry, emit_native_objects};
 use sha2::{Digest, Sha256};
 
 pub struct ProfileOptions {
     pub frames: u64,
     pub inputs: Vec<(u64, u64, u16)>,
     pub follow_direct_branches: bool,
+    /// Compile code observed in EWRAM/IWRAM with content guards (SPEC-065).
+    pub ram_code: bool,
+    /// Embed the ROM in the executable (`bundle`, SPEC-066).
+    pub embed_rom: bool,
 }
+
+const RAM_SNAPSHOT: usize = 4096;
+const RAM_VARIANTS: usize = 4;
 
 pub struct Profile {
     pub entries: Vec<Entry>,
+    pub ram_entries: Vec<RamEntry>,
     pub instructions: u64,
     pub rom_instructions: u64,
     pub outside_rom_instructions: u64,
@@ -104,6 +112,7 @@ pub fn profile(rom: &[u8], options: &ProfileOptions) -> Profile {
         save: None,
     });
     let mut entries = BTreeSet::new();
+    let mut ram: std::collections::BTreeMap<(u32, bool), Vec<Vec<u8>>> = Default::default();
     let mut prev: Option<(u32, bool)> = None;
     let mut rom_count = 0u64;
     let mut other = 0u64;
@@ -136,13 +145,25 @@ pub fn profile(rom: &[u8], options: &ProfileOptions) -> Profile {
                 }
             } else {
                 other += 1;
+                if options.ram_code && !sequential && matches!(pc >> 24, 0x02 | 0x03) {
+                    record_ram_variant(&gba, &mut ram, pc, thumb);
+                }
             }
             prev = Some((pc, thumb));
         }
         gba.take_audio();
     }
+    let ram_entries = ram
+        .into_iter()
+        .flat_map(|((pc, thumb), variants)| {
+            variants
+                .into_iter()
+                .map(move |bytes| RamEntry { pc, thumb, bytes })
+        })
+        .collect();
     Profile {
         entries: entries.into_iter().collect(),
+        ram_entries,
         instructions: gba.instructions,
         rom_instructions: rom_count,
         outside_rom_instructions: other,
@@ -301,6 +322,29 @@ fn bundle_settings_app(package: &Path, sdl_name: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+/// RAM-65-01: snapshot the bytes at a RAM entry the first time each
+/// distinct content is seen (up to RAM_VARIANTS per entry).
+fn record_ram_variant(
+    gba: &Gba,
+    ram: &mut std::collections::BTreeMap<(u32, bool), Vec<Vec<u8>>>,
+    pc: u32,
+    thumb: bool,
+) {
+    let variants = ram.entry((pc, thumb)).or_default();
+    let region_size: u32 = if pc >> 24 == 0x02 { 0x4_0000 } else { 0x8000 };
+    let offset = pc & (region_size - 1);
+    let available = (region_size - offset) as usize;
+    let Some(probe) = gba.bus.ram_bytes(pc, available.min(16)) else {
+        return;
+    };
+    if variants.iter().any(|v| v.starts_with(probe)) || variants.len() >= RAM_VARIANTS {
+        return;
+    }
+    if let Some(snapshot) = gba.bus.ram_bytes(pc, available.min(RAM_SNAPSHOT)) {
+        variants.push(snapshot.to_vec());
+    }
+}
+
 fn link(
     objects: &[PathBuf],
     runtime: &Path,
@@ -406,7 +450,9 @@ pub fn build_package(
             &rom,
             sha,
             &profile.entries,
+            &profile.ram_entries,
             options.follow_direct_branches,
+            options.embed_rom,
             &temporary,
             optimization,
             threads,
@@ -428,7 +474,7 @@ pub fn build_package(
             .map(|(f, l, k)| format!("\"{f}:{l}:0x{k:03X}\""))
             .collect();
         let manifest = format!(
-            "{{\n  \"format_version\": 2,\n  \"execution_mode\": \"aot-compatible\",\n  \"rom_sha256\": \"{sha_hex}\",\n  \"rom_size\": {},\n  \"core_version\": {},\n  \"hle_bios_version\": {},\n  \"native_abi_version\": 1,\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"interpreter\": \"gba-core (linked, used for shells, misses and non-ROM code)\",\n  \"jit\": false,\n  \"profile\": {{\"frames\": {}, \"inputs\": [{}], \"instructions\": {}, \"rom_instructions\": {}, \"outside_rom_instructions\": {}, \"entries\": {}, \"seconds\": {:.3}}},\n  \"native\": {{\"runs\": {}, \"instructions\": {}, \"shell_sites\": {}, \"static_entries\": {}, \"follow_direct_branches\": {}, \"emit_seconds\": {:.3}, \"link_seconds\": {:.3}}},\n  \"frontend\": \"sdl3 window by default (bundled {sdl_name}); --headless for scripted runs\",\n  \"settings_app\": {settings_app},\n  \"coverage_limits\": \"only ROM code is native; RAM code, shells and misses run in the interpreter and are counted at runtime\"\n}}\n",
+            "{{\n  \"format_version\": 2,\n  \"execution_mode\": \"aot-compatible\",\n  \"rom_sha256\": \"{sha_hex}\",\n  \"rom_size\": {},\n  \"core_version\": {},\n  \"hle_bios_version\": {},\n  \"native_abi_version\": 1,\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"interpreter\": \"gba-core (linked, used for shells, misses and non-ROM code)\",\n  \"jit\": false,\n  \"profile\": {{\"frames\": {}, \"inputs\": [{}], \"instructions\": {}, \"rom_instructions\": {}, \"outside_rom_instructions\": {}, \"entries\": {}, \"seconds\": {:.3}}},\n  \"rom_embedded\": {}, \"native\": {{\"runs\": {}, \"instructions\": {}, \"ram_runs\": {}, \"ram_instructions\": {}, \"ram_entries\": {}, \"shell_sites\": {}, \"static_entries\": {}, \"follow_direct_branches\": {}, \"emit_seconds\": {:.3}, \"link_seconds\": {:.3}}},\n  \"frontend\": \"sdl3 window by default (bundled {sdl_name}); --headless for scripted runs\",\n  \"settings_app\": {settings_app},\n  \"coverage_limits\": \"only ROM code is native; RAM code, shells and misses run in the interpreter and are counted at runtime\"\n}}\n",
             rom.len(),
             gba_core::CORE_VERSION,
             gba_core::bios::HLE_VERSION,
@@ -442,8 +488,12 @@ pub fn build_package(
             profile.outside_rom_instructions,
             profile.entries.len(),
             profile.seconds,
+            options.embed_rom,
             s.runs,
             s.instructions,
+            s.ram_runs,
+            s.ram_instructions,
+            profile.ram_entries.len(),
             s.shells,
             s.entries_static,
             options.follow_direct_branches,

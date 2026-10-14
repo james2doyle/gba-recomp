@@ -40,6 +40,8 @@ pub struct Entry {
 
 #[derive(Clone, Debug, Default)]
 pub struct NativeStats {
+    pub ram_runs: usize,
+    pub ram_instructions: usize,
     pub runs: usize,
     pub instructions: usize,
     pub shells: usize,
@@ -246,6 +248,93 @@ struct Run {
     ops: Vec<u32>,
     /// Address to continue at if the run ends without a terminator.
     tail: Option<u32>,
+    /// Content guard for code in RAM (SPEC-065): index into the guards.
+    guard: Option<usize>,
+}
+
+/// Code observed in EWRAM/IWRAM during profiling (SPEC-065 RAM-65-01):
+/// entry point plus the bytes present when it executed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RamEntry {
+    pub pc: u32,
+    pub thumb: bool,
+    pub bytes: Vec<u8>,
+}
+
+/// Decode one RAM run from its snapshot: opcodes, tail and bytes covered.
+fn ram_run(e: &RamEntry) -> Option<(Vec<u32>, Option<u32>, usize)> {
+    let size = if e.thumb { 2 } else { 4 };
+    let mut ops = Vec::new();
+    let mut off = 0usize;
+    let mut tail = None;
+    while off + size <= e.bytes.len() {
+        let b = &e.bytes[off..off + size];
+        let op = if e.thumb {
+            u32::from(u16::from_le_bytes([b[0], b[1]]))
+        } else {
+            u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+        };
+        ops.push(op);
+        off += size;
+        let flow = if e.thumb {
+            thumb_flow(op)
+        } else {
+            arm_flow(op)
+        };
+        if flow == Flow::Terminate {
+            break;
+        }
+        if ops.len() >= MAX_RUN || off + size > e.bytes.len() {
+            tail = Some(e.pc.wrapping_add(off as u32));
+            break;
+        }
+    }
+    (!ops.is_empty()).then_some((ops, tail, off))
+}
+
+pub struct Guard {
+    pub addr: u32,
+    pub bytes: Vec<u8>,
+}
+
+/// RAM runs and their guards; entries already covered by an identical
+/// earlier run (same bytes at the same address) reuse its resume index.
+fn build_ram_runs(entries: &[RamEntry], guards: &mut Vec<Guard>) -> Vec<Run> {
+    let mut runs: Vec<Run> = Vec::new();
+    for e in entries {
+        let covered = runs.iter().any(|r| {
+            let g = &guards[r.guard.expect("RAM runs have guards")];
+            let size = if r.entry.thumb { 2 } else { 4 };
+            r.entry.thumb == e.thumb
+                && e.pc >= g.addr
+                && e.pc < g.addr + g.bytes.len() as u32
+                && (e.pc - g.addr) % size == 0
+                && {
+                    let off = (e.pc - g.addr) as usize;
+                    let n = (g.bytes.len() - off).min(e.bytes.len());
+                    g.bytes[off..off + n] == e.bytes[..n]
+                }
+        });
+        if covered {
+            continue;
+        }
+        if let Some((ops, tail, len)) = ram_run(e) {
+            guards.push(Guard {
+                addr: e.pc,
+                bytes: e.bytes[..len].to_vec(),
+            });
+            runs.push(Run {
+                entry: Entry {
+                    pc: e.pc,
+                    thumb: e.thumb,
+                },
+                ops,
+                tail,
+                guard: Some(guards.len() - 1),
+            });
+        }
+    }
+    runs
 }
 
 fn rom_word(rom: &[u8], addr: u32, thumb: bool) -> Option<u32> {
@@ -329,7 +418,12 @@ fn build_runs(rom: &[u8], entries: &[Entry], follow: bool, stats: &mut NativeSta
         if ops.is_empty() {
             continue;
         }
-        runs.push(Run { entry, ops, tail });
+        runs.push(Run {
+            entry,
+            ops,
+            tail,
+            guard: None,
+        });
     }
     stats.entries_static = seen_static.len();
     runs
@@ -1760,11 +1854,14 @@ fn emit_run(e: &Emitter, run: &Run, name: &str) -> LLVMValueRef {
 /// Emit native runs for `entries` as several objects compiled in parallel
 /// (one LLVM context per shard) plus one object with the lookup table and
 /// `main`, which hands control to `gba_native_main` in `gba-native-rt`.
+#[allow(clippy::too_many_arguments)]
 pub fn emit_native_objects(
     rom: &[u8],
     rom_sha256: [u8; 32],
     entries: &[Entry],
+    ram_entries: &[RamEntry],
     follow_direct_branches: bool,
+    embed_rom: bool,
     out_dir: &Path,
     optimization: Optimization,
     threads: usize,
@@ -1773,7 +1870,12 @@ pub fn emit_native_objects(
         entries_in: entries.len(),
         ..NativeStats::default()
     };
-    let runs = build_runs(rom, entries, follow_direct_branches, &mut stats);
+    let mut runs = build_runs(rom, entries, follow_direct_branches, &mut stats);
+    let mut guards = Vec::new();
+    let ram_runs = build_ram_runs(ram_entries, &mut guards);
+    stats.ram_runs = ram_runs.len();
+    stats.ram_instructions = ram_runs.iter().map(|r| r.ops.len()).sum();
+    runs.extend(ram_runs);
     stats.runs = runs.len();
     stats.instructions = runs.iter().map(|r| r.ops.len()).sum();
     stats.shells = runs
@@ -1837,7 +1939,7 @@ pub fn emit_native_objects(
             // SAFETY: as above.
             unsafe {
                 with_module(&table_out, optimization, |e| {
-                    build_table(e, rom_sha256, &runs)
+                    build_table(e, rom_sha256, &runs, &guards, embed_rom.then_some(rom))
                 })
             }
         });
@@ -1871,7 +1973,10 @@ pub fn emit_native_objects(
 
 fn run_name(run: &Run) -> String {
     let mode = if run.entry.thumb { 't' } else { 'a' };
-    format!("gba_run_{mode}_{:08x}", run.entry.pc)
+    match run.guard {
+        None => format!("gba_run_{mode}_{:08x}", run.entry.pc),
+        Some(g) => format!("gba_run_{mode}_{:08x}_g{g}", run.entry.pc),
+    }
 }
 
 /// Create a context/module/target for one object, let `build` fill it, then
@@ -2002,30 +2107,39 @@ unsafe fn make_emitter(
 }
 
 /// Table of every resume entry, ROM hash and `main`.
-fn build_table(e: &Emitter, rom_sha256: [u8; 32], runs: &[Run]) -> Result<(), String> {
+fn build_table(
+    e: &Emitter,
+    rom_sha256: [u8; 32],
+    runs: &[Run],
+    guards: &[Guard],
+    rom: Option<&[u8]>,
+) -> Result<(), String> {
     let context = e.context;
     let module = e.module;
-    let mut table: BTreeMap<u32, (LLVMValueRef, u32)> = BTreeMap::new();
+    // ROM rows are unique per key; RAM rows may have several guarded
+    // variants for the same key (RAM-65-02).
+    let mut table: BTreeMap<(u32, u32), (LLVMValueRef, u32)> = BTreeMap::new();
     for run in runs {
         let name = CString::new(run_name(run)).expect("no NUL");
         // SAFETY: declares an external function defined in a shard object.
         let func = unsafe { LLVMAddFunction(module, name.as_ptr(), e.t.run_fn) };
         let size = if run.entry.thumb { 2 } else { 4 };
+        let guard = run.guard.map_or(u32::MAX, |g| g as u32);
         for k in 0..run.ops.len() as u32 {
             let key = run.entry.pc.wrapping_add(k * size) | u32::from(run.entry.thumb);
-            table.entry(key).or_insert((func, k));
+            table.entry((key, guard)).or_insert((func, k));
         }
     }
     // SAFETY: constants and globals created in this module's context.
     unsafe {
         let i8 = LLVMInt8TypeInContext(context);
-        let mut row_fields = [e.t.i32, e.t.i32, e.t.ptr];
-        let row_t = LLVMStructTypeInContext(context, row_fields.as_mut_ptr(), 3, 0);
+        let mut row_fields = [e.t.i32, e.t.i32, e.t.ptr, e.t.i32, e.t.i32];
+        let row_t = LLVMStructTypeInContext(context, row_fields.as_mut_ptr(), 5, 0);
         let mut rows: Vec<LLVMValueRef> = table
             .iter()
-            .map(|(&key, &(func, index))| {
-                let mut vals = [e.c32(key), e.c32(index), func];
-                LLVMConstNamedStruct(row_t, vals.as_mut_ptr(), 3)
+            .map(|(&(key, guard), &(func, index))| {
+                let mut vals = [e.c32(key), e.c32(index), func, e.c32(guard), e.c32(0)];
+                LLVMConstNamedStruct(row_t, vals.as_mut_ptr(), 5)
             })
             .collect();
         let rows_t = LLVMArrayType2(row_t, rows.len() as u64);
@@ -2045,8 +2159,59 @@ fn build_table(e: &Emitter, rom_sha256: [u8; 32], runs: &[Run]) -> Result<(), St
         LLVMSetGlobalConstant(sha_g, 1);
         LLVMSetLinkage(sha_g, LLVMLinkage::LLVMInternalLinkage);
 
-        let mut nm = [e.t.i32, e.t.ptr, e.t.ptr, e.t.i32, e.t.ptr];
-        let native_main_t = LLVMFunctionType(e.t.i32, nm.as_mut_ptr(), 5, 0);
+        // Guards: { i32 addr, i32 len, ptr bytes }.
+        let mut guard_fields = [e.t.i32, e.t.i32, e.t.ptr];
+        let guard_t = LLVMStructTypeInContext(context, guard_fields.as_mut_ptr(), 3, 0);
+        let mut guard_rows: Vec<LLVMValueRef> = Vec::with_capacity(guards.len());
+        for (i, g) in guards.iter().enumerate() {
+            let name = CString::new(format!("gba_aot_guard_bytes_{i}")).expect("no NUL");
+            let data =
+                LLVMConstStringInContext2(context, g.bytes.as_ptr().cast(), g.bytes.len(), 1);
+            let gv = LLVMAddGlobal(
+                module,
+                LLVMArrayType2(i8, g.bytes.len() as u64),
+                name.as_ptr(),
+            );
+            LLVMSetInitializer(gv, data);
+            LLVMSetGlobalConstant(gv, 1);
+            LLVMSetLinkage(gv, LLVMLinkage::LLVMInternalLinkage);
+            let mut vals = [e.c32(g.addr), e.c32(g.bytes.len() as u32), gv];
+            guard_rows.push(LLVMConstNamedStruct(guard_t, vals.as_mut_ptr(), 3));
+        }
+        let guards_g = LLVMAddGlobal(
+            module,
+            LLVMArrayType2(guard_t, guard_rows.len() as u64),
+            c"gba_aot_guards".as_ptr(),
+        );
+        LLVMSetInitializer(
+            guards_g,
+            LLVMConstArray2(guard_t, guard_rows.as_mut_ptr(), guard_rows.len() as u64),
+        );
+        LLVMSetGlobalConstant(guards_g, 1);
+        LLVMSetLinkage(guards_g, LLVMLinkage::LLVMInternalLinkage);
+
+        // Embedded ROM for `bundle` packages (SPEC-066), else null/0.
+        let (rom_ptr, rom_len) = match rom {
+            Some(bytes) => {
+                let data =
+                    LLVMConstStringInContext2(context, bytes.as_ptr().cast(), bytes.len(), 1);
+                let gv = LLVMAddGlobal(
+                    module,
+                    LLVMArrayType2(i8, bytes.len() as u64),
+                    c"gba_aot_rom".as_ptr(),
+                );
+                LLVMSetInitializer(gv, data);
+                LLVMSetGlobalConstant(gv, 1);
+                LLVMSetLinkage(gv, LLVMLinkage::LLVMInternalLinkage);
+                (gv, bytes.len() as u64)
+            }
+            None => (LLVMConstNull(e.t.ptr), 0),
+        };
+
+        let mut nm = [
+            e.t.i32, e.t.ptr, e.t.ptr, e.t.i32, e.t.ptr, e.t.ptr, e.t.i32, e.t.ptr, e.t.i64,
+        ];
+        let native_main_t = LLVMFunctionType(e.t.i32, nm.as_mut_ptr(), nm.len() as u32, 0);
         let native_main = LLVMAddFunction(module, c"gba_native_main".as_ptr(), native_main_t);
         let mut mp = [e.t.i32, e.t.ptr];
         let main_t = LLVMFunctionType(e.t.i32, mp.as_mut_ptr(), 2, 0);
@@ -2059,6 +2224,10 @@ fn build_table(e: &Emitter, rom_sha256: [u8; 32], runs: &[Run]) -> Result<(), St
             rows_g,
             e.c32(rows.len() as u32),
             sha_g,
+            guards_g,
+            e.c32(guard_rows.len() as u32),
+            rom_ptr,
+            e.c64(rom_len),
         ];
         let r = e.call(native_main_t, native_main, &mut args);
         LLVMBuildRet(e.b, r);

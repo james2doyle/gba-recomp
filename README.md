@@ -26,6 +26,13 @@ target/release/gba-recomp compile --rom jogo.gba --out out/jogo --opt O2 --mode 
 out/jogo/game --rom jogo.gba --save out/jogo.sav
 ```
 
+Para uso pessoal, `bundle` gera o mesmo pacote com a ROM embutida no executável (dispensa `--rom`; não redistribua):
+
+```bash
+target/release/gba-recomp bundle --rom jogo.gba --out out/jogo-bundle
+out/jogo-bundle/game --save out/jogo.sav
+```
+
 O `compile` executa o jogo no interpretador para descobrir o código usado (perfil, opcionalmente com `--profile-input FRAME:LEN:TECLAS`), compila esse código da ROM com LLVM e gera um executável com a SDL3 embutida. Na janela: `Esc`/`F1` abre o menu (vídeo, áudio, controles), o botão direito abre o menu de contexto nativo (macOS) ou o menu da janela (Linux), `F11` alterna tela cheia e `Tab` acelera. O botão direito (ou o menu SDL) também abre **Configurações…**, a janela externa `gba-settings` (vídeo, áudio, controles USB/Bluetooth/joystick genérico e GPIO no Linux), cujas mudanças o jogo aplica ao vivo. `--headless --frames N --verify-interpreter` compara o código nativo com o interpretador ciclo a ciclo. Código em RAM, shells e misses rodam no interpretador e aparecem nas métricas (SPEC-062/063).
 
 - [Arquitetura](docs/architecture.md) e [fluxo do usuário](docs/product-flow.md).

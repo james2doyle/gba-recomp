@@ -19,6 +19,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
     let mut rom = None;
     let mut o = AppOptions {
         rom: PathBuf::new(),
+        rom_bytes: None,
         bios: None,
         save: None,
         backup: None,

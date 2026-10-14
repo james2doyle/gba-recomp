@@ -7,10 +7,10 @@ use std::time::Instant;
 use gba_core::{BackupKind, Gba, GbaConfig, SCREEN_HEIGHT, SCREEN_WIDTH, keys};
 use sha2::{Digest, Sha256};
 
-use crate::{AotEntry, NativeProgram};
+use crate::{AotEntry, AotGuard, NativeProgram};
 
 struct Options {
-    rom: PathBuf,
+    rom: Option<PathBuf>,
     bios: Option<PathBuf>,
     save: Option<PathBuf>,
     backup: Option<BackupKind>,
@@ -54,7 +54,7 @@ fn parse_keys(text: &str) -> Result<u16, String> {
 fn parse(args: &[String]) -> Result<Options, String> {
     let mut it = args.iter().skip(1);
     let mut o = Options {
-        rom: PathBuf::new(),
+        rom: None,
         bios: None,
         save: None,
         backup: None,
@@ -107,7 +107,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             _ => return Err(format!("unknown argument `{flag}`\n{USAGE}")),
         }
     }
-    o.rom = rom.ok_or_else(|| USAGE.to_owned())?;
+    o.rom = rom;
     Ok(o)
 }
 
@@ -122,9 +122,24 @@ fn write_ppm(path: &PathBuf, gba: &Gba) -> Result<(), String> {
     fs::write(path, data).map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
-pub fn run(args: &[String], entries: &[AotEntry], sha256: [u8; 32]) -> Result<(), String> {
+pub fn run(
+    args: &[String],
+    entries: &[AotEntry],
+    guards: &[AotGuard],
+    embedded: Option<&'static [u8]>,
+    sha256: [u8; 32],
+) -> Result<(), String> {
     let o = parse(args)?;
-    let rom = fs::read(&o.rom).map_err(|e| format!("cannot read ROM: {e}"))?;
+    // SPEC-066: a bundled package carries its ROM; `--rom` still overrides.
+    let rom = match (&o.rom, embedded) {
+        (Some(path), _) => fs::read(path).map_err(|e| format!("cannot read ROM: {e}"))?,
+        (None, Some(bytes)) => bytes.to_vec(),
+        (None, None) => {
+            return Err(format!(
+                "this package needs the game ROM: --rom <file.gba>\n{USAGE}"
+            ));
+        }
+    };
     let digest: [u8; 32] = Sha256::digest(&rom).into();
     if digest != sha256 {
         return Err(format!(
@@ -134,7 +149,7 @@ pub fn run(args: &[String], entries: &[AotEntry], sha256: [u8; 32]) -> Result<()
         ));
     }
     if !o.headless {
-        return run_window(&o, entries);
+        return run_window(&o, entries, guards, rom, sha256);
     }
     let bios = match &o.bios {
         Some(p) => Some(fs::read(p).map_err(|e| format!("cannot read BIOS: {e}"))?),
@@ -154,7 +169,7 @@ pub fn run(args: &[String], entries: &[AotEntry], sha256: [u8; 32]) -> Result<()
     };
     let mut gba = make();
     let mut reference = if o.verify { Some(make()) } else { None };
-    let mut program = NativeProgram::new(entries);
+    let mut program = NativeProgram::new(entries, guards);
     let started = Instant::now();
     let mut fault = None;
     let mut divergence = None;
@@ -224,7 +239,7 @@ pub fn run(args: &[String], entries: &[AotEntry], sha256: [u8; 32]) -> Result<()
     let c = &program.counters;
     let total = c.retired + gba.instructions;
     println!(
-        "{{\"execution_mode\":\"aot-compatible\",\"native_abi\":{},\"core\":{},\"hle_bios\":{},\"entries\":{},\"frames\":{frame},\"instructions_native\":{},\"instructions_interpreted\":{},\"native_ratio\":{:.6},\"dispatcher_misses\":{},\"shells\":{},\"exits_seq\":{},\"exits_branch\":{},\"exits_interpret\":{},\"guest_cycles\":{},\"frame_hash\":\"{:016x}\",\"verified_against_interpreter\":{},\"divergence\":{},\"fault\":{},\"host_seconds\":{:.3},\"fps\":{:.1}}}",
+        "{{\"execution_mode\":\"aot-compatible\",\"native_abi\":{},\"core\":{},\"hle_bios\":{},\"entries\":{},\"frames\":{frame},\"instructions_native\":{},\"instructions_interpreted\":{},\"native_ratio\":{:.6},\"dispatcher_misses\":{},\"shells\":{},\"ram_guards\":{},\"guard_compares\":{},\"guard_failures\":{},\"exits_seq\":{},\"exits_branch\":{},\"exits_interpret\":{},\"guest_cycles\":{},\"frame_hash\":\"{:016x}\",\"verified_against_interpreter\":{},\"divergence\":{},\"fault\":{},\"host_seconds\":{:.3},\"fps\":{:.1}}}",
         crate::NATIVE_ABI_VERSION,
         gba_core::CORE_VERSION,
         gba_core::bios::HLE_VERSION,
@@ -238,6 +253,9 @@ pub fn run(args: &[String], entries: &[AotEntry], sha256: [u8; 32]) -> Result<()
         },
         gba.native.misses,
         gba.native.shells,
+        program.guard_count(),
+        c.guard_compares,
+        c.guard_failures,
         c.exits_seq,
         c.exits_branch,
         c.exits_interpret,
@@ -267,10 +285,15 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// Playable window (SPEC-063 FR-63-02): same native program, SDL frontend.
-fn run_window(o: &Options, entries: &[AotEntry]) -> Result<(), String> {
-    let mut program = NativeProgram::new(entries);
-    let header_title: String = fs::read(&o.rom)
-        .ok()
+fn run_window(
+    o: &Options,
+    entries: &[AotEntry],
+    guards: &[AotGuard],
+    rom: Vec<u8>,
+    _sha256: [u8; 32],
+) -> Result<(), String> {
+    let mut program = NativeProgram::new(entries, guards);
+    let header_title: String = Some(&rom)
         .and_then(|r| {
             r.get(0xA0..0xAC).map(|t| {
                 String::from_utf8_lossy(t)
@@ -281,7 +304,8 @@ fn run_window(o: &Options, entries: &[AotEntry]) -> Result<(), String> {
         })
         .unwrap_or_default();
     let options = gba_desktop::AppOptions {
-        rom: o.rom.clone(),
+        rom: o.rom.clone().unwrap_or_default(),
+        rom_bytes: Some(rom),
         bios: o.bios.clone(),
         save: o.save.clone(),
         backup: o.backup,
@@ -293,7 +317,7 @@ fn run_window(o: &Options, entries: &[AotEntry]) -> Result<(), String> {
     let c = &program.counters;
     let total = c.retired + r.interpreted_instructions;
     eprintln!(
-        "{{\"execution_mode\":\"aot-compatible\",\"frontend\":\"sdl3\",\"frames\":{},\"instructions_native\":{},\"instructions_interpreted\":{},\"native_ratio\":{:.6},\"dispatcher_misses\":{},\"shells\":{},\"audio\":{},\"audio_underruns\":{},\"audio_overruns\":{},\"saves\":{},\"guest_cycles\":{},\"frame_hash\":\"{:016x}\"}}",
+        "{{\"execution_mode\":\"aot-compatible\",\"frontend\":\"sdl3\",\"frames\":{},\"instructions_native\":{},\"instructions_interpreted\":{},\"native_ratio\":{:.6},\"dispatcher_misses\":{},\"shells\":{},\"ram_guards\":{},\"guard_compares\":{},\"guard_failures\":{},\"audio\":{},\"audio_underruns\":{},\"audio_overruns\":{},\"saves\":{},\"guest_cycles\":{},\"frame_hash\":\"{:016x}\"}}",
         r.frames,
         c.retired,
         r.interpreted_instructions,
@@ -304,6 +328,9 @@ fn run_window(o: &Options, entries: &[AotEntry]) -> Result<(), String> {
         },
         r.native_misses,
         r.native_shells,
+        program.guard_count(),
+        c.guard_compares,
+        c.guard_failures,
         r.audio_on,
         r.audio_underruns,
         r.audio_overruns,

@@ -25,6 +25,8 @@ const MAX_LAG_FRAMES: u32 = 5;
 
 pub struct AppOptions {
     pub rom: PathBuf,
+    /// ROM already in memory (embedded in a bundle, SPEC-066); wins over `rom`.
+    pub rom_bytes: Option<Vec<u8>>,
     pub bios: Option<PathBuf>,
     pub save: Option<PathBuf>,
     pub backup: Option<BackupKind>,
@@ -337,7 +339,10 @@ pub fn run_app(
     o: &AppOptions,
     mut native: Option<&mut dyn NativeExec>,
 ) -> Result<AppReport, String> {
-    let rom = fs::read(&o.rom).map_err(|e| format!("cannot read ROM: {e}"))?;
+    let rom = match &o.rom_bytes {
+        Some(bytes) => bytes.clone(),
+        None => fs::read(&o.rom).map_err(|e| format!("cannot read ROM: {e}"))?,
+    };
     let bios = match &o.bios {
         Some(p) => Some(fs::read(p).map_err(|e| format!("cannot read BIOS: {e}"))?),
         None => None,

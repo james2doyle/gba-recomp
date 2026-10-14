@@ -35,6 +35,7 @@ fn run() -> Result<(), String> {
         "emit-fixture" => run_emit_fixture(args.collect()),
         "inspect-rom" => run_inspect_rom(args.collect()),
         "compile" => run_compile(args.collect()),
+        "bundle" => run_bundle(args.collect()),
         _ => Err(format!("unknown command `{command}`\n{}", usage())),
     }
 }
@@ -100,6 +101,8 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
         frames: 600,
         inputs: Vec::new(),
         follow_direct_branches: true,
+        ram_code: true,
+        embed_rom: false,
     };
     while let Some(flag) = args.next() {
         match flag.as_str() {
@@ -120,6 +123,8 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
                     .push(compat::parse_input(&args.next().ok_or_else(usage)?)?);
             }
             "--no-static-branches" => profile.follow_direct_branches = false,
+            "--no-ram-code" => profile.ram_code = false,
+            "--embed-rom" => profile.embed_rom = true,
             "--steps" => {
                 steps = args
                     .next()
@@ -153,6 +158,30 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     println!("optimization: {}", optimization.as_str());
     println!("target: {}", native_target().triple);
     Ok(())
+}
+
+/// `bundle` (SPEC-066): an `aot-compatible` package whose executable embeds
+/// the ROM. Defaults: O2 and a 3000-frame profile; all `compile` flags work.
+fn run_bundle(arguments: Vec<String>) -> Result<(), String> {
+    let mut args = vec![
+        "--mode".to_owned(),
+        "aot-compatible".to_owned(),
+        "--embed-rom".to_owned(),
+    ];
+    if !arguments.iter().any(|a| a == "--opt") {
+        args.extend(["--opt".to_owned(), "O2".to_owned()]);
+    }
+    if !arguments.iter().any(|a| a == "--profile-frames") {
+        args.extend(["--profile-frames".to_owned(), "3000".to_owned()]);
+    }
+    if arguments.iter().any(|a| a == "--mode") {
+        return Err("bundle always builds aot-compatible packages; remove --mode".to_owned());
+    }
+    args.extend(arguments);
+    println!(
+        "bundle: the ROM is embedded in the executable; the package contains the game itself and must not be redistributed"
+    );
+    run_compile(args)
 }
 
 fn build_native_package(
@@ -512,7 +541,7 @@ fn print_emit_info(info: &gba_llvm::EmitInfo) {
 fn usage() -> String {
     let target = native_target();
     format!(
-        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--mode strict-aot|aot-compatible] [--steps N]\n       [--profile-frames N] [--profile-input FRAME:LEN:KEYS]... [--no-static-branches]  (aot-compatible)\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
+        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--mode strict-aot|aot-compatible] [--steps N]\n       [--profile-frames N] [--profile-input FRAME:LEN:KEYS]... [--no-static-branches] [--no-ram-code] [--embed-rom]  (aot-compatible)\n  gba-recomp bundle --rom <path.gba> --out <package-dir> [--opt O0|O2] [--profile-frames N] [--profile-input ...]  (ROM embedded)\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
         target.triple
     )
 }

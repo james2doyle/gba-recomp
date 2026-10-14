@@ -180,6 +180,11 @@ fn register_ram_reset(bus: &mut Bus, flags: u32) {
         bus.poke16(0x0400_0208, 0);
     }
     bus.poke16(0x0400_0000, 0x0080);
+    // Direct fills bypass the bus: invalidate every RAM page for native-code
+    // guards (SPEC-065 RAM-65-04).
+    for g in bus.ram_gen.iter_mut() {
+        *g = g.wrapping_add(1);
+    }
     bus.add_cycles(4096);
 }
 
