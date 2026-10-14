@@ -1,0 +1,152 @@
+{
+  "record_type": "strict-aot-thumb-stmia-and-cpu-profile-evidence",
+  "date": "2026-10-14",
+  "spec_commit": "f5aea511cfb3f177f445f1b03ce27fb676efdd22",
+  "implementation_commit": "f8655b3612190645ee9a8be43e0040bfbfac29a4",
+  "environment": {
+    "host": "Mac mini M4",
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "memory_bytes": 17179869184,
+    "rust": "1.99.0",
+    "llvm_backend": "23.1.3",
+    "llvm_prefix": "target/toolchains/LLVM-23.1.3-macOS-ARM64",
+    "llvm_archive_sha256": "3dcfd88aec10be204a24037bcb0dc0ad777882e9dbe8ac60e2639060d8a794b1",
+    "target": "aarch64-apple-darwin"
+  },
+  "implementation": {
+    "spec": "SPEC-036",
+    "encoding": "Thumb STMIA T1, low registers only",
+    "runtime_helper": "gba_stmia_thumb_v3; EWRAM/IWRAM physical ranges only; validates full range before mutating guest state",
+    "discovery": "writeback plus bounded abstract-memory shadow update; uncertain or unsupported ranges clear the shadow",
+    "timing": "one abstract guest cycle; not ARM7TDMI/GBA bus timing",
+    "fallback": "strict-AOT; no interpreter or JIT fallback"
+  },
+  "verification": {
+    "rust_tests": {
+      "command": "cargo test --locked --workspace --jobs 10",
+      "result": "passed",
+      "gba_ir_tests": 54,
+      "gba_recomp_tests": 70
+    },
+    "headless_gate": {
+      "command": "PATH=/Users/celsoinacio/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:$PATH LLVM_SYS_231_PREFIX=$PWD/target/toolchains/LLVM-23.1.3-macOS-ARM64 CARGO_BUILD_JOBS=10 GBA020_JOBS=7 GBA020_LINK_THREADS=1 /usr/bin/time -lp sh scripts/verify-gba020.sh > target/gba020/stmia-full-gate.log 2>&1",
+      "result": "passed",
+      "wall_seconds": 128.60,
+      "user_cpu_seconds": 492.34,
+      "system_cpu_seconds": 14.33,
+      "average_logical_cpus": 3.94,
+      "maximum_resident_set_bytes": 2205024256,
+      "swap_operations": 0,
+      "log_sha256": "f246884de53c7b716e0e50494e5848a859ae49c0846a2e0b1f48eca135e927d2",
+      "includes": "complete existing GBA-020 fixtures, STMIA O0/O2, C runtime ABI harnesses, strict-AOT manifests and negative package-atomicity cases"
+    },
+    "runtime_v3_c_harness": {
+      "result": "passed as part of the full gate",
+      "cases": [
+        "ascending register and memory order",
+        "base excluded from list and writeback",
+        "base as lowest selected register stores the original base",
+        "unaligned base aligns each transfer address down and preserves low bits in writeback",
+        "physical EWRAM/IWRAM boundaries",
+        "faults leave memory and CPU unchanged"
+      ]
+    },
+    "static_checks": {
+      "cargo_fmt_all_check": "passed",
+      "git_diff_check": "passed",
+      "shell_syntax": "passed for scripts/verify-gba020.sh",
+      "python_fixture_ast": "passed"
+    },
+    "read_only_review": {
+      "result": "two implementation findings were fixed before the full gate; reviewer confirmed both closed",
+      "scope": "LLVM helper wiring and bounded abstract-memory shadow behavior"
+    }
+  },
+  "stmia_fixture": {
+    "mode": "thumb-stmia-iwram-bx",
+    "rom_sha256": "f93e86e23c1d39d28b101f7ae570fb45852476cda0e1a61076cc8b4241aef17c",
+    "strict_aot": true,
+    "steps": 8,
+    "instructions_aot": 9,
+    "expected_and_observed_stdout_o0_o2": "{\"status\":\"budget_exhausted\",\"steps\":8,\"r0\":305419896,\"r1\":134217861,\"pc\":\"0x080000F8\",\"cpsr\":\"0x0000001F\",\"guest_cycle\":8,\"ewram_word0\":0,\"iwram_word0\":305419896}",
+    "optimizations": {
+      "O0": {
+        "game_sha256": "dfbb5c99eff6553df7c7c4974a0c3c2b752a1f7b9afecd5bf5fbe17c20c4c9c3",
+        "manifest_sha256": "fa32758991131e291fd705f5663e03d95a42e6c899c4facc2d0f35a7dbbabc69"
+      },
+      "O2": {
+        "game_sha256": "da8b34e544fab86fd20b8daed75c065df6368a8368062aa4b8438cf0f3b19c65",
+        "manifest_sha256": "14573a4e619738cdd7459a1337a24fd6896dedd47c4d107b633bce8618813095"
+      }
+    }
+  },
+  "negative_cases": {
+    "empty_register_list": {
+      "rom_sha256": "dcbc350bd9067d5d1980b8a7e5fbbf2bcb468f7d3140dcffae3909f687549ddb",
+      "result": "rejected before package creation",
+      "diagnostic": "unsupported_thumb_instruction at 0x08000084: 0xC000 (empty STMIA register list is unpredictable)"
+    },
+    "base_in_list_after_lower_register": {
+      "rom_sha256": "5f4a962b56ce3169a87295ae9981b7b27b4bebf3c17ae685275d1d07c87806e3",
+      "result": "rejected before package creation",
+      "diagnostic": "unsupported_thumb_instruction at 0x08000084: 0xC205 (STMIA base register is included after a lower register; result is unpredictable)"
+    }
+  },
+  "cpu_profile": {
+    "cargo_jobs": 10,
+    "gate_fixture_pool": {
+      "workers": 7,
+      "lld_threads_per_link": 1,
+      "reason": "the LSL parallel benchmark has seven independent fixtures; workers times link threads is bounded to ten"
+    },
+    "spot_observation": "a concurrent sample during linking reached approximately 8.4 logical CPUs; this was a peak, not sustained usage",
+    "tiny_counter_single_compile_probe": {
+      "method": "six warm single-package O2 compiles, three per setting, alternating 1 and 10 LLD threads; each fixture ROM was 256 bytes and had six AOT instructions",
+      "wall_seconds_by_setting": {
+        "lld_1": [0.27, 0.27, 0.21],
+        "lld_10": [0.21, 0.27, 0.21]
+      },
+      "cpu_seconds_per_compile_range": [0.19, 0.21],
+      "maximum_rss": "approximately 37.9–38.9 MB per command",
+      "result": "no reliable speedup measured; process startup and the tiny artifact dominate",
+      "limitation": "does not measure LeafGreen or a large AOT package"
+    },
+    "single_game_pipeline": "CFG discovery and LLVM module construction are serial; only final LLD linking is threaded. Higher Cargo jobs do not parallelize a single game compile."
+  },
+  "leafgreen_static_compile_after_stmia": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-stmia-20261014-O2 --opt O2 --steps 100",
+    "result": "rejected during static discovery before package publication; ROM not executed",
+    "reported_pc": "0x080006A8",
+    "diagnostic": "thumb_ldmia_rom_base_not_singleton: r3 has multiple possible ROM bases",
+    "instrumented_static_analyzer_observation": {
+      "callsite": "process_thumb_instruction at the LDMIA worklist revisit",
+      "incoming_r3": ["0x081E9F74", "0x081E9F78"],
+      "incoming_r1": ["0x0000000C", "0x0000000D"],
+      "incoming_r2": ["0x03003540", "0x03003544"],
+      "log_sha256": "c0172c280d3d53211bc1e27aaa9e1a933014e31df81ec13886e3ed85cd850bbe",
+      "limit": "these are abstract-analyzer values, not guest runtime registers"
+    },
+    "rom_bytes_at_0x6A8": "01 cb 01 c2 01 39 00 29 fa da",
+    "decoding_inference": "LDMIA r3!,{r0}; STMIA r2!,{r0}; SUBS r1,#1; CMP r1,#0; BGE back to 0x080006A8",
+    "control_flow_inference": "discovery enqueues both conditional successors without NZCV refinement; the fallthrough and synthetic backedge merge different bases",
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea": {
+      "binary_session": "Transport closed",
+      "open_binary_prior_result": "target_unavailable: unsupported binary format for .gba",
+      "analysis_or_decompilation_evidence_id": null
+    },
+    "limitations": [
+      "static discovery is not a guest execution trace",
+      "the analyzer aborts at the first multi-base state and does not report a final loop range",
+      "no support claim is made for LeafGreen"
+    ]
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  }
+}

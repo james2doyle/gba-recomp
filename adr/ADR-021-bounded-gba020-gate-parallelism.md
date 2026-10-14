@@ -26,6 +26,10 @@ O pool usa paths/logs separados por fixture e não muda semântica guest ou mani
 
 O gate completo passou com o padrão de sete workers × uma thread LLD. A rodada fria incluiu 73 s para compilar o binário e não é comparável ao gate aquecido. Nenhuma alegação de aceleração da compilação de uma ROM comercial é feita.
 
+### Reavaliação — 2026-10-14
+
+O gate completo após SPEC-036 terminou em 128,60 s com média agregada de 3,94 CPUs, RSS máximo de 2,21 GB e zero swaps; uma amostra durante link atingiu cerca de 8,4 CPUs. Isso mede a suíte inteira, que ainda tem fases seriais. Um probe alternado de três compilações O2 Tiny Counter com `GBA_RECOMP_LINK_THREADS=1` e três com `=10` ficou entre 0,21 e 0,27 s por comando; o fixture tem 256 bytes e seis instruções AOT e não mostrou ganho confiável. O número de jobs Cargo permanece dez, que já é o teto do Mac mini M4. A busca do CFG e a construção do módulo LLVM de uma ROM são seriais; threads LLD só atuam no estágio final. Portanto, não aumentamos o fan-out do gate sem uma medição representativa. Para paralelizar uma única ROM será necessário um desenho separado e um pacote grande que permita medir CPU, tempo e RSS. Evidência e limitações estão no [registro SPEC-036](../knowledge/evidence/gba020-thumb-stmia-macos-arm64.json).
+
 ## Critérios para revisitar
 
 - Mediana serial versus pool deixa de melhorar ou aumenta excessivamente o RSS.

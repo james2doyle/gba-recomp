@@ -1,6 +1,6 @@
 # SPEC-036 — Thumb STMIA de registradores baixos em AOT estrito
 
-Estado do documento: Accepted. Implementação pendente; o progresso está no [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementação strict-AOT registrada no commit `f8655b3612190645ee9a8be43e0040bfbfac29a4`; evidência de fixtures, gate e limites em [gba020-thumb-stmia-macos-arm64.json](../knowledge/evidence/gba020-thumb-stmia-macos-arm64.json). Isto não significa que LeafGreen compile ou execute.
 
 ## Problema, objetivos e escopo
 
@@ -66,7 +66,7 @@ A evidência de LeafGreen consiste em bytes do artefato e estado abstrato do pro
 | `rt`, `out` ou memória nulos | Fault explícito e nenhum estado guest alterado; ponteiros não nulos devem ser válidos pelo contrato do chamador |
 | Discovery singleton | Base recebe writeback; fatos da sombra são substituídos pelos valores-fonte conhecidos |
 | Discovery incerto/fora de RAM | Sombra é limpa sem inventar constantes |
-| Fixture LeafGreen | Descoberta passa `0xC201` e registra a fronteira seguinte, ainda como compilação estática |
+| Fixture LeafGreen | Tentativa estática pós-STMIA encontra um LDMIA ROM em `0x080006A8` com base múltipla e continua bloqueada antes de publicar pacote |
 | O0/O2 strict-AOT | Mesmo PC, CPSR, ciclo, registradores e RAM; manifestos strict-AOT; vizinhos imprevisíveis não geram pacote |
 
 ## Questões abertas

@@ -146,6 +146,14 @@ Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Vers
 
 REA `binary_session` nesta retomada terminou com `Transport closed`. A chamada anterior `open_binary` continua registrada como `target_unavailable` por `unsupported binary format`, `retryable=false`; não há Evidence ID de análise/decompilação para a ROM. A próxima fronteira fundamenta a [SPEC-036](../specs/SPEC-036-thumb-stmia.md), sem afirmar suporte ou execução do título.
 
+## Tentativa após SPEC-036 — STMIA Thumb e retorno ao LDMIA
+
+No commit `f8655b3612190645ee9a8be43e0040bfbfac29a4`, STMIA Thumb T1 passou a compilar em strict-AOT; testes e hashes estão em [gba020-thumb-stmia-macos-arm64.json](evidence/gba020-thumb-stmia-macos-arm64.json). Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-stmia-20261014-O2 --opt O2 --steps 100`, para a mesma ROM SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, o compilador recusou a descoberta estática em `0x080006A8`: `thumb_ldmia_rom_base_not_singleton`, `r3 has multiple possible ROM bases`. Nenhum pacote foi publicado e LeafGreen não foi executada.
+
+Os bytes observados no offset `0x6A8` são `01 cb 01 c2 01 39 00 29 fa da`. Pelos campos, inferem-se `LDMIA r3!,{r0}`, `STMIA r2!,{r0}`, `SUBS r1,#1`, `CMP r1,#0` e `BGE` de volta a `0x080006A8`. Uma instrumentação temporária do analisador, registrada no log local `target/leafgreen-ldmia-multi-base.instrumented.log` (SHA-256 `c0172c280d3d53211bc1e27aaa9e1a933014e31df81ec13886e3ed85cd850bbe`), observou no primeiro reprocessamento do LDMIA `r3={0x081E9F74,0x081E9F78}`; a mesma junção tinha `r1={12,13}` e `r2={0x03003540,0x03003544}`. Esses são fatos do estado abstrato do analisador, não registradores guest executados. O trace local mostra o ramo sequencial e o backedge sintético da descoberta; não prova que o BGE seja tomado em runtime. O estado abstrato se junta porque a descoberta envia ambos os sucessores e não refina o ramo por NZCV.
+
+O guard que falha está em `process_thumb_instruction` durante a revisita ao LDMIA, antes do fixed point final; não é ainda um novo opcode sem decoder. Remover a rejeição não basta: a SPEC-035 só materializa ROM quando a base é singleton e o helper dinâmico atual cobre EWRAM/IWRAM. Uma sequência de leituras ROM com base mutável precisa de contrato e lowering próprios. A tentativa REA atual não produziu evidência: `binary_session` retornou `Transport closed`; a tentativa anterior de `open_binary` rejeitou `.gba` como `unsupported binary format`. Não há Evidence ID de decompilação nem execução do título.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.
