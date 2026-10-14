@@ -354,7 +354,7 @@ int main(void) {{
             return 3;
         }}
         if (reason != GBA_EXIT_CONTINUE_V2) {{
-            fprintf(stderr, "guest stopped: reason=%u pc=0x%08X address=0x%08X fault_code=%u\n", reason, runtime.base.cpu.r[15], exit.fault_address, exit.fault_code);
+            fprintf(stderr, "guest stopped: reason=%u pc=0x%08X address=0x%08X fault_code=%u r0=%u r1=%u cpsr=0x%08X guest_cycle=%" PRIu64 "\n", reason, runtime.base.cpu.r[15], exit.fault_address, exit.fault_code, runtime.base.cpu.r[0], runtime.base.cpu.r[1], runtime.base.cpu.cpsr, runtime.base.cpu.guest_cycle);
             return 4;
         }}
     }}

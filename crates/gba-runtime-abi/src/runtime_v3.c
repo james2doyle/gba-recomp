@@ -23,6 +23,10 @@ static uint32_t load_le32(const uint8_t *source) {
            ((uint32_t)source[2] << 16) | ((uint32_t)source[3] << 24);
 }
 
+static uint16_t load_le16(const uint8_t *source) {
+    return (uint16_t)((uint16_t)source[0] | ((uint16_t)source[1] << 8));
+}
+
 static void store_le16(uint8_t *destination, uint16_t value) {
     destination[0] = (uint8_t)value;
     destination[1] = (uint8_t)(value >> 8);
@@ -172,6 +176,89 @@ uint32_t gba_load8_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
         return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_REGION_V3);
     }
 
+    *host_value_out = value;
+    return GBA_EXIT_CONTINUE_V2;
+}
+
+uint32_t gba_load16_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                       uint32_t guest_ea, uint32_t *host_value_out) {
+    if (out == NULL || host_value_out == NULL) {
+        return GBA_EXIT_FAULT_V2;
+    }
+    out->reason = GBA_EXIT_CONTINUE_V2;
+    out->next_pc = rt == NULL ? 0 : rt->cpu.r[15];
+    out->fault_address = 0;
+    out->fault_code = GBA_MEMORY_FAULT_NONE_V3;
+
+    if (rt == NULL) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_RUNTIME_V3);
+    }
+    if (rt->abi_version != GBA_ABI_VERSION_V3 ||
+        rt->cpu.abi_version != GBA_ABI_VERSION_V2) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_ABI_V3);
+    }
+    if (rt->memory == NULL) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_NULL_MEMORY_V3);
+    }
+
+    const uint32_t aligned_ea = guest_ea & ~UINT32_C(1);
+    uint32_t value;
+    if (aligned_ea >= UINT32_C(0x02000000) &&
+        aligned_ea <= UINT32_C(0x0203FFFE)) {
+        value = (uint32_t)load_le16(
+            &rt->memory->ewram[aligned_ea - UINT32_C(0x02000000)]);
+    } else if (aligned_ea >= UINT32_C(0x03000000) &&
+               aligned_ea <= UINT32_C(0x03007FFE)) {
+        value = (uint32_t)load_le16(
+            &rt->memory->iwram[aligned_ea - UINT32_C(0x03000000)]);
+    } else {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_REGION_V3);
+    }
+
+    if ((guest_ea & UINT32_C(1)) != 0) {
+        value = (value >> 8) | (value << 24);
+    }
+    *host_value_out = value;
+    return GBA_EXIT_CONTINUE_V2;
+}
+
+uint32_t gba_load32_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                       uint32_t guest_ea, uint32_t *host_value_out) {
+    if (out == NULL || host_value_out == NULL) {
+        return GBA_EXIT_FAULT_V2;
+    }
+    out->reason = GBA_EXIT_CONTINUE_V2;
+    out->next_pc = rt == NULL ? 0 : rt->cpu.r[15];
+    out->fault_address = 0;
+    out->fault_code = GBA_MEMORY_FAULT_NONE_V3;
+
+    if (rt == NULL) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_RUNTIME_V3);
+    }
+    if (rt->abi_version != GBA_ABI_VERSION_V3 ||
+        rt->cpu.abi_version != GBA_ABI_VERSION_V2) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_ABI_V3);
+    }
+    if (rt->memory == NULL) {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_NULL_MEMORY_V3);
+    }
+
+    const uint32_t aligned_ea = guest_ea & ~UINT32_C(3);
+    const uint32_t rotate = (guest_ea & UINT32_C(3)) * UINT32_C(8);
+    uint32_t value;
+    if (aligned_ea >= UINT32_C(0x02000000) &&
+        aligned_ea <= UINT32_C(0x0203FFFC)) {
+        value = load_le32(&rt->memory->ewram[aligned_ea - UINT32_C(0x02000000)]);
+    } else if (aligned_ea >= UINT32_C(0x03000000) &&
+               aligned_ea <= UINT32_C(0x03007FFC)) {
+        value = load_le32(&rt->memory->iwram[aligned_ea - UINT32_C(0x03000000)]);
+    } else {
+        return fail(rt, out, guest_ea, GBA_MEMORY_FAULT_REGION_V3);
+    }
+
+    if (rotate != 0) {
+        value = (value >> rotate) | (value << (32 - rotate));
+    }
     *host_value_out = value;
     return GBA_EXIT_CONTINUE_V2;
 }

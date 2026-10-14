@@ -23,7 +23,7 @@ case "$os/$arch" in
         exit 2
         ;;
 esac
-gba020_jobs=${GBA020_JOBS:-8}
+gba020_jobs=${GBA020_JOBS:-10}
 case "$gba020_jobs" in
     1)
         gba020_link_threads=${GBA020_LINK_THREADS:-10}
@@ -43,8 +43,11 @@ case "$gba020_jobs" in
     8)
         gba020_link_threads=${GBA020_LINK_THREADS:-1}
         ;;
+    9|10)
+        gba020_link_threads=${GBA020_LINK_THREADS:-1}
+        ;;
     *)
-        echo "GBA020_JOBS must be 1, 2, 4, 5, 7, or 8" >&2
+        echo "GBA020_JOBS must be 1, 2, 4, 5, 7, 8, 9, or 10" >&2
         exit 2
         ;;
 esac
@@ -66,6 +69,24 @@ if [ ! -x "$recomp_bin" ]; then
     echo "built gba-recomp binary is missing: $recomp_bin" >&2
     exit 2
 fi
+
+begin_group_timing() {
+    group_timing_name=$1
+    group_timing_start_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+}
+end_group_timing() {
+    python3 - "$group_timing_name" "$group_timing_start_ns" "$gba020_jobs" "$gba020_link_threads" <<'PY'
+import sys
+import time
+
+group, start_ns, jobs, link_threads = sys.argv[1:]
+elapsed_ms = (time.monotonic_ns() - int(start_ns)) / 1_000_000
+print(
+    f"GBA020_GROUP_TIMING group={group} jobs={jobs} "
+    f"link_threads={link_threads} wall_ms={elapsed_ms:.1f}"
+)
+PY
+}
 
 rom="$root/target/gba020/tiny-counter.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$rom"
@@ -497,7 +518,107 @@ if ! grep -Fq \
     exit 1
 fi
 
-for mode in thumb-ldrh-unsupported thumb-strh-register-unsupported; do
+verify_thumb_strword() {
+    mode=$1
+    expected=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 12
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode Thumb STR fixture produced an unexpected state: $actual" >&2
+            return 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 14
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == 12
+PY
+    done
+}
+
+verify_thumb_strword thumb-strword-ewram-zero \
+    '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":33554432,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":2864434397,"iwram_word0":0}'
+verify_thumb_strword thumb-strword-ewram-thirtyone-alias \
+    '{"status":"budget_exhausted","steps":12,"r0":0,"r1":33554308,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":33554308,"iwram_word0":0}'
+verify_thumb_strword thumb-strword-iwram-thirtyone \
+    '{"status":"budget_exhausted","steps":12,"r0":324508639,"r1":50331524,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":324508639}'
+
+for mode in \
+    thumb-strword-invalid-unaligned \
+    thumb-strword-invalid-region \
+    thumb-strword-mmio-dma \
+    thumb-strword-wraparound; do
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package"
+    output="$root/target/gba020/$mode.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    rm -rf "$package"
+    "$recomp_bin" compile --rom "$rom" --out "$package" --opt O2 --steps 12
+    if "$package/game" >"$output" 2>&1; then
+        echo "$mode Thumb STR unexpectedly completed" >&2
+        exit 1
+    fi
+    case "$mode" in
+        thumb-strword-invalid-unaligned)
+            expected_fault='guest stopped: reason=4 pc=0x08000084 address=0x02000002 fault_code=4'
+            ;;
+        thumb-strword-invalid-region)
+            expected_fault='guest stopped: reason=4 pc=0x08000084 address=0x04000000 fault_code=5'
+            ;;
+        thumb-strword-mmio-dma)
+            expected_fault='guest stopped: reason=4 pc=0x08000084 address=0x040000D4 fault_code=5'
+            ;;
+        thumb-strword-wraparound)
+            expected_fault='guest stopped: reason=4 pc=0x08000084 address=0x00000000 fault_code=5'
+            ;;
+    esac
+    if ! grep -Fq "$expected_fault" "$output"; then
+        cat "$output" >&2
+        echo "$mode Thumb STR did not report the expected guest fault" >&2
+        exit 1
+    fi
+done
+
+for mode in \
+    thumb-ldrword-register-unsupported \
+    thumb-ldrword-sp-unsupported \
+    thumb-strword-register-unsupported; do
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package"
+    output="$root/target/gba020/$mode.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    rm -rf "$package"
+    if "$recomp_bin" compile \
+        --rom "$rom" --out "$package" --opt O0 --steps 8 >"$output" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        exit 1
+    fi
+    if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$output"; then
+        cat "$output" >&2
+        echo "$mode did not report its Thumb source PC" >&2
+        exit 1
+    fi
+    if [ -e "$package" ]; then
+        echo "$mode failure left a partial package" >&2
+        exit 1
+    fi
+done
+
+for mode in thumb-strh-register-unsupported; do
     rom="$root/target/gba020/$mode.gba"
     package="$root/target/gba020/$mode-package"
     output="$root/target/gba020/$mode.txt"
@@ -604,6 +725,297 @@ verify_thumb_ldrb thumb-ldrb-iwram-thirtyone-even-zero \
     '{"status":"budget_exhausted","steps":12,"r0":0,"r1":50331617,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":4286611200}'
 verify_thumb_ldrb thumb-ldrb-ewram-thirtyone-alias-80 \
     '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":128,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":4286611200,"iwram_word0":0}'
+
+verify_thumb_ldrword() {
+    mode=$1
+    expected=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 12
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode Thumb LDR fixture produced an unexpected state: $actual" >&2
+            return 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 14
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == 12
+PY
+    done
+}
+
+verify_thumb_ldrword_fault() {
+    mode=$1
+    expected_fault=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        output="$root/target/gba020/$mode-$optimization.txt"
+        rm -rf "$package"
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 12
+        if "$package/game" >"$output" 2>&1; then
+            echo "$optimization $mode Thumb LDR fault fixture unexpectedly completed" >&2
+            return 1
+        fi
+        if ! grep -Fq "$expected_fault" "$output"; then
+            cat "$output" >&2
+            echo "$optimization $mode Thumb LDR fault changed Rd, PC, flags, or cycle state" >&2
+            return 1
+        fi
+    done
+}
+
+verify_thumb_ldrword_case() {
+    mode=$1
+    kind=$2
+    expected=$3
+    case "$kind" in
+        success) verify_thumb_ldrword "$mode" "$expected" ;;
+        fault) verify_thumb_ldrword_fault "$mode" "$expected" ;;
+        *) echo "unknown Thumb LDR fixture kind: $kind" >&2; return 2 ;;
+    esac
+}
+
+ldrword_active_pids=
+ldrword_active_modes=
+ldrword_active_count=0
+wait_thumb_ldrword_batch() {
+    failed=0
+    for pid in $ldrword_active_pids; do
+        if ! wait "$pid"; then
+            failed=1
+        fi
+    done
+    if [ "$failed" -ne 0 ]; then
+        for mode in $ldrword_active_modes; do
+            cat "$root/target/gba020/$mode-ldrword-worker.log" >&2
+        done
+        return 1
+    fi
+    for mode in $ldrword_active_modes; do
+        cat "$root/target/gba020/$mode-ldrword-worker.log"
+        rm -f "$root/target/gba020/$mode-ldrword-worker.log"
+    done
+    ldrword_active_pids=
+    ldrword_active_modes=
+    ldrword_active_count=0
+}
+schedule_thumb_ldrword() {
+    mode=$1
+    kind=$2
+    expected=$3
+    if [ "$gba020_jobs" -eq 1 ]; then
+        verify_thumb_ldrword_case "$mode" "$kind" "$expected"
+        return
+    fi
+    log="$root/target/gba020/$mode-ldrword-worker.log"
+    rm -f "$log"
+    (verify_thumb_ldrword_case "$mode" "$kind" "$expected") >"$log" 2>&1 &
+    ldrword_active_pids="$ldrword_active_pids $!"
+    ldrword_active_modes="$ldrword_active_modes $mode"
+    ldrword_active_count=$((ldrword_active_count + 1))
+    if [ "$ldrword_active_count" -ge "$gba020_jobs" ]; then
+        wait_thumb_ldrword_batch
+    fi
+}
+
+begin_group_timing thumb-ldrword
+schedule_thumb_ldrword thumb-ldrword-ewram-zero success \
+    '{"status":"budget_exhausted","steps":12,"r0":1144201745,"r1":33554432,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrword thumb-ldrword-ewram-thirtyone success \
+    '{"status":"budget_exhausted","steps":12,"r0":1144201745,"r1":33554308,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrword thumb-ldrword-iwram-thirtyone success \
+    '{"status":"budget_exhausted","steps":12,"r0":1144201745,"r1":50331524,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":1144201745}'
+schedule_thumb_ldrword thumb-ldrword-unaligned-one success \
+    '{"status":"budget_exhausted","steps":12,"r0":289682210,"r1":33554433,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrword thumb-ldrword-unaligned-two success \
+    '{"status":"budget_exhausted","steps":12,"r0":571556915,"r1":50331650,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":1144201745}'
+schedule_thumb_ldrword thumb-ldrword-unaligned-three success \
+    '{"status":"budget_exhausted","steps":12,"r0":857870660,"r1":33554435,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrword thumb-ldrword-alias success \
+    '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":1144201745,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+
+schedule_thumb_ldrword thumb-ldrword-mmio-dma fault \
+    'guest stopped: reason=4 pc=0x08000084 address=0x040000DC fault_code=5 r0=2864434397 r1=67109076 cpsr=0x6000003F guest_cycle=11'
+schedule_thumb_ldrword thumb-ldrword-wraparound fault \
+    'guest stopped: reason=4 pc=0x08000084 address=0x00000000 fault_code=5 r0=2864434397 r1=4294967172 cpsr=0x6000003F guest_cycle=11'
+if [ "$ldrword_active_count" -gt 0 ]; then
+    wait_thumb_ldrword_batch
+fi
+end_group_timing
+
+verify_thumb_ldrh_success() {
+    mode=$1
+    expected=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 12
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode Thumb LDRH fixture produced an unexpected state: $actual" >&2
+            return 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 14
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == 12
+PY
+    done
+}
+
+verify_thumb_ldrh_fault() {
+    mode=$1
+    expected_fault=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        output="$root/target/gba020/$mode-$optimization.txt"
+        rm -rf "$package"
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 12
+        if "$package/game" >"$output" 2>&1; then
+            echo "$optimization $mode Thumb LDRH fixture unexpectedly completed" >&2
+            return 1
+        fi
+        if ! grep -Fq "$expected_fault" "$output"; then
+            cat "$output" >&2
+            echo "$optimization $mode Thumb LDRH fault changed state or address" >&2
+            return 1
+        fi
+    done
+}
+
+verify_thumb_ldrh_unsupported() {
+    mode=$1
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package"
+    output="$root/target/gba020/$mode.txt"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    rm -rf "$package"
+    if "$recomp_bin" compile \
+        --rom "$rom" --out "$package" --opt O0 --steps 8 >"$output" 2>&1; then
+        echo "$mode unexpectedly produced a package" >&2
+        return 1
+    fi
+    if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$output"; then
+        cat "$output" >&2
+        echo "$mode did not report its Thumb source PC" >&2
+        return 1
+    fi
+    if [ -e "$package" ]; then
+        echo "$mode failure left a partial package" >&2
+        return 1
+    fi
+}
+
+verify_thumb_ldrh_case() {
+    mode=$1
+    kind=$2
+    expected=${3-}
+    case "$kind" in
+        success) verify_thumb_ldrh_success "$mode" "$expected" ;;
+        fault) verify_thumb_ldrh_fault "$mode" "$expected" ;;
+        unsupported) verify_thumb_ldrh_unsupported "$mode" ;;
+        *) echo "unknown Thumb LDRH fixture kind: $kind" >&2; return 2 ;;
+    esac
+}
+
+ldrh_active_pids=
+ldrh_active_modes=
+ldrh_active_count=0
+wait_ldrh_batch() {
+    failed=0
+    for pid in $ldrh_active_pids; do
+        if ! wait "$pid"; then
+            failed=1
+        fi
+    done
+    if [ "$failed" -ne 0 ]; then
+        for mode in $ldrh_active_modes; do
+            cat "$root/target/gba020/$mode-ldrh-worker.log" >&2
+        done
+        return 1
+    fi
+    for mode in $ldrh_active_modes; do
+        cat "$root/target/gba020/$mode-ldrh-worker.log"
+        rm -f "$root/target/gba020/$mode-ldrh-worker.log"
+    done
+    ldrh_active_pids=
+    ldrh_active_modes=
+    ldrh_active_count=0
+}
+schedule_thumb_ldrh() {
+    mode=$1
+    kind=$2
+    expected=${3-}
+    if [ "$gba020_jobs" -eq 1 ]; then
+        verify_thumb_ldrh_case "$mode" "$kind" "$expected"
+        return
+    fi
+    log="$root/target/gba020/$mode-ldrh-worker.log"
+    rm -f "$log"
+    (verify_thumb_ldrh_case "$mode" "$kind" "$expected") >"$log" 2>&1 &
+    ldrh_active_pids="$ldrh_active_pids $!"
+    ldrh_active_modes="$ldrh_active_modes $mode"
+    ldrh_active_count=$((ldrh_active_count + 1))
+    if [ "$ldrh_active_count" -ge "$gba020_jobs" ]; then
+        wait_ldrh_batch
+    fi
+}
+
+begin_group_timing thumb-ldrh
+schedule_thumb_ldrh thumb-ldrh-ewram-zero success \
+    '{"status":"budget_exhausted","steps":12,"r0":8721,"r1":33554432,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrh thumb-ldrh-ewram-odd success \
+    '{"status":"budget_exhausted","steps":12,"r0":285212706,"r1":33554433,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrh thumb-ldrh-ewram-thirtyone success \
+    '{"status":"budget_exhausted","steps":12,"r0":8721,"r1":33554370,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrh thumb-ldrh-iwram-thirtyone success \
+    '{"status":"budget_exhausted","steps":12,"r0":8721,"r1":50331586,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":1144201745}'
+schedule_thumb_ldrh thumb-ldrh-leafgreen-encoding success \
+    '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":8721,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrh thumb-ldrh-alias success \
+    '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":8721,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201745,"iwram_word0":0}'
+schedule_thumb_ldrh thumb-ldrh-mmio-dma fault \
+    'guest stopped: reason=4 pc=0x08000084 address=0x040000DC fault_code=5 r0=2864434397 r1=67109076 cpsr=0x6000003F guest_cycle=11'
+schedule_thumb_ldrh thumb-ldrh-wraparound fault \
+    'guest stopped: reason=4 pc=0x08000084 address=0x00000000 fault_code=5 r0=2864434397 r1=4294967234 cpsr=0x6000003F guest_cycle=11'
+schedule_thumb_ldrh thumb-ldrh-register-unsupported unsupported
+schedule_thumb_ldrh thumb-ldrsh-register-unsupported unsupported
+if [ "$ldrh_active_count" -gt 0 ]; then
+    wait_ldrh_batch
+fi
+end_group_timing
 
 for mode in thumb-ldrb-invalid-odd thumb-ldrb-wraparound; do
     rom="$root/target/gba020/$mode.gba"
@@ -1084,7 +1496,7 @@ verify_thumb_format3() {
     for optimization in O0 O2; do
         package="$root/target/gba020/$mode-package-$optimization"
         rm -rf "$package"
-        "$recomp_bin" compile \
+        GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
             --rom "$thumb_format3_rom" --out "$package" --opt "$optimization" --steps 9
         actual=$("$package/game")
         if [ "$actual" != "$expected" ]; then
@@ -1105,16 +1517,63 @@ PY
     done
 }
 
-verify_thumb_format3 thumb-f3-movs-zero '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x7000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-movs-ff '{"status":"budget_exhausted","steps":9,"r0":255,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-cmp-equal '{"status":"budget_exhausted","steps":9,"r0":1,"r1":0,"pc":"0x080000E8","cpsr":"0x6000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-cmp-borrow '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x8000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-cmp-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-add-carry '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x6000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-add-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":0,"pc":"0x080000E8","cpsr":"0x9000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-add-alias '{"status":"budget_exhausted","steps":9,"r0":305419903,"r1":0,"pc":"0x080000E8","cpsr":"0x0000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-sub-borrow '{"status":"budget_exhausted","steps":9,"r0":4294967295,"r1":0,"pc":"0x080000E8","cpsr":"0x8000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
-verify_thumb_format3 thumb-f3-sub-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483647,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+format3_active_pids=
+format3_active_modes=
+format3_active_count=0
+wait_thumb_format3_batch() {
+    failed=0
+    for pid in $format3_active_pids; do
+        if ! wait "$pid"; then
+            failed=1
+        fi
+    done
+    if [ "$failed" -ne 0 ]; then
+        for mode in $format3_active_modes; do
+            cat "$root/target/gba020/$mode-format3-worker.log" >&2
+        done
+        return 1
+    fi
+    for mode in $format3_active_modes; do
+        cat "$root/target/gba020/$mode-format3-worker.log"
+        rm -f "$root/target/gba020/$mode-format3-worker.log"
+    done
+    format3_active_pids=
+    format3_active_modes=
+    format3_active_count=0
+}
+schedule_thumb_format3() {
+    mode=$1
+    expected=$2
+    if [ "$gba020_jobs" -eq 1 ]; then
+        verify_thumb_format3 "$mode" "$expected"
+        return
+    fi
+    log="$root/target/gba020/$mode-format3-worker.log"
+    rm -f "$log"
+    (verify_thumb_format3 "$mode" "$expected") >"$log" 2>&1 &
+    format3_active_pids="$format3_active_pids $!"
+    format3_active_modes="$format3_active_modes $mode"
+    format3_active_count=$((format3_active_count + 1))
+    if [ "$format3_active_count" -ge "$gba020_jobs" ]; then
+        wait_thumb_format3_batch
+    fi
+}
+
+begin_group_timing thumb-format3
+schedule_thumb_format3 thumb-f3-movs-zero '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x7000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-movs-ff '{"status":"budget_exhausted","steps":9,"r0":255,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-cmp-equal '{"status":"budget_exhausted","steps":9,"r0":1,"r1":0,"pc":"0x080000E8","cpsr":"0x6000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-cmp-borrow '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x8000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-cmp-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-add-carry '{"status":"budget_exhausted","steps":9,"r0":0,"r1":0,"pc":"0x080000E8","cpsr":"0x6000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-add-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":0,"pc":"0x080000E8","cpsr":"0x9000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-add-alias '{"status":"budget_exhausted","steps":9,"r0":305419903,"r1":0,"pc":"0x080000E8","cpsr":"0x0000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-sub-borrow '{"status":"budget_exhausted","steps":9,"r0":4294967295,"r1":0,"pc":"0x080000E8","cpsr":"0x8000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+schedule_thumb_format3 thumb-f3-sub-overflow '{"status":"budget_exhausted","steps":9,"r0":2147483647,"r1":0,"pc":"0x080000E8","cpsr":"0x3000009F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+if [ "$format3_active_count" -gt 0 ]; then
+    wait_thumb_format3_batch
+fi
+end_group_timing
 
 thumb_format3_bad_mode=thumb-f3-neighbor-unsupported
 thumb_format3_bad_rom="$root/target/gba020/$thumb_format3_bad_mode.gba"
@@ -1141,7 +1600,7 @@ fi
 
 scripts/verify-gba020-lsl.sh "$gba020_jobs" "$gba020_link_threads"
 
-for mode in thumb-lsr-unsupported thumb-asr-unsupported thumb-lsl-register-unsupported; do
+for mode in thumb-lsr-register-unsupported thumb-asr-unsupported thumb-lsl-register-unsupported; do
     thumb_shift_rom="$root/target/gba020/$mode.gba"
     thumb_shift_package="$root/target/gba020/$mode-package"
     thumb_shift_output="$root/target/gba020/$mode.txt"
@@ -1233,6 +1692,7 @@ schedule_thumb_addsub() {
         wait_addsub_batch
     fi
 }
+begin_group_timing thumb-addsub
 schedule_thumb_addsub thumb-addsub-add-register '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483647,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
 schedule_thumb_addsub thumb-addsub-sub-register '{"status":"budget_exhausted","steps":8,"r0":1,"r1":4294967295,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
 schedule_thumb_addsub thumb-addsub-add-imm-zero '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":2147483648,"pc":"0x08000086","cpsr":"0x8000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
@@ -1244,6 +1704,7 @@ schedule_thumb_addsub thumb-addsub-sub-imm-overflow '{"status":"budget_exhausted
 if [ "$addsub_active_count" -gt 0 ]; then
     wait_addsub_batch
 fi
+end_group_timing
 
 thumb_addsub_bx_rom="$root/target/gba020/thumb-addsub-literal-bx.gba"
 python3 fixtures/tiny-counter/make_rom.py --out "$thumb_addsub_bx_rom" --mode thumb-addsub-literal-bx

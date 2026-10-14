@@ -10,13 +10,19 @@ use crate::rom::{MAX_ROM_SIZE, ROM_BASE, RomImage};
 
 const MAX_DISCOVERED_INSTRUCTIONS: usize = 1_000_000;
 const MAX_CONSTANT_TARGETS: usize = 16;
-const MAX_PATH_ALTERNATIVES_PER_PC: usize = 64;
+const MAX_PATH_ALTERNATIVES_PER_PC: usize = 128;
 const MAX_ABSTRACT_STATES: usize = 100_000;
 const MAX_ROM_LDMIA_CASES: usize = 16;
 const MAX_ABSTRACT_MEMORY_WORDS: usize = 64;
 const MAX_ANALYSIS_UPDATES: usize = MAX_DISCOVERED_INSTRUCTIONS * 32;
 
 pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
+    discover_arm_program_with_states(image).map(|(program, _)| program)
+}
+
+fn discover_arm_program_with_states(
+    image: &RomImage,
+) -> Result<(ArmProgram, BTreeMap<(IsaMode, u32), Vec<AbstractState>>), String> {
     let entry = (IsaMode::Arm, ROM_BASE);
     let mut pending = VecDeque::new();
     let mut incoming = BTreeMap::<(IsaMode, u32), Vec<AbstractState>>::new();
@@ -180,7 +186,7 @@ pub fn discover_arm_program(image: &RomImage) -> Result<ArmProgram, String> {
     program
         .verify()
         .map_err(|error| format!("GBA IR rejected: {error}"))?;
-    Ok(program)
+    Ok((program, incoming))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -670,12 +676,12 @@ fn enqueue_state(
                 "discovery_state_alternative_limit at 0x{pc:08X}: more than {MAX_PATH_ALTERNATIVES_PER_PC} complete states at {mode:?} PC"
             ));
         }
-        *total_states += 1;
-        if *total_states > MAX_ABSTRACT_STATES {
+        if *total_states >= MAX_ABSTRACT_STATES {
             return Err(format!(
                 "discovery_global_state_limit: more than {MAX_ABSTRACT_STATES} complete abstract states"
             ));
         }
+        *total_states += 1;
         states.push(alternative.clone());
         pending.push_back((key, alternative));
     }
@@ -1048,6 +1054,30 @@ fn process_thumb_instruction(
                 total_states,
             )?;
         }
+        ThumbOperation::LoadWordImmediate { rd, .. } => {
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = AbstractValue::Unknown;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
+        ThumbOperation::LoadHalfwordImmediate { rd, .. } => {
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = AbstractValue::Unknown;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
         ThumbOperation::AddSubtract {
             rd,
             rn,
@@ -1094,6 +1124,20 @@ fn process_thumb_instruction(
             let address =
                 effective_store_address(&state.registers[rb as usize], u32::from(imm5) * 2, true);
             next_state.invalidate_store(&address, 2, 1);
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
+        ThumbOperation::StoreWordImmediate { rb, imm5, .. } => {
+            let mut next_state = state.clone();
+            let address =
+                effective_store_address(&state.registers[rb as usize], u32::from(imm5) * 4, true);
+            next_state.invalidate_store(&address, 4, 0);
             enqueue_state(
                 IsaMode::Thumb,
                 instruction.guest_pc.wrapping_add(2),
@@ -1194,6 +1238,27 @@ fn process_thumb_instruction(
                     values
                         .iter()
                         .map(|value| value.wrapping_shl(u32::from(amount)))
+                        .collect(),
+                ),
+            };
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = shifted_source;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
+        ThumbOperation::LsrImmediate { rd, rs, amount } => {
+            let shifted_source = match &state.registers[rs as usize] {
+                AbstractValue::Unknown => AbstractValue::Unknown,
+                AbstractValue::Constants(values) => AbstractValue::Constants(
+                    values
+                        .iter()
+                        .map(|value| if amount == 0 { 0 } else { value >> amount })
                         .collect(),
                 ),
             };
@@ -1740,6 +1805,23 @@ mod tests {
         RomImage::from_bytes(bytes).unwrap()
     }
 
+    fn thumb_96_iteration_loop_rom() -> RomImage {
+        let mut bytes = bx_interwork_rom().bytes().to_vec();
+        let thumb = [
+            0x2200_u16, // MOVS r2,#0.
+            0x3201,     // loop: ADDS r2,#1.
+            0x2A5F,     // CMP r2,#95.
+            0xDDFC,     // BLE loop.
+            0x4708,     // BX r1 to the ARM self-loop after r2 reaches 96.
+        ];
+        for (index, halfword) in thumb.into_iter().enumerate() {
+            let offset = 0x84 + index * 2;
+            bytes[offset..offset + 2].copy_from_slice(&halfword.to_le_bytes());
+        }
+        bytes[0xBD] = header_checksum(&bytes);
+        RomImage::from_bytes(bytes).unwrap()
+    }
+
     fn thumb_ldr_literal_rom() -> RomImage {
         let mut bytes = counter_rom().bytes().to_vec();
         // Thumb starts at 0x86 (PC+4 aligns to 0x88); +0x58 reaches the pool at 0xE0.
@@ -1867,6 +1949,63 @@ mod tests {
             );
         }
         assert!(program.verify().is_ok());
+    }
+
+    #[test]
+    fn discovers_96_state_thumb_loop_and_keeps_exact_counter_values() {
+        let (program, incoming) =
+            discover_arm_program_with_states(&thumb_96_iteration_loop_rom()).unwrap();
+        let loop_states = &incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)];
+        let counters = loop_states
+            .iter()
+            .map(|state| state_constant(state, 2))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(loop_states.len(), 96);
+        assert_eq!(counters, (0..96).collect());
+
+        let branch = program
+            .thumb_instructions
+            .iter()
+            .find(|instruction| instruction.guest_pc == ROM_BASE + 0x8A)
+            .unwrap();
+        assert!(matches!(
+            branch.operation,
+            ThumbOperation::ConditionalBranch {
+                condition: 13,
+                target,
+                reachable_successors: 0b11,
+            } if target == ROM_BASE + 0x86
+        ));
+
+        let mut reversed = incoming.clone();
+        reversed
+            .get_mut(&(IsaMode::Thumb, ROM_BASE + 0x8A))
+            .unwrap()
+            .reverse();
+        let mut decoded = BTreeMap::from([(
+            ROM_BASE + 0x8A,
+            ThumbInstruction {
+                guest_pc: ROM_BASE + 0x8A,
+                encoding: 0xDDFE,
+                operation: ThumbOperation::ConditionalBranch {
+                    condition: 13,
+                    target: ROM_BASE + 0x86,
+                    reachable_successors: 0b11,
+                },
+            },
+        )]);
+        resolve_thumb_branch_masks(&reversed, &mut decoded).unwrap();
+        assert_eq!(
+            decoded[&(ROM_BASE + 0x8A)].operation,
+            branch.operation,
+            "branch masks must not depend on incoming state insertion order"
+        );
+        assert!(
+            program
+                .thumb_instructions
+                .iter()
+                .any(|instruction| instruction.guest_pc == ROM_BASE + 0x8C)
+        );
     }
 
     #[test]
@@ -2737,6 +2876,9 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("discovery_state_alternative_limit"));
+        assert!(error.contains("128"));
+        assert!(error.contains("0x08000084"));
+        assert!(error.contains("Thumb"));
         assert_eq!(incoming[&key].len(), MAX_PATH_ALTERNATIVES_PER_PC);
 
         let mut global_incoming = BTreeMap::new();
@@ -2752,7 +2894,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("discovery_global_state_limit"));
-        assert_eq!(total_states, MAX_ABSTRACT_STATES + 1);
+        assert_eq!(total_states, MAX_ABSTRACT_STATES);
     }
 
     #[test]
@@ -2853,6 +2995,72 @@ mod tests {
         assert_eq!(
             successor.memory_words[&(address + 4)],
             AbstractValue::constant(0x0800_0099)
+        );
+    }
+
+    #[test]
+    fn thumb_word_store_invalidates_its_target_word_and_preserves_neighbors() {
+        let address = 0x0200_0100;
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x6008,
+            operation: ThumbOperation::StoreWordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_constant(1, address);
+        state.set_memory_word(address, AbstractValue::constant(0x0800_0085));
+        state.set_memory_word(address + 4, AbstractValue::constant(0x0800_0099));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)]);
+        assert!(!successor.memory_words.contains_key(&address));
+        assert_eq!(
+            successor.memory_words[&(address + 4)],
+            AbstractValue::constant(0x0800_0099)
+        );
+    }
+
+    #[test]
+    fn thumb_word_store_with_unknown_address_clears_abstract_memory() {
+        let instruction = ThumbInstruction {
+            guest_pc: ROM_BASE + 0x84,
+            encoding: 0x6008,
+            operation: ThumbOperation::StoreWordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.set_memory_word(0x0200_0100, AbstractValue::constant(0x0800_0085));
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert!(
+            only_state(&incoming[&(IsaMode::Thumb, ROM_BASE + 0x86)])
+                .memory_words
+                .is_empty()
         );
     }
 
@@ -3413,6 +3621,119 @@ mod tests {
     }
 
     #[test]
+    fn propagates_thumb_lsr_immediate_constants_and_preserves_unknowns() {
+        let image = bx_interwork_rom();
+        let guest_pc = ROM_BASE + 0x84;
+        for (source, amount, expected) in [
+            (0x8000_0001, 0, 0),
+            (0x8000_0001, 1, 0x4000_0000),
+            (0x0001_8000, 16, 1),
+            (0x8000_0000, 31, 1),
+        ] {
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding: 0x0800 | (u16::from(amount) << 6) | (1 << 3),
+                operation: ThumbOperation::LsrImmediate {
+                    rd: 0,
+                    rs: 1,
+                    amount,
+                },
+            };
+            let mut state = AbstractState::unknown();
+            state.set_constant(0, 0xDEAD_BEEF);
+            state.set_constant(1, source);
+            state.set_constant(3, 0xAABB_CCDD);
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &image,
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+
+            let successor = (IsaMode::Thumb, guest_pc + 2);
+            assert_eq!(pending_keys(&pending), vec![successor]);
+            let next = only_state(&incoming[&successor]);
+            assert_eq!(next.registers[0], AbstractValue::constant(expected));
+            assert_eq!(next.registers[1], AbstractValue::constant(source));
+            assert_eq!(next.registers[3], AbstractValue::constant(0xAABB_CCDD));
+        }
+
+        let alias_instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x0C12,
+            operation: ThumbOperation::LsrImmediate {
+                rd: 2,
+                rs: 2,
+                amount: 16,
+            },
+        };
+        let mut finite_state = AbstractState::unknown();
+        finite_state.registers[2] =
+            AbstractValue::Constants(BTreeSet::from([0x8000_0001, 0x0001_8000, 0x8001_8000]));
+        finite_state.set_constant(3, 0x1122_3344);
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            alias_instruction,
+            &finite_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = (IsaMode::Thumb, guest_pc + 2);
+        let values: BTreeSet<_> = incoming[&successor]
+            .iter()
+            .map(|state| state_constant(state, 2))
+            .collect();
+        assert_eq!(
+            values,
+            BTreeSet::from([0x0000_0001, 0x0000_8000, 0x0000_8001])
+        );
+        assert_eq!(incoming[&successor].len(), 3);
+        assert!(
+            incoming[&successor]
+                .iter()
+                .all(|state| state.registers[3] == AbstractValue::constant(0x1122_3344))
+        );
+
+        let unknown_instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x0848,
+            operation: ThumbOperation::LsrImmediate {
+                rd: 0,
+                rs: 1,
+                amount: 1,
+            },
+        };
+        let mut unknown_state = AbstractState::unknown();
+        unknown_state.set_constant(0, 0xDEAD_BEEF);
+        unknown_state.set_constant(3, 0x5566_7788);
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            unknown_instruction,
+            &unknown_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let next = only_state(&incoming[&successor]);
+        assert_eq!(next.registers[0], AbstractValue::Unknown);
+        assert_eq!(next.registers[1], AbstractValue::Unknown);
+        assert_eq!(next.registers[3], AbstractValue::constant(0x5566_7788));
+        assert_eq!(pending_keys(&pending), vec![successor]);
+    }
+
+    #[test]
     fn propagates_thumb_orr_as_exact_disjunctive_states_with_limits() {
         let image = counter_rom();
         let guest_pc = ROM_BASE + 0x84;
@@ -3631,6 +3952,75 @@ mod tests {
             state.set_constant(0, 0x1122_3344);
             state.set_constant(1, 0x0200_0001);
             state.set_constant(2, 0xAABB_CCDD);
+
+            let mut expected = state.clone();
+            expected.registers[rd as usize] = AbstractValue::Unknown;
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &counter_rom(),
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+
+            let successor = (IsaMode::Thumb, guest_pc + 2);
+            assert_eq!(pending_keys(&pending), vec![successor]);
+            assert_eq!(only_state(&incoming[&successor]), &expected);
+        }
+    }
+
+    #[test]
+    fn thumb_ldr_word_marks_only_destination_unknown_and_enqueues_pc_plus_two() {
+        let guest_pc = ROM_BASE + 0x84;
+        for (encoding, rd, rb, imm5) in [(0x6880, 0, 0, 2), (0x6FC9, 1, 1, 31)] {
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::LoadWordImmediate { rd, rb, imm5 },
+            };
+            let mut state = AbstractState::unknown();
+            state.set_constant(0, 0x0400_00D4);
+            state.set_constant(1, 0x0200_0001);
+            state.set_constant(2, 0xAABB_CCDD);
+
+            let mut expected = state.clone();
+            expected.registers[rd as usize] = AbstractValue::Unknown;
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &counter_rom(),
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+
+            let successor = (IsaMode::Thumb, guest_pc + 2);
+            assert_eq!(pending_keys(&pending), vec![successor]);
+            assert_eq!(only_state(&incoming[&successor]), &expected);
+        }
+    }
+
+    #[test]
+    fn thumb_ldrh_marks_only_destination_unknown_and_enqueues_pc_plus_two() {
+        let guest_pc = ROM_BASE + 0x84;
+        for (encoding, rd, rb, imm5) in [(0x8821, 1, 4, 0), (0x8FC9, 1, 1, 31)] {
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::LoadHalfwordImmediate { rd, rb, imm5 },
+            };
+            let mut state = AbstractState::unknown();
+            state.set_constant(0, 0x1122_3344);
+            state.set_constant(1, 0x0200_0001);
+            state.set_constant(2, 0xAABB_CCDD);
+            state.set_constant(4, 0x0300_0000);
 
             let mut expected = state.clone();
             expected.registers[rd as usize] = AbstractValue::Unknown;

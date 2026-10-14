@@ -209,6 +209,28 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0x6000 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::StoreWordImmediate {
+                rd: (encoding & 0x7) as u8,
+                rb: ((encoding >> 3) & 0x7) as u8,
+                imm5: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
+    if encoding & 0xF800 == 0x6800 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::LoadWordImmediate {
+                rd: (encoding & 0x7) as u8,
+                rb: ((encoding >> 3) & 0x7) as u8,
+                imm5: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0x7000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -231,6 +253,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0x8800 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::LoadHalfwordImmediate {
+                rd: (encoding & 0x7) as u8,
+                rb: ((encoding >> 3) & 0x7) as u8,
+                imm5: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0x8000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -239,6 +272,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
                 rd: (encoding & 0x7) as u8,
                 rb: ((encoding >> 3) & 0x7) as u8,
                 imm5: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
+    if encoding & 0xF800 == 0x0800 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::LsrImmediate {
+                rd: (encoding & 0x7) as u8,
+                rs: ((encoding >> 3) & 0x7) as u8,
+                amount: ((encoding >> 6) & 0x1F) as u8,
             },
         });
     }
@@ -644,8 +688,40 @@ mod tests {
                 amount: 0,
             }
         );
-        for encoding in [0x0849, 0x1049, 0x4089] {
+        for encoding in [0x1049, 0x4089] {
             assert!(decode_thumb(0x0800_0084, encoding).is_err());
+        }
+    }
+
+    #[test]
+    fn decodes_thumb_lsr_immediate_format_1_and_rejects_other_shift_forms() {
+        for (encoding, rd, rs, amount) in [
+            (0x0800, 0, 0, 0),
+            (0x0849, 1, 1, 1),
+            (0x0C00, 0, 0, 16),
+            (0x0FFF, 7, 7, 31),
+        ] {
+            assert_eq!(
+                decode_thumb(0x0800_0B80, encoding).unwrap().operation,
+                ThumbOperation::LsrImmediate { rd, rs, amount }
+            );
+        }
+
+        // Keep the neighboring LSL family classified as LSL and reject ASR
+        // immediate and register-shift forms until their own contracts exist.
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x0000).unwrap().operation,
+            ThumbOperation::LslImmediate {
+                rd: 0,
+                rs: 0,
+                amount: 0,
+            }
+        );
+        for encoding in [0x1049, 0x4089] {
+            assert!(
+                decode_thumb(0x0800_0084, encoding).is_err(),
+                "encoding 0x{encoding:04X} must remain unsupported"
+            );
         }
     }
 
@@ -752,7 +828,41 @@ mod tests {
                 imm5: 31,
             }
         );
-        for encoding in [0x8808, 0x5A08, 0x5208] {
+        for encoding in [0x5A08, 0x5208] {
+            assert!(
+                decode_thumb(0x0800_03B8, encoding).is_err(),
+                "encoding 0x{encoding:04X} must remain unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn decodes_thumb_str_immediate_format_9_and_rejects_other_word_forms() {
+        assert_eq!(
+            decode_thumb(0x0800_06B4, 0x6005).unwrap().operation,
+            ThumbOperation::StoreWordImmediate {
+                rd: 5,
+                rb: 0,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03B8, 0x67C9).unwrap().operation,
+            ThumbOperation::StoreWordImmediate {
+                rd: 1,
+                rb: 1,
+                imm5: 31,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03B8, 0x6008).unwrap().operation,
+            ThumbOperation::StoreWordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            }
+        );
+        for encoding in [0x5008, 0x5208] {
             assert!(
                 decode_thumb(0x0800_03B8, encoding).is_err(),
                 "encoding 0x{encoding:04X} must remain unsupported"
@@ -820,9 +930,93 @@ mod tests {
                 imm5: 31,
             }
         );
-        for encoding in [0x5C08, 0x5808, 0x8808] {
+        for encoding in [0x5C08, 0x5808] {
             assert!(
                 decode_thumb(0x0800_099C, encoding).is_err(),
+                "encoding 0x{encoding:04X} must remain unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn decodes_thumb_ldr_word_immediate_format_9_and_rejects_other_word_forms() {
+        assert_eq!(
+            decode_thumb(0x0800_06BC, 0x6880).unwrap().operation,
+            ThumbOperation::LoadWordImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 2,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03B8, 0x6800).unwrap().operation,
+            ThumbOperation::LoadWordImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_03B8, 0x6FC7).unwrap().operation,
+            ThumbOperation::LoadWordImmediate {
+                rd: 7,
+                rb: 0,
+                imm5: 31,
+            }
+        );
+        for encoding in [0x5808, 0x5C08, 0x9800] {
+            assert!(
+                decode_thumb(0x0800_03B8, encoding).is_err(),
+                "encoding 0x{encoding:04X} must remain unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn decodes_thumb_ldrh_immediate_format_10_and_rejects_register_form() {
+        assert_eq!(
+            decode_thumb(0x0800_0B84, 0x8821).unwrap().operation,
+            ThumbOperation::LoadHalfwordImmediate {
+                rd: 1,
+                rb: 4,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x8808).unwrap().operation,
+            ThumbOperation::LoadHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x8FC8).unwrap().operation,
+            ThumbOperation::LoadHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 31,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x8809).unwrap().operation,
+            ThumbOperation::LoadHalfwordImmediate {
+                rd: 1,
+                rb: 1,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x8008).unwrap().operation,
+            ThumbOperation::StoreHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            }
+        );
+        for encoding in [0x5A49, 0x5808, 0x9800] {
+            assert!(
+                decode_thumb(0x0800_0084, encoding).is_err(),
                 "encoding 0x{encoding:04X} must remain unsupported"
             );
         }
@@ -856,7 +1050,14 @@ mod tests {
                 .unwrap_err()
                 .contains("Thumb literal PC overflow at 0xFFFFFFFE")
         );
-        assert!(decode_thumb(0x0800_0086, 0x6800).is_err());
+        assert_eq!(
+            decode_thumb(0x0800_0086, 0x6800).unwrap().operation,
+            ThumbOperation::LoadWordImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 0,
+            }
+        );
     }
 
     #[test]

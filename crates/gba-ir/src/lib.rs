@@ -101,6 +101,11 @@ pub enum ThumbOperation {
         rs: u8,
         amount: u8,
     },
+    LsrImmediate {
+        rd: u8,
+        rs: u8,
+        amount: u8,
+    },
     OrrRegister {
         rd: u8,
         rs: u8,
@@ -111,6 +116,11 @@ pub enum ThumbOperation {
         operand: u8,
         immediate: bool,
         subtract: bool,
+    },
+    StoreWordImmediate {
+        rd: u8,
+        rb: u8,
+        imm5: u8,
     },
     StoreHalfwordImmediate {
         rd: u8,
@@ -123,6 +133,16 @@ pub enum ThumbOperation {
         imm5: u8,
     },
     LoadByteImmediate {
+        rd: u8,
+        rb: u8,
+        imm5: u8,
+    },
+    LoadWordImmediate {
+        rd: u8,
+        rb: u8,
+        imm5: u8,
+    },
+    LoadHalfwordImmediate {
         rd: u8,
         rb: u8,
         imm5: u8,
@@ -318,9 +338,13 @@ pub enum VerifyError {
     InvalidThumbFormat3Register(u8),
     InvalidThumbRomLiteralRegister(u8),
     InvalidThumbAddSubtractRegister(u8),
+    InvalidThumbWordStoreRegister(u8),
     InvalidThumbHalfwordStoreRegister(u8),
     InvalidThumbByteStoreRegister(u8),
     InvalidThumbByteLoadRegister(u8),
+    InvalidThumbWordLoadRegister(u8),
+    InvalidThumbHalfwordLoadRegister(u8),
+    InvalidThumbLsrRegister(u8),
     InvalidThumbOrrRegister(u8),
     InvalidThumbBranchCondition(u8),
     InvalidThumbBranchSuccessorMask(u8),
@@ -411,6 +435,10 @@ impl fmt::Display for VerifyError {
                 f,
                 "Thumb ADD/SUB Format 2 register r{register} is not a low register"
             ),
+            Self::InvalidThumbWordStoreRegister(register) => write!(
+                f,
+                "Thumb STR immediate register r{register} is not a low register"
+            ),
             Self::InvalidThumbHalfwordStoreRegister(register) => write!(
                 f,
                 "Thumb STRH immediate register r{register} is not a low register"
@@ -423,6 +451,20 @@ impl fmt::Display for VerifyError {
                 f,
                 "Thumb LDRB immediate register r{register} is not a low register"
             ),
+            Self::InvalidThumbWordLoadRegister(register) => write!(
+                f,
+                "Thumb LDR immediate register r{register} is not a low register"
+            ),
+            Self::InvalidThumbHalfwordLoadRegister(register) => write!(
+                f,
+                "Thumb LDRH immediate register r{register} is not a low register"
+            ),
+            Self::InvalidThumbLsrRegister(register) => {
+                write!(
+                    f,
+                    "Thumb LSR immediate register r{register} is not a low register"
+                )
+            }
             Self::InvalidThumbOrrRegister(register) => {
                 write!(f, "Thumb ORR register r{register} is not a low register")
             }
@@ -696,6 +738,26 @@ impl ArmProgram {
                         )));
                     }
                 }
+                ThumbOperation::LsrImmediate { rd, rs, amount } => {
+                    for register in [rd, rs] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbLsrRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    let encoded_rs = ((encoding >> 3) & 0x7) as u8;
+                    let encoded_amount = ((encoding >> 6) & 0x1F) as u8;
+                    if encoding & 0xF800 != 0x0800
+                        || rd != encoded_rd
+                        || rs != encoded_rs
+                        || amount != encoded_amount
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::OrrRegister { rd, rs } => {
                     for register in [rd, rs] {
                         if register > 7 {
@@ -761,6 +823,26 @@ impl ArmProgram {
                         )));
                     }
                 }
+                ThumbOperation::StoreWordImmediate { rd, rb, imm5 } => {
+                    for register in [rd, rb] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbWordStoreRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_imm5 = ((encoding >> 6) & 0x1F) as u8;
+                    let encoded_rb = ((encoding >> 3) & 0x7) as u8;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    if encoding & 0xF800 != 0x6000
+                        || rd != encoded_rd
+                        || rb != encoded_rb
+                        || imm5 != encoded_imm5
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
                 ThumbOperation::StoreByteImmediate { rd, rb, imm5 } => {
                     for register in [rd, rb] {
                         if register > 7 {
@@ -792,6 +874,46 @@ impl ArmProgram {
                     let encoded_rb = ((encoding >> 3) & 0x7) as u8;
                     let encoded_rd = (encoding & 0x7) as u8;
                     if encoding & 0xF800 != 0x7800
+                        || rd != encoded_rd
+                        || rb != encoded_rb
+                        || imm5 != encoded_imm5
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
+                ThumbOperation::LoadWordImmediate { rd, rb, imm5 } => {
+                    for register in [rd, rb] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbWordLoadRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_imm5 = ((encoding >> 6) & 0x1F) as u8;
+                    let encoded_rb = ((encoding >> 3) & 0x7) as u8;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    if encoding & 0xF800 != 0x6800
+                        || rd != encoded_rd
+                        || rb != encoded_rb
+                        || imm5 != encoded_imm5
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
+                ThumbOperation::LoadHalfwordImmediate { rd, rb, imm5 } => {
+                    for register in [rd, rb] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbHalfwordLoadRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_imm5 = ((encoding >> 6) & 0x1F) as u8;
+                    let encoded_rb = ((encoding >> 3) & 0x7) as u8;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    if encoding & 0xF800 != 0x8800
                         || rd != encoded_rd
                         || rb != encoded_rb
                         || imm5 != encoded_imm5
@@ -1164,6 +1286,15 @@ impl ArmProgram {
                         });
                     }
                 }
+                ThumbOperation::LsrImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
                 ThumbOperation::OrrRegister { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
@@ -1191,6 +1322,15 @@ impl ArmProgram {
                         });
                     }
                 }
+                ThumbOperation::StoreWordImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
                 ThumbOperation::StoreByteImmediate { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
@@ -1201,6 +1341,24 @@ impl ArmProgram {
                     }
                 }
                 ThumbOperation::LoadByteImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::LoadWordImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
+                ThumbOperation::LoadHalfwordImmediate { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
                         return Err(VerifyError::MissingSuccessor {
@@ -1545,6 +1703,23 @@ pub fn execute_thumb_instruction(
                 | carry;
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
+        ThumbOperation::LsrImmediate { rd, rs, amount } => {
+            let old_source = state.r[rs as usize];
+            let (result, carry) = if amount == 0 {
+                (0, old_source & 0x8000_0000 != 0)
+            } else {
+                (
+                    old_source >> amount,
+                    old_source & (1_u32 << (u32::from(amount) - 1)) != 0,
+                )
+            };
+            state.r[rd as usize] = result;
+            state.cpsr = (state.cpsr & !0xE000_0000)
+                | (result & 0x8000_0000)
+                | (u32::from(result == 0) << 30)
+                | (u32::from(carry) << 29);
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
         ThumbOperation::OrrRegister { rd, rs } => {
             let lhs = state.r[rd as usize];
             let rhs = state.r[rs as usize];
@@ -1595,10 +1770,19 @@ pub fn execute_thumb_instruction(
         ThumbOperation::StoreHalfwordImmediate { .. } => {
             return Err(StepFault::MemoryRuntimeRequired);
         }
+        ThumbOperation::StoreWordImmediate { .. } => {
+            return Err(StepFault::MemoryRuntimeRequired);
+        }
         ThumbOperation::StoreByteImmediate { .. } => {
             return Err(StepFault::MemoryRuntimeRequired);
         }
         ThumbOperation::LoadByteImmediate { .. } => {
+            return Err(StepFault::MemoryRuntimeRequired);
+        }
+        ThumbOperation::LoadWordImmediate { .. } => {
+            return Err(StepFault::MemoryRuntimeRequired);
+        }
+        ThumbOperation::LoadHalfwordImmediate { .. } => {
             return Err(StepFault::MemoryRuntimeRequired);
         }
         ThumbOperation::BranchExchange { rm } => {
@@ -2736,6 +2920,28 @@ mod tests {
     }
 
     #[test]
+    fn thumb_word_store_requires_memory_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0x67C9,
+            operation: ThumbOperation::StoreWordImmediate {
+                rd: 1,
+                rb: 1,
+                imm5: 31,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[1] = 0x0200_0000;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
     fn thumb_byte_store_requires_memory_runtime_without_mutating_cpu_state() {
         let instruction = ThumbInstruction {
             guest_pc: 0x0800_0100,
@@ -2772,6 +2978,51 @@ mod tests {
         let mut cpu = state(instruction.guest_pc);
         cpu.cpsr |= 0x20;
         cpu.r[1] = 0x0200_0001;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn thumb_word_load_requires_memory_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0x6880,
+            operation: ThumbOperation::LoadWordImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 2,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[0] = 0x0400_00D4;
+        let before = cpu;
+        assert_eq!(
+            execute_thumb_instruction(&mut cpu, instruction),
+            Err(StepFault::MemoryRuntimeRequired)
+        );
+        assert_eq!(cpu, before);
+    }
+
+    #[test]
+    fn thumb_halfword_load_requires_memory_runtime_without_mutating_cpu_state() {
+        let instruction = ThumbInstruction {
+            guest_pc: 0x0800_0100,
+            encoding: 0x8821,
+            operation: ThumbOperation::LoadHalfwordImmediate {
+                rd: 1,
+                rb: 4,
+                imm5: 0,
+            },
+        };
+        let mut cpu = state(instruction.guest_pc);
+        cpu.cpsr |= 0x20;
+        cpu.r[1] = 0xAABB_CCDD;
+        cpu.r[4] = 0x0200_0001;
         let before = cpu;
         assert_eq!(
             execute_thumb_instruction(&mut cpu, instruction),
@@ -3006,6 +3257,68 @@ mod tests {
             }
             assert_eq!(cpu.r[15], guest_pc + 2);
             assert_eq!(cpu.cpsr, expected_cpsr);
+            assert_eq!(cpu.guest_cycle, 6);
+        }
+    }
+
+    #[test]
+    fn thumb_lsr_immediate_updates_result_flags_and_preserves_v_control_and_alias() {
+        let guest_pc = 0x0800_0100;
+        let cases = [
+            // Immediate zero means shift by 32; carry comes from bit 31.
+            (0x8000_0001, 0, 0x1ABC_10BF, 0, 1, 0x7ABC_10BF, 0, 1),
+            // Shift by one; carry comes from bit 0 and V remains clear.
+            (
+                0x8000_0003,
+                1,
+                0x0ABC_20BF,
+                0x4000_0001,
+                1,
+                0x2ABC_20BF,
+                2,
+                1,
+            ),
+            // Shift by sixteen; bit 15 becomes carry and V remains set.
+            (0x0001_8000, 16, 0x1ABC_30BF, 1, 1, 0x3ABC_30BF, 2, 1),
+            // Shift by thirty-one; bit 30 is clear, so carry is cleared.
+            (0x8000_0000, 31, 0x0ABC_40BF, 1, 0, 0x0ABC_40BF, 2, 1),
+            // Rd == Rs must read the old value before overwriting the register.
+            (
+                0x8001_8000,
+                16,
+                0x1ABC_50BF,
+                0x0000_8001,
+                1,
+                0x3ABC_50BF,
+                2,
+                2,
+            ),
+        ];
+
+        for (source, amount, cpsr, expected_result, carry, expected_cpsr, rd, rs) in cases {
+            let encoding = 0x0800 | (u16::from(amount) << 6) | (u16::from(rs) << 3) | u16::from(rd);
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::LsrImmediate { rd, rs, amount },
+            };
+            let mut cpu = state(guest_pc);
+            cpu.cpsr = cpsr;
+            cpu.r[rs as usize] = source;
+            cpu.r[3] = 0xAABB_CCDD;
+            let mut expected_registers = cpu.r;
+            expected_registers[rd as usize] = expected_result;
+            expected_registers[15] = guest_pc + 2;
+
+            execute_thumb_instruction(&mut cpu, instruction).unwrap();
+
+            assert_eq!(cpu.r, expected_registers);
+            assert_eq!(cpu.r[rd as usize], expected_result);
+            assert_eq!(cpu.cpsr, expected_cpsr);
+            assert_eq!(cpu.cpsr & 0x2000_0000 != 0, carry != 0);
+            assert_eq!(cpu.cpsr & 0x1000_0000, cpsr & 0x1000_0000);
+            assert_eq!(cpu.cpsr & !0xF000_0000, cpsr & !0xF000_0000);
+            assert_eq!(cpu.r[15], guest_pc + 2);
             assert_eq!(cpu.guest_cycle, 6);
         }
     }
@@ -3546,6 +3859,121 @@ mod tests {
     }
 
     #[test]
+    fn arm_program_verifier_checks_thumb_lsr_immediate_fields_registers_and_successor() {
+        let guest_pc = 0x0800_0100;
+        let make_program = |instruction: ThumbInstruction| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                instruction,
+                ThumbInstruction {
+                    guest_pc: guest_pc + 2,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc + 2,
+            }],
+        };
+
+        for (rd, rs, amount) in [(0, 0, 0), (1, 2, 16), (7, 7, 31)] {
+            let encoding = 0x0800 | (u16::from(amount) << 6) | (u16::from(rs) << 3) | u16::from(rd);
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::LsrImmediate { rd, rs, amount },
+            };
+            assert!(make_program(instruction).verify().is_ok());
+        }
+
+        let valid = ThumbInstruction {
+            guest_pc,
+            encoding: 0x0C00,
+            operation: ThumbOperation::LsrImmediate {
+                rd: 0,
+                rs: 0,
+                amount: 16,
+            },
+        };
+        for operation in [
+            ThumbOperation::LsrImmediate {
+                rd: 1,
+                rs: 0,
+                amount: 16,
+            },
+            ThumbOperation::LsrImmediate {
+                rd: 0,
+                rs: 1,
+                amount: 16,
+            },
+            ThumbOperation::LsrImmediate {
+                rd: 0,
+                rs: 0,
+                amount: 15,
+            },
+        ] {
+            let mut mismatched = make_program(valid);
+            mismatched.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                mismatched.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(0x0C00))
+            );
+        }
+
+        for operation in [
+            ThumbOperation::LsrImmediate {
+                rd: 8,
+                rs: 0,
+                amount: 16,
+            },
+            ThumbOperation::LsrImmediate {
+                rd: 0,
+                rs: 8,
+                amount: 16,
+            },
+        ] {
+            let invalid_register = match operation {
+                ThumbOperation::LsrImmediate { rd: 8, .. }
+                | ThumbOperation::LsrImmediate { rs: 8, .. } => 8,
+                _ => unreachable!(),
+            };
+            let mut invalid = make_program(valid);
+            invalid.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                invalid.verify(),
+                Err(VerifyError::InvalidThumbLsrRegister(invalid_register))
+            );
+        }
+
+        for encoding in [0x0000, 0x1049, 0x4089] {
+            let mut out_of_family = make_program(valid);
+            out_of_family.thumb_instructions[0].encoding = encoding;
+            assert_eq!(
+                out_of_family.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                    encoding
+                )))
+            );
+        }
+
+        let mut missing_successor = make_program(valid);
+        missing_successor.thumb_instructions.pop();
+        missing_successor.branch_targets.clear();
+        assert_eq!(
+            missing_successor.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
     fn arm_program_verifier_checks_thumb_orr_fields_registers_alignment_and_successor() {
         let guest_pc = 0x0800_0100;
         let instruction = ThumbInstruction {
@@ -3755,6 +4183,217 @@ mod tests {
         );
 
         let mut missing_fallthrough = valid_program();
+        missing_fallthrough.thumb_instructions.pop();
+        missing_fallthrough.branch_targets.clear();
+        assert_eq!(
+            missing_fallthrough.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_ldr_word_fields_and_fallthrough() {
+        let guest_pc = 0x0800_0100;
+        let load = ThumbInstruction {
+            guest_pc,
+            encoding: 0x6880,
+            operation: ThumbOperation::LoadWordImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 2,
+            },
+        };
+        let make_program = |load| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                load,
+                ThumbInstruction {
+                    guest_pc: guest_pc + 2,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc,
+            }],
+        };
+        assert!(make_program(load).verify().is_ok());
+
+        let zero_offset = ThumbInstruction {
+            guest_pc,
+            encoding: 0x6800,
+            operation: ThumbOperation::LoadWordImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        assert!(make_program(zero_offset).verify().is_ok());
+
+        let max_offset = ThumbInstruction {
+            guest_pc,
+            encoding: 0x6FC7,
+            operation: ThumbOperation::LoadWordImmediate {
+                rd: 7,
+                rb: 0,
+                imm5: 31,
+            },
+        };
+        assert!(make_program(max_offset).verify().is_ok());
+
+        let mut invalid_register = make_program(load);
+        invalid_register.thumb_instructions[0].operation = ThumbOperation::LoadWordImmediate {
+            rd: 8,
+            rb: 0,
+            imm5: 2,
+        };
+        assert_eq!(
+            invalid_register.verify(),
+            Err(VerifyError::InvalidThumbWordLoadRegister(8))
+        );
+
+        let mut mismatched = make_program(load);
+        mismatched.thumb_instructions[0].operation = ThumbOperation::LoadWordImmediate {
+            rd: 1,
+            rb: 0,
+            imm5: 2,
+        };
+        assert_eq!(
+            mismatched.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x6880))
+        );
+
+        for encoding in [0x5808, 0x5C08, 0x9800] {
+            let mut out_of_family = make_program(load);
+            out_of_family.thumb_instructions[0].encoding = encoding;
+            assert_eq!(
+                out_of_family.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                    encoding
+                )))
+            );
+        }
+
+        let mut missing_fallthrough = make_program(load);
+        missing_fallthrough.thumb_instructions.pop();
+        missing_fallthrough.branch_targets.clear();
+        assert_eq!(
+            missing_fallthrough.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_ldrh_fields_and_fallthrough() {
+        let guest_pc = 0x0800_0100;
+        let load = ThumbInstruction {
+            guest_pc,
+            encoding: 0x8821,
+            operation: ThumbOperation::LoadHalfwordImmediate {
+                rd: 1,
+                rb: 4,
+                imm5: 0,
+            },
+        };
+        let make_program = |load| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                load,
+                ThumbInstruction {
+                    guest_pc: guest_pc + 2,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc,
+            }],
+        };
+        assert!(make_program(load).verify().is_ok());
+
+        let zero_offset = ThumbInstruction {
+            guest_pc,
+            encoding: 0x8808,
+            operation: ThumbOperation::LoadHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            },
+        };
+        assert!(make_program(zero_offset).verify().is_ok());
+
+        let max_offset = ThumbInstruction {
+            guest_pc,
+            encoding: 0x8FC8,
+            operation: ThumbOperation::LoadHalfwordImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 31,
+            },
+        };
+        assert!(make_program(max_offset).verify().is_ok());
+
+        let alias = ThumbInstruction {
+            guest_pc,
+            encoding: 0x8809,
+            operation: ThumbOperation::LoadHalfwordImmediate {
+                rd: 1,
+                rb: 1,
+                imm5: 0,
+            },
+        };
+        assert!(make_program(alias).verify().is_ok());
+
+        let mut invalid_register = make_program(load);
+        invalid_register.thumb_instructions[0].operation = ThumbOperation::LoadHalfwordImmediate {
+            rd: 8,
+            rb: 4,
+            imm5: 0,
+        };
+        assert_eq!(
+            invalid_register.verify(),
+            Err(VerifyError::InvalidThumbHalfwordLoadRegister(8))
+        );
+
+        let mut mismatched = make_program(load);
+        mismatched.thumb_instructions[0].operation = ThumbOperation::LoadHalfwordImmediate {
+            rd: 0,
+            rb: 4,
+            imm5: 0,
+        };
+        assert_eq!(
+            mismatched.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x8821))
+        );
+
+        for encoding in [0x5A49, 0x5A08, 0x8008, 0x9800] {
+            let mut out_of_family = make_program(load);
+            out_of_family.thumb_instructions[0].encoding = encoding;
+            assert_eq!(
+                out_of_family.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                    encoding
+                )))
+            );
+        }
+
+        let mut missing_fallthrough = make_program(load);
         missing_fallthrough.thumb_instructions.pop();
         missing_fallthrough.branch_targets.clear();
         assert_eq!(
@@ -3985,6 +4624,113 @@ mod tests {
             invalid_register.verify(),
             Err(VerifyError::InvalidThumbByteStoreRegister(8))
         );
+
+        let missing_fallthrough = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![store],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![],
+        };
+        assert_eq!(
+            missing_fallthrough.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_str_fields_and_fallthrough() {
+        let guest_pc = 0x0800_0100;
+        let store = ThumbInstruction {
+            guest_pc,
+            encoding: 0x6005,
+            operation: ThumbOperation::StoreWordImmediate {
+                rd: 5,
+                rb: 0,
+                imm5: 0,
+            },
+        };
+        let make_program = |store| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                store,
+                ThumbInstruction {
+                    guest_pc: guest_pc + 2,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc,
+            }],
+        };
+        assert!(make_program(store).verify().is_ok());
+
+        let max_offset_store = ThumbInstruction {
+            guest_pc,
+            encoding: 0x67C9,
+            operation: ThumbOperation::StoreWordImmediate {
+                rd: 1,
+                rb: 1,
+                imm5: 31,
+            },
+        };
+        assert!(make_program(max_offset_store).verify().is_ok());
+
+        for operation in [
+            ThumbOperation::StoreWordImmediate {
+                rd: 0,
+                rb: 0,
+                imm5: 1,
+            },
+            ThumbOperation::StoreWordImmediate {
+                rd: 1,
+                rb: 0,
+                imm5: 0,
+            },
+            ThumbOperation::StoreWordImmediate {
+                rd: 5,
+                rb: 1,
+                imm5: 0,
+            },
+        ] {
+            let mut mismatched = make_program(store);
+            mismatched.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                mismatched.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(0x6005))
+            );
+        }
+
+        let mut invalid_register = make_program(store);
+        invalid_register.thumb_instructions[0].operation = ThumbOperation::StoreWordImmediate {
+            rd: 8,
+            rb: 0,
+            imm5: 0,
+        };
+        assert_eq!(
+            invalid_register.verify(),
+            Err(VerifyError::InvalidThumbWordStoreRegister(8))
+        );
+
+        for encoding in [0x6808, 0x5008, 0x5208] {
+            let mut out_of_family = make_program(store);
+            out_of_family.thumb_instructions[0].encoding = encoding;
+            assert_eq!(
+                out_of_family.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                    encoding,
+                )))
+            );
+        }
 
         let missing_fallthrough = ArmProgram {
             version: GBA_IR_VERSION,

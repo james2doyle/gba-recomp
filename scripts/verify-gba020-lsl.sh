@@ -5,15 +5,15 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
 if [ "$#" -ne 2 ]; then
-    echo "usage: verify-gba020-lsl.sh <jobs: 1|2|4|5|7|8> <lld-threads: 1..10>" >&2
+    echo "usage: verify-gba020-lsl.sh <jobs: 1|2|4|5|7|8|9|10> <lld-threads: 1..10>" >&2
     exit 2
 fi
 gba020_jobs=$1
 gba020_link_threads=$2
 case "$gba020_jobs" in
-    1|2|4|5|7|8) ;;
+    1|2|4|5|7|8|9|10) ;;
     *)
-        echo "GBA020_JOBS must be 1, 2, 4, 5, 7, or 8" >&2
+        echo "GBA020_JOBS must be 1, 2, 4, 5, 7, 8, 9, or 10" >&2
         exit 2
         ;;
 esac
@@ -39,6 +39,7 @@ if [ ! -x "$recomp_bin" ]; then
     echo "built gba-recomp binary is missing: $recomp_bin" >&2
     exit 2
 fi
+group_timing_start_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
 
 verify_thumb_lsl() {
     mode=$1
@@ -118,8 +119,25 @@ schedule_thumb_lsl thumb-lsl-nineteen '{"status":"budget_exhausted","steps":8,"r
 schedule_thumb_lsl thumb-lsl-thirtyone '{"status":"budget_exhausted","steps":8,"r0":0,"r1":0,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
 schedule_thumb_lsl thumb-lsl-nonalias '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":4096,"pc":"0x08000086","cpsr":"0x9000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
 schedule_thumb_lsl thumb-lsl-bx '{"status":"budget_exhausted","steps":6,"r0":67108980,"r1":134217960,"pc":"0x080000E8","cpsr":"0x0000001F","guest_cycle":6,"ewram_word0":0,"iwram_word0":0}' 6
+schedule_thumb_lsl thumb-lsr-zero-carry-clear '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":0,"pc":"0x08000086","cpsr":"0x5000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+schedule_thumb_lsl thumb-lsr-zero-carry-set '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":0,"pc":"0x08000086","cpsr":"0x7000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+schedule_thumb_lsl thumb-lsr-one-carry '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":1073741824,"pc":"0x08000086","cpsr":"0x3000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+schedule_thumb_lsl thumb-lsr-sixteen '{"status":"budget_exhausted","steps":8,"r0":4660,"r1":305419896,"pc":"0x08000086","cpsr":"0x1000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+schedule_thumb_lsl thumb-lsr-thirtyone '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":1,"pc":"0x08000086","cpsr":"0x1000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
+schedule_thumb_lsl thumb-lsr-alias '{"status":"budget_exhausted","steps":8,"r0":2147483648,"r1":4660,"pc":"0x08000086","cpsr":"0x1000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}' 8
 if [ "$active_count" -gt 0 ]; then
     wait_batch
 fi
 
-echo "GBA-020 LSL fixtures passed: jobs=$gba020_jobs LLD=$gba020_link_threads"
+python3 - "$group_timing_start_ns" "$gba020_jobs" "$gba020_link_threads" <<'PY'
+import sys
+import time
+
+start_ns, jobs, link_threads = sys.argv[1:]
+elapsed_ms = (time.monotonic_ns() - int(start_ns)) / 1_000_000
+print(
+    f"GBA020_GROUP_TIMING group=thumb-lsl-lsr jobs={jobs} "
+    f"link_threads={link_threads} wall_ms={elapsed_ms:.1f}"
+)
+PY
+echo "GBA-020 LSL/LSR fixtures passed: jobs=$gba020_jobs LLD=$gba020_link_threads"

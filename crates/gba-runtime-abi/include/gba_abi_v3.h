@@ -45,6 +45,10 @@ uint32_t gba_store8_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                        uint32_t guest_ea, uint32_t value);
 uint32_t gba_load8_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                       uint32_t guest_ea, uint8_t *host_value_out);
+uint32_t gba_load16_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                       uint32_t guest_ea, uint32_t *host_value_out);
+uint32_t gba_load32_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
+                       uint32_t guest_ea, uint32_t *host_value_out);
 uint32_t gba_push_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,
                            uint32_t register_list);
 uint32_t gba_pop_thumb_v3(GbaRuntimeV3 *rt, GbaExitV3 *out,

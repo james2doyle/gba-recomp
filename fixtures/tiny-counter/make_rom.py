@@ -413,7 +413,13 @@ def generate(mode: str = "valid") -> bytes:
         "thumb-lsl-nineteen",
         "thumb-lsl-thirtyone",
         "thumb-lsl-nonalias",
-        "thumb-lsr-unsupported",
+        "thumb-lsr-zero-carry-clear",
+        "thumb-lsr-zero-carry-set",
+        "thumb-lsr-one-carry",
+        "thumb-lsr-sixteen",
+        "thumb-lsr-thirtyone",
+        "thumb-lsr-alias",
+        "thumb-lsr-register-unsupported",
         "thumb-asr-unsupported",
         "thumb-lsl-register-unsupported",
     ):
@@ -424,7 +430,13 @@ def generate(mode: str = "valid") -> bytes:
             "thumb-lsl-nineteen": (0x04C9, 0x00001000, 0x80000000),
             "thumb-lsl-thirtyone": (0x07C9, 0x00000002, 0x00000000),
             "thumb-lsl-nonalias": (0x04C8, 0x00001000, 0x80000000),
-            "thumb-lsr-unsupported": (0x0849, 0x00000001, 0x00000000),
+            "thumb-lsr-zero-carry-clear": (0x0809, 0x7FFFFFFF, 0x80000000),
+            "thumb-lsr-zero-carry-set": (0x0809, 0x80000000, 0x80000000),
+            "thumb-lsr-one-carry": (0x0849, 0x80000001, 0x80000000),
+            "thumb-lsr-sixteen": (0x0C08, 0x12345678, 0x80000000),
+            "thumb-lsr-thirtyone": (0x0FC9, 0x80000000, 0x80000000),
+            "thumb-lsr-alias": (0x0C09, 0x12345678, 0x80000000),
+            "thumb-lsr-register-unsupported": (0x40C9, 0x00000001, 0x00000000),
             "thumb-asr-unsupported": (0x1049, 0x00000001, 0x00000000),
             "thumb-lsl-register-unsupported": (0x4089, 0x00000001, 0x00000000),
         }
@@ -685,7 +697,6 @@ def generate(mode: str = "valid") -> bytes:
         "thumb-strh-iwram-zero-odd",
         "thumb-strh-iwram-thirtyone-even",
         "thumb-strh-invalid-odd",
-        "thumb-ldrh-unsupported",
         "thumb-strh-register-unsupported",
     ):
         cases = {
@@ -704,7 +715,6 @@ def generate(mode: str = "valid") -> bytes:
                 0x02FFFFC2,
             ),
             "thumb-strh-invalid-odd": (0x8008, 0x0000A55A, 0x04000001),
-            "thumb-ldrh-unsupported": (0x8808, 0x0000ABCD, 0x02000000),
             # STRH r0,[r1,r2], Format 7 register-offset, which stays out of
             # the immediate-only Format 10 contract.
             "thumb-strh-register-unsupported": (0x5288, 0x0000ABCD, 0x02000000),
@@ -727,6 +737,200 @@ def generate(mode: str = "valid") -> bytes:
             "<4I", 0x08000085, 0x080000EC, value, base
         )
         image[0xEC:0xF0] = struct.pack("<I", branch(0xEC, 0xEC))
+    elif mode in (
+        "thumb-strword-ewram-zero",
+        "thumb-strword-ewram-thirtyone-alias",
+        "thumb-strword-iwram-thirtyone",
+        "thumb-strword-invalid-unaligned",
+        "thumb-strword-invalid-region",
+        "thumb-strword-mmio-dma",
+        "thumb-strword-wraparound",
+        "thumb-strword-register-unsupported",
+    ):
+        cases = {
+            # Format 9: 01100 imm5 Rb Rd. The last tuple item keeps the
+            # initialization STR in physical RAM before the Thumb store.
+            "thumb-strword-ewram-zero": (
+                0x6008,
+                0xAABBCCDD,
+                0x02000000,
+                0x02000000,
+            ),
+            # Rd==Rb; the old base value is also the value stored at EA 0x02000000.
+            "thumb-strword-ewram-thirtyone-alias": (
+                0x67C9,
+                0,
+                0x01FFFF84,
+                0x02000000,
+            ),
+            "thumb-strword-iwram-thirtyone": (
+                0x67C8,
+                0x13579BDF,
+                0x02FFFF84,
+                0x03000000,
+            ),
+            "thumb-strword-invalid-unaligned": (
+                0x6008,
+                0xA55A1234,
+                0x02000002,
+                0x02000000,
+            ),
+            "thumb-strword-invalid-region": (
+                0x6008,
+                0xA55A1234,
+                0x04000000,
+                0x02000000,
+            ),
+            "thumb-strword-mmio-dma": (
+                0x6008,
+                0x08000000,
+                0x040000D4,
+                0x02000000,
+            ),
+            # 0xFFFFFF84 + (31 * 4) wraps to guest address zero.
+            "thumb-strword-wraparound": (
+                0x67C8,
+                0x0000005A,
+                0xFFFFFF84,
+                0x02000000,
+            ),
+            # STR r0,[r1,r2], Format 7 register-offset stays unsupported.
+            "thumb-strword-register-unsupported": (
+                0x5088,
+                0xAABBCCDD,
+                0x02000000,
+                0x02000000,
+            ),
+        }
+        encoding, value, base, initialized_region = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # STR/negative form; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xE8] = struct.pack(
+            "<10I",
+            0xE59F0020,  # LDR r0,[pc,#0x20] -> sentinel word at 0xE8.
+            0xE59F1020,  # LDR r1,[pc,#0x20] -> initialization RAM at 0xEC.
+            0xE5810000,  # STR sentinel,[r1].
+            0xE3A04080,  # MOV r4,#0x80.
+            0xE3540080,  # CMP r4,#0x80; Thumb STR must preserve these flags.
+            0xE59F0014,  # LDR r0,[pc,#0x14] -> word value at 0xF0.
+            0xE59F1014,  # LDR r1,[pc,#0x14] -> Thumb STR base at 0xF4.
+            0xE59F2018,  # LDR r2,[pc,#0x18] -> Thumb entry | 1 at 0xFC.
+            0xE28F3010,  # ADD r3,pc,#0x10 -> ARM loop at 0x080000F8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xE8:0xF8] = struct.pack(
+            "<4I", 0x44332211, initialized_region, value, base
+        )
+        image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
+        image[0xFC:0x100] = struct.pack("<I", 0x08000085)
+    elif mode in (
+        "thumb-ldrh-ewram-zero",
+        "thumb-ldrh-ewram-odd",
+        "thumb-ldrh-ewram-thirtyone",
+        "thumb-ldrh-iwram-thirtyone",
+        "thumb-ldrh-leafgreen-encoding",
+        "thumb-ldrh-alias",
+        "thumb-ldrh-mmio-dma",
+        "thumb-ldrh-wraparound",
+        "thumb-ldrh-register-unsupported",
+        "thumb-ldrsh-register-unsupported",
+    ):
+        cases = {
+            # The initialized word is 0x44332211, so an aligned LDRH sees 0x2211.
+            "thumb-ldrh-ewram-zero": (0x8808, 0xAABBCCDD, 0x02000000, 0x02000000),
+            # Odd EA aligns down and rotates the zero-extended halfword in u32.
+            "thumb-ldrh-ewram-odd": (0x8808, 0xAABBCCDD, 0x02000001, 0x02000000),
+            # 31 * 2 reaches the word initialized at the start of each RAM bank.
+            "thumb-ldrh-ewram-thirtyone": (0x8FC8, 0xAABBCCDD, 0x01FFFFC2, 0x02000000),
+            "thumb-ldrh-iwram-thirtyone": (0x8FC8, 0xAABBCCDD, 0x02FFFFC2, 0x03000000),
+            # Exact raw halfword observed at LeafGreen 0x08000B84: LDRH r1,[r4,#0].
+            "thumb-ldrh-leafgreen-encoding": (0x8821, 0xAABBCCDD, 0x02000000, 0x02000000),
+            # Rd==Rb must use old r1 as the effective address.
+            "thumb-ldrh-alias": (0x8809, 0xAABBCCDD, 0x02000000, 0x02000000),
+            # EA = 0x040000DC, a DMA3 MMIO address outside this RAM-only helper.
+            "thumb-ldrh-mmio-dma": (0x8908, 0xAABBCCDD, 0x040000D4, 0x02000000),
+            # 0xFFFFFFC2 + (31 * 2) wraps the guest EA to zero.
+            "thumb-ldrh-wraparound": (0x8FC8, 0xAABBCCDD, 0xFFFFFFC2, 0x02000000),
+            # LDRH by register (Format 7) remains outside this immediate contract.
+            "thumb-ldrh-register-unsupported": (0x5A49, 0xAABBCCDD, 0x02000000, 0x02000000),
+            "thumb-ldrsh-register-unsupported": (0x5E49, 0xAABBCCDD, 0x02000000, 0x02000000),
+        }
+        encoding, value, base, initialized_region = cases[mode]
+        base_load = 0xE59F4014 if mode == "thumb-ldrh-leafgreen-encoding" else 0xE59F1014
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # LDRH/negative form; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xE8] = struct.pack(
+            "<10I",
+            0xE59F0020,  # LDR r0,[pc,#0x20] -> initialization word at 0xE8.
+            0xE59F1020,  # LDR r1,[pc,#0x20] -> initialization RAM at 0xEC.
+            0xE5810000,  # STR initialization word,[r1].
+            0xE3A04080,  # MOV r4,#0x80.
+            0xE3540080,  # CMP r4,#0x80; LDRH must preserve these flags.
+            0xE59F0014,  # LDR r0,[pc,#0x14] -> sentinel at 0xF0.
+            base_load,  # Load the base literal into r1 or r4 at 0xF4.
+            0xE59F2018,  # LDR r2,[pc,#0x18] -> Thumb entry | 1 at 0xFC.
+            0xE28F3010,  # ADD r3,pc,#0x10 -> ARM loop at 0x080000F8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xE8:0xF8] = struct.pack(
+            "<4I", 0x44332211, initialized_region, value, base
+        )
+        image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
+        image[0xFC:0x100] = struct.pack("<I", 0x08000085)
+    elif mode in (
+        "thumb-ldrword-ewram-zero",
+        "thumb-ldrword-ewram-thirtyone",
+        "thumb-ldrword-iwram-thirtyone",
+        "thumb-ldrword-unaligned-one",
+        "thumb-ldrword-unaligned-two",
+        "thumb-ldrword-unaligned-three",
+        "thumb-ldrword-alias",
+        "thumb-ldrword-mmio-dma",
+        "thumb-ldrword-wraparound",
+        "thumb-ldrword-register-unsupported",
+        "thumb-ldrword-sp-unsupported",
+    ):
+        cases = {
+            # Initialize word 0x44332211 at the aligned EA, then load it.
+            "thumb-ldrword-ewram-zero": (0x6808, 0xAABBCCDD, 0x02000000, 0x02000000),
+            "thumb-ldrword-ewram-thirtyone": (0x6FC8, 0xAABBCCDD, 0x01FFFF84, 0x02000000),
+            "thumb-ldrword-iwram-thirtyone": (0x6FC8, 0xAABBCCDD, 0x02FFFF84, 0x03000000),
+            "thumb-ldrword-unaligned-one": (0x6808, 0xAABBCCDD, 0x02000001, 0x02000000),
+            "thumb-ldrword-unaligned-two": (0x6808, 0xAABBCCDD, 0x03000002, 0x03000000),
+            "thumb-ldrword-unaligned-three": (0x6808, 0xAABBCCDD, 0x02000003, 0x02000000),
+            # Rd==Rb: the old r1 is both the address base and the destination.
+            "thumb-ldrword-alias": (0x6809, 0xAABBCCDD, 0x02000000, 0x02000000),
+            # The effective address is 0x040000DC, DMA3 count MMIO.
+            "thumb-ldrword-mmio-dma": (0x6888, 0xAABBCCDD, 0x040000D4, 0x02000000),
+            # 0xFFFFFF84 + (31 * 4) wraps the 32-bit guest EA to zero.
+            "thumb-ldrword-wraparound": (0x6FC8, 0xAABBCCDD, 0xFFFFFF84, 0x02000000),
+            "thumb-ldrword-register-unsupported": (0x5808, 0xAABBCCDD, 0x02000000, 0x02000000),
+            "thumb-ldrword-sp-unsupported": (0x9800, 0xAABBCCDD, 0x02000000, 0x02000000),
+        }
+        encoding, value, base, initialized_region = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # LDR/negative form; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xE8] = struct.pack(
+            "<10I",
+            0xE59F0020,  # LDR r0,[pc,#0x20] -> initialization word at 0xE8.
+            0xE59F1020,  # LDR r1,[pc,#0x20] -> initialization RAM at 0xEC.
+            0xE5810000,  # STR initialization word,[r1].
+            0xE3A04080,  # MOV r4,#0x80.
+            0xE3540080,  # CMP r4,#0x80; LDR must preserve these flags.
+            0xE59F0014,  # LDR r0,[pc,#0x14] -> sentinel at 0xF0.
+            0xE59F1014,  # LDR r1,[pc,#0x14] -> Thumb LDR base at 0xF4.
+            0xE59F2018,  # LDR r2,[pc,#0x18] -> Thumb entry | 1 at 0xFC.
+            0xE28F3010,  # ADD r3,pc,#0x10 -> ARM loop at 0x080000F8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xE8:0xF8] = struct.pack(
+            "<4I", 0x44332211, initialized_region, value, base
+        )
+        image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
+        image[0xFC:0x100] = struct.pack("<I", 0x08000085)
     elif mode in (
         "thumb-strb-ewram-zero-even",
         "thumb-strb-ewram-thirtyone-odd",
@@ -962,7 +1166,13 @@ def main() -> None:
             "thumb-lsl-nineteen",
             "thumb-lsl-thirtyone",
             "thumb-lsl-nonalias",
-            "thumb-lsr-unsupported",
+            "thumb-lsr-zero-carry-clear",
+            "thumb-lsr-zero-carry-set",
+            "thumb-lsr-one-carry",
+            "thumb-lsr-sixteen",
+            "thumb-lsr-thirtyone",
+            "thumb-lsr-alias",
+            "thumb-lsr-register-unsupported",
             "thumb-asr-unsupported",
             "thumb-lsl-register-unsupported",
             "thumb-addsub-add-register",
@@ -1026,8 +1236,36 @@ def main() -> None:
             "thumb-strh-iwram-zero-odd",
             "thumb-strh-iwram-thirtyone-even",
             "thumb-strh-invalid-odd",
-            "thumb-ldrh-unsupported",
+            "thumb-ldrh-ewram-zero",
+            "thumb-ldrh-ewram-odd",
+            "thumb-ldrh-ewram-thirtyone",
+            "thumb-ldrh-iwram-thirtyone",
+            "thumb-ldrh-leafgreen-encoding",
+            "thumb-ldrh-alias",
+            "thumb-ldrh-mmio-dma",
+            "thumb-ldrh-wraparound",
+            "thumb-ldrh-register-unsupported",
+            "thumb-ldrsh-register-unsupported",
             "thumb-strh-register-unsupported",
+            "thumb-strword-ewram-zero",
+            "thumb-strword-ewram-thirtyone-alias",
+            "thumb-strword-iwram-thirtyone",
+            "thumb-strword-invalid-unaligned",
+            "thumb-strword-invalid-region",
+            "thumb-strword-mmio-dma",
+            "thumb-strword-wraparound",
+            "thumb-strword-register-unsupported",
+            "thumb-ldrword-ewram-zero",
+            "thumb-ldrword-ewram-thirtyone",
+            "thumb-ldrword-iwram-thirtyone",
+            "thumb-ldrword-unaligned-one",
+            "thumb-ldrword-unaligned-two",
+            "thumb-ldrword-unaligned-three",
+            "thumb-ldrword-alias",
+            "thumb-ldrword-mmio-dma",
+            "thumb-ldrword-wraparound",
+            "thumb-ldrword-register-unsupported",
+            "thumb-ldrword-sp-unsupported",
             "thumb-strb-ewram-zero-even",
             "thumb-strb-ewram-thirtyone-odd",
             "thumb-strb-iwram-zero-odd",
