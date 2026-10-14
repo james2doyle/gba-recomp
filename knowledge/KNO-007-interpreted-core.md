@@ -14,11 +14,39 @@ SWIs observados: 0x01, 0x0B, 0x0C, 0x0F, 0x11, 0x12. MMIO não modelado acessado
 ## Interpretação e limites
 
 - Isto é execução **interpretada** (`mode: interpreted`), não recompilação. Não conta como strict-AOT nem como `aot-compatible` (SPEC-062).
-- A comparação visual foi feita por inspeção humana de capturas locais; as capturas não foram versionadas (conteúdo proprietário). O diferencial contra mGBA ainda não existe.
+- A comparação visual foi feita por inspeção humana de capturas locais; as capturas não foram versionadas (conteúdo proprietário). O diferencial contra mGBA está na seção seguinte.
 - O save do repositório está vazio (0xFF), então o caminho "Continue" não foi exercitado.
 - Timing de prefetch e de acesso é aproximado (SPEC-057 BUS-57-04); hashes não devem ser comparados com outros emuladores sem diferencial.
 
+## Diferencial contra mGBA (VAL-03)
+
+Oráculo externo: mGBA `0.11.0-dev` (`projectVersion` `0.11-9155-143adf5aa`), commit `143adf5aa2a60c6036810b0cd72445e13d74b0e6` de `vendor-ref/mgba`, licença MPL-2.0. A libmgba é compilada fora da árvore (`target/mgba-build`) e ligada apenas à ferramenta de teste `tools/mgba-oracle`; nenhum código do mGBA foi copiado para crates do produto e `vendor-ref/` não foi alterado. Build: `COLOR_16_BIT` (saída BGR555 e blending em 5 bits), sem core GB, frontends, debuggers ou scripting; execução com HLE BIOS (`useBios=0`, `skipBios=1`) e `idleOptimization=ignore`. Os dois lados expandem BGR555 com `(v<<3)|(v>>2)` e calculam o mesmo hash FNV-1a por frame.
+
+Reprodução: `scripts/build-mgba-oracle.sh` e depois `scripts/diff-mgba.sh --rom <rom> --frames 3000 --every 100 --window 10 --input ...` (cargo no `PATH`). Relatório numérico: [evidence/gba055-mgba-diff-leafgreen-20261014.json](evidence/gba055-mgba-diff-leafgreen-20261014.json).
+
+### Observação de execução
+
+| ID | Cenário | Resultado |
+|---|---|---|
+| EV-007-03 | Cenário do EV-007-02 (3000 frames, mesmos inputs), gba-core `8618314` vs mGBA `143adf5a` | 1539/3000 frames com hash idêntico no mesmo índice; primeiro frame divergente: 16. Amostras a cada 100 frames: 15/30 idênticas no mesmo frame, 26/30 idênticas a algum frame do mGBA em ±10. Nos 1216 frames em que nossa imagem muda, o deslocamento até o frame igual do mGBA foi −1 (322), 0 (107), +1 (94), +2 (264), +3 (123), +4 (247), −6 (1); 58 sem par em ±30 |
+| EV-007-04 | Frames 2900 e 3000 (cena do Prof. Oak) | 2340 pixels (6,09%) divergentes na caixa 93,23–147,108: o Prof. Oak aparece no mGBA e está ausente no gba-core. Dump de estado no frame 2900: DISPCNT 0x1741 (modo 1, BG2 afim ativo) e BG2CNT 0x5C81 iguais; paleta e OAM idênticas; BG2PA/BG2PD = 0x0000 no gba-core e 0x0100 no mGBA |
+| EV-007-05 | Experimento fora da árvore: gravar BG2PA/BG2PD/BG3PA/BG3PD = 0x0100 após o frame 1 (depois do SWI 0x01 do jogo) sem alterar o gba-core | Frame 2900 passa a ter 0 pixels divergentes; hashes iguais sobem de 1539 para 1668/3000; frames sem par de 58 para 39 |
+| EV-007-06 | Experimento: iniciar o gba-core com VCOUNT = 0x7E (como `GBASkipBIOS` do mGBA) | Nenhum dos 3000 hashes muda nesse cenário |
+| EV-007-07 | Frames restantes sem par (1200, 1593–1609, 1635, 1703, 2305, 2502, ...) | Inspeção visual: estado intermediário de cena que o mGBA não exibe (1200), folhas da tela-título em posições diferentes (1600; OAM com X deslocado ~6 px), fase da seta "próximo" e da animação do Pikachu na caixa de texto (17xx–25xx). Nenhuma diferença de cor, camada, prioridade ou blending fora dessas regiões |
+
+### Inferência
+
+- **Bug provável (alta confiança):** o HLE de `RegisterRamReset` (SWI 0x01, flag 0x80, `crates/gba-core/src/bios.rs`) zera 0x000–0x05F, inclusive BG2PA/BG2PD/BG3PA/BG3PD, e não restaura 0x0100 como fazem a BIOS real e o HLE do mGBA (`src/gba/bios.c`). Pelo EV-007-04/05, a LeafGreen depende do valor deixado pelo SWI (no mGBA eles seguem 0x0100 no frame 2900), então todo BG afim com escala identidade implícita (Prof. Oak em BG2) é amostrado com PA=PD=0 e some. Isso corrige a leitura do EV-007-02: no frame 3000 o diálogo aparece, mas o Prof. Oak não.
+- **Timing (média confiança):** os deslocamentos de +1 a +4 (gba-core mostra antes uma imagem que o mGBA mostra depois) concentram-se na intro (≈700–1100) e após inputs, e se dissipam em transições de cena. Isso é coerente com o mGBA ter frames de lag (frame do jogo que ultrapassa um VBlank) que o gba-core não tem, ou seja, o gba-core cobra menos ciclos por instrução (prefetch e waitstates, SPEC-057 BUS-57-04). Os deslocamentos de −1 no início (16–700) indicam o oposto em trechos de boot. A causa ainda não foi isolada (custo de ciclos dos SWIs HLE é candidato); o EV-007-06 descarta a fase inicial de VCOUNT.
+- Não há evidência de bug de composição de PPU (cores, prioridade, blending, janelas) nas amostras: toda divergência restante se explica por deslocamento de frames ou estado de animação.
+
+### Limites
+
+- Um único ROM e cenário; o mGBA é segunda referência, não verdade absoluta (VAL-03). Divergência entre oráculos continua questão aberta até confirmação em hardware ou suite independente.
+- Capturas e dumps de estado foram inspecionados localmente e não foram versionados (conteúdo derivado da ROM).
+
 ## Questões abertas
 
-- Diferencial de framebuffer/ciclos contra mGBA nos mesmos frames.
+- Isolar a origem do lag diferente (custos de prefetch/waitstate vs. custo de SWIs HLE) com trace de ciclos por frame.
+- Repetir o diferencial após corrigir o reset afim do SWI 0x01.
 - Gravação e releitura de save Flash na LeafGreen.
