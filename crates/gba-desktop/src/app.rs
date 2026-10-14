@@ -189,6 +189,26 @@ fn open_external_settings(settings_path: Option<&Path>) -> Result<(), String> {
         .map_err(|e| format!("cannot start {} ({e})", program.display()))
 }
 
+/// macOS menu bar (CTX-63-02): app menu entries and top-level menus.
+const APP_MENU: [(u32, &str, &str); 1] = [(A_EXTERNAL, "Configurações…", ",")];
+
+fn menubar_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
+    let mut items: Vec<CtxItem> = context_items(s, paused)
+        .into_iter()
+        .filter(|i| matches!(i, CtxItem::Submenu { .. }))
+        .collect();
+    items.push(submenu(
+        "Sistema",
+        vec![
+            action(A_PAUSE, if paused { "Continuar" } else { "Pausar" }, false),
+            action(A_RESET, "Reiniciar jogo", false),
+            action(A_SAVE, "Salvar agora", false),
+            action(A_MENU, "Menu na janela…", false),
+        ],
+    ));
+    items
+}
+
 fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
     let v = &s.video;
     let a = &s.audio;
@@ -503,6 +523,8 @@ pub fn run_app(
         }
     }
 
+    let mut menubar_state: Option<(Settings, bool)> = None;
+
     let frame_time = Duration::from_nanos(CYCLES_PER_FRAME * 1_000_000_000 / GUEST_HZ);
     let mut report = AppReport {
         audio_on: audio.is_some(),
@@ -618,6 +640,15 @@ pub fn run_app(
                 }
                 Event::MouseDown { .. } | Event::Other => {}
             }
+        }
+        // Menu bar selections (macOS) and refresh of its check marks.
+        if let Some(id) = ctxmenu::take_selected() {
+            effect = context_effect(id, &current);
+            deadline = Instant::now();
+        }
+        if menubar_state.as_ref() != Some(&(current.clone(), paused)) {
+            ctxmenu::install_menubar(&APP_MENU, &menubar_items(&current, paused));
+            menubar_state = Some((current.clone(), paused));
         }
         for n in nav {
             match menu.handle(n) {

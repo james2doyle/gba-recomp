@@ -274,6 +274,109 @@ fn bundle_sdl(
     Ok(())
 }
 
+/// Application icon (`assets/logo-ico.png`), turned into `AppIcon.icns`.
+const APP_ICON_PNG: &[u8] = include_bytes!("../../../assets/logo-ico.png");
+
+fn game_title(rom: &[u8]) -> String {
+    let raw = rom.get(0xA0..0xAC).unwrap_or_default();
+    let title: String = String::from_utf8_lossy(raw)
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-')
+        .collect();
+    let title = title.trim();
+    if title.is_empty() {
+        "GBA Game".to_owned()
+    } else {
+        title.to_owned()
+    }
+}
+
+/// Rearrange a flat package directory into `Contents/{MacOS,Resources}`
+/// with an Info.plist and icon, then sign it ad hoc as a whole.
+fn make_app_bundle(dir: &Path, rom: &[u8], sha_hex: &str) -> Result<(), String> {
+    let contents = dir.join("Contents");
+    let macos = contents.join("MacOS");
+    let resources = contents.join("Resources");
+    fs::create_dir_all(&macos).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&resources).map_err(|e| e.to_string())?;
+    for name in ["game", "gba-settings", "libSDL3.0.dylib"] {
+        let from = dir.join(name);
+        if from.exists() {
+            fs::rename(&from, macos.join(name)).map_err(|e| format!("cannot move {name}: {e}"))?;
+        }
+    }
+    fs::rename(dir.join("manifest.json"), resources.join("manifest.json"))
+        .map_err(|e| format!("cannot move manifest: {e}"))?;
+    // Icon set via the system tools (sips/iconutil ship with macOS).
+    let iconset = dir.join("AppIcon.iconset");
+    fs::create_dir_all(&iconset).map_err(|e| e.to_string())?;
+    let source = dir.join("icon-source.png");
+    fs::write(&source, APP_ICON_PNG).map_err(|e| e.to_string())?;
+    for size in [16u32, 32, 128, 256, 512] {
+        for (scale, suffix) in [(1, ""), (2, "@2x")] {
+            let px = size * scale;
+            let out = iconset.join(format!("icon_{size}x{size}{suffix}.png"));
+            run(
+                Command::new("sips")
+                    .args(["-z", &px.to_string(), &px.to_string()])
+                    .arg(&source)
+                    .arg("--out")
+                    .arg(&out),
+                "sips",
+            )?;
+        }
+    }
+    run(
+        Command::new("iconutil")
+            .args(["-c", "icns"])
+            .arg(&iconset)
+            .arg("-o")
+            .arg(resources.join("AppIcon.icns")),
+        "iconutil",
+    )?;
+    fs::remove_dir_all(&iconset).map_err(|e| e.to_string())?;
+    fs::remove_file(&source).map_err(|e| e.to_string())?;
+    let title = game_title(rom);
+    let xml = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    };
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>pt-BR</string>
+  <key>CFBundleDisplayName</key><string>{t}</string>
+  <key>CFBundleName</key><string>{t}</string>
+  <key>CFBundleExecutable</key><string>game</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIdentifier</key><string>dev.gba-recomp.game.{id}</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>{v}</string>
+  <key>CFBundleVersion</key><string>{v}</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
+</dict>
+</plist>
+"#,
+        t = xml(&title),
+        id = &sha_hex[..12],
+        v = env!("CARGO_PKG_VERSION"),
+    );
+    fs::write(contents.join("Info.plist"), plist).map_err(|e| e.to_string())?;
+    run(
+        Command::new("codesign")
+            .args(["--force", "--deep", "--sign", "-"])
+            .arg(dir),
+        "codesign (app)",
+    )?;
+    Ok(())
+}
+
 /// Copy `gba-settings` (EXT-64-03) when it was built next to gba-recomp.
 fn bundle_settings_app(package: &Path, sdl_name: &str) -> Result<bool, String> {
     let exe = env::current_exe().map_err(|e| e.to_string())?;
@@ -502,10 +605,26 @@ pub fn build_package(
         );
         fs::write(temporary.join("manifest.json"), &manifest)
             .map_err(|e| format!("cannot write manifest: {e}"))?;
-        fs::rename(&temporary, output)
-            .map_err(|e| format!("cannot publish package {}: {e}", output.display()))?;
+        // macOS bundles become a real application (.app) so the menu bar,
+        // Dock and Finder show the game's name and icon (SPEC-066 BND-66-05).
+        let published = if cfg!(target_os = "macos") && options.embed_rom {
+            let app = if output.extension().is_some_and(|e| e == "app") {
+                output.to_path_buf()
+            } else {
+                output.with_extension("app")
+            };
+            if app.exists() {
+                return Err(format!("output path already exists: {}", app.display()));
+            }
+            make_app_bundle(&temporary, &rom, &sha_hex)?;
+            app
+        } else {
+            output.to_path_buf()
+        };
+        fs::rename(&temporary, &published)
+            .map_err(|e| format!("cannot publish package {}: {e}", published.display()))?;
         Ok(PackageReport {
-            path: output.to_path_buf(),
+            path: published,
             manifest,
         })
     })();

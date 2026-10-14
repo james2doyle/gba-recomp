@@ -13,6 +13,8 @@ Pacotes `aot-compatible` ([SPEC-062](SPEC-062-native-blocks-aot-compatible.md)) 
 - BND-66-03: o manifesto MUST registrar `"rom_embedded": true`, e o comando MUST avisar que o pacote contém o jogo e não deve ser redistribuído. `compile` sem `--embed-rom` continua sem ROM no pacote.
 - BND-66-04: a ABI nativa passa a v2: `gba_native_main(argc, argv, entries, count, sha256, guards, guard_count, rom, rom_len)`, com `rom = NULL, rom_len = 0` quando não embutida.
 
+- BND-66-05: no macOS, `bundle` MUST publicar `<saída>.app` com `Contents/MacOS/{game, gba-settings, libSDL3.0.dylib}`, `Contents/Resources/{AppIcon.icns, manifest.json}` e `Info.plist` (nome do título do cabeçalho da ROM, ícone de `assets/logo-ico.png` via `sips`/`iconutil`), assinado ad hoc como um todo. Verificado: `plutil -lint` OK, `codesign --verify --deep` OK, barra de menus com o nome do jogo.
+
 ## Critérios de aceite
 
 Bundle da LeafGreen executando sem `--rom` em modo headless com `--verify-interpreter` por 3000 frames sem divergência e em janela (smoke com driver dummy); `compile` normal continua exigindo `--rom`.

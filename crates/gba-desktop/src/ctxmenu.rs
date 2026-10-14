@@ -43,6 +43,28 @@ pub fn popup(items: &[CtxItem]) -> Option<u32> {
     macos::popup(items)
 }
 
+/// Install (or refresh) the application menu bar (CTX-63-02): the app menu
+/// gets `app_items` (e.g. Settings… ⌘,) and each submenu of `menus` becomes
+/// a top-level menu. Selections are collected by [`take_selected`].
+#[cfg(target_os = "macos")]
+pub fn install_menubar(app_items: &[(u32, &str, &str)], menus: &[CtxItem]) {
+    macos::install_menubar(app_items, menus);
+}
+
+/// Action chosen in the menu bar since the last call, if any.
+#[cfg(target_os = "macos")]
+pub fn take_selected() -> Option<u32> {
+    macos::take_selected()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn install_menubar(_app_items: &[(u32, &str, &str)], _menus: &[CtxItem]) {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn take_selected() -> Option<u32> {
+    None
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn available() -> bool {
     false
@@ -196,6 +218,170 @@ mod macos {
             }
         }
         menu
+    }
+
+    /// Menu bar items we added, so a refresh can remove them first.
+    static INSTALLED: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
+    static TARGET: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+    pub fn take_selected() -> Option<u32> {
+        u32::try_from(SELECTED.swap(-1, Ordering::SeqCst)).ok()
+    }
+
+    pub fn install_menubar(app_items: &[(u32, &str, &str)], menus: &[CtxItem]) {
+        // SAFETY: autorelease pool brackets the temporary Cocoa objects.
+        let pool = unsafe { objc_autoreleasePoolPush() };
+        let cls = target_class();
+        let app: Id = send!(class("NSApplication"), sel("sharedApplication"); -> Id);
+        let main: Id = send!(app, sel("mainMenu"); -> Id);
+        if !cls.is_null() && !main.is_null() {
+            // One long-lived target object for the menu bar.
+            let mut target_slot = TARGET.lock().expect("menu target lock");
+            if *target_slot == 0 {
+                let t: Id = send!(cls, sel("alloc"); -> Id);
+                let t: Id = send!(t, sel("init"); -> Id);
+                *target_slot = t as usize;
+            }
+            let target = *target_slot as Id;
+            let mut installed = INSTALLED.lock().expect("menu bar lock");
+            // Remove what a previous call added.
+            for &item in installed.iter() {
+                let item = item as Id;
+                let menu: Id = send!(item, sel("menu"); -> Id);
+                if !menu.is_null() {
+                    send!(menu, sel("removeItem:"), item => Id; -> ());
+                }
+                send!(item, sel("release"); -> ());
+            }
+            installed.clear();
+            // App menu (first item's submenu): insert after "About".
+            let app_item: Id = send!(main, sel("itemAtIndex:"), 0isize => isize; -> Id);
+            let app_menu: Id = if app_item.is_null() {
+                std::ptr::null_mut()
+            } else {
+                send!(app_item, sel("submenu"); -> Id)
+            };
+            if !app_menu.is_null() {
+                let mut at = 1isize;
+                let mut inserted = false;
+                for &(id, title, key) in app_items {
+                    // Reuse an existing item with the same shortcut (SDL adds
+                    // a disabled "Settings…" ⌘, entry) instead of duplicating.
+                    // Find SDL's own entry by its shortcut (titled "Settings…"
+                    // or "Preferences…" depending on the system).
+                    let count: isize = send!(app_menu, sel("numberOfItems"); -> isize);
+                    let mut existing: Id = std::ptr::null_mut();
+                    let wanted = ns_string(key);
+                    for i in 0..count {
+                        let it: Id = send!(app_menu, sel("itemAtIndex:"), i => isize; -> Id);
+                        let k: Id = send!(it, sel("keyEquivalent"); -> Id);
+                        let same: bool = send!(k, sel("isEqualToString:"), wanted => Id; -> bool);
+                        let tag: isize = send!(it, sel("tag"); -> isize);
+                        if same && (tag == 0 || tag == id as isize) && !key.is_empty() {
+                            existing = it;
+                            break;
+                        }
+                    }
+                    if !existing.is_null() && key == "," {
+                        send!(existing, sel("setTitle:"), ns_string(title) => Id; -> ());
+                        send!(existing, sel("setAction:"), sel("menuAction:") => Sel; -> ());
+                        send!(existing, sel("setTarget:"), target => Id; -> ());
+                        send!(existing, sel("setTag:"), id as isize => isize; -> ());
+                        send!(existing, sel("setEnabled:"), true => bool; -> ());
+                        continue;
+                    }
+                    let mi: Id = send!(class("NSMenuItem"), sel("alloc"); -> Id);
+                    let mi: Id = send!(
+                        mi,
+                        sel("initWithTitle:action:keyEquivalent:"),
+                        ns_string(title) => Id,
+                        sel("menuAction:") => Sel,
+                        ns_string(key) => Id;
+                        -> Id
+                    );
+                    send!(mi, sel("setTarget:"), target => Id; -> ());
+                    send!(mi, sel("setTag:"), id as isize => isize; -> ());
+                    send!(app_menu, sel("insertItem:atIndex:"), mi => Id, at => isize; -> ());
+                    installed.push(mi as usize);
+                    at += 1;
+                    inserted = true;
+                }
+                if inserted {
+                    let sep: Id = send!(class("NSMenuItem"), sel("separatorItem"); -> Id);
+                    send!(sep, sel("retain"); -> Id);
+                    send!(app_menu, sel("insertItem:atIndex:"), sep => Id, at => isize; -> ());
+                    installed.push(sep as usize);
+                }
+            }
+            // Top-level menus before "Window"/"Help" when present.
+            for item in menus {
+                if let CtxItem::Submenu { title, items } = item {
+                    let mi: Id = send!(class("NSMenuItem"), sel("alloc"); -> Id);
+                    let mi: Id = send!(
+                        mi,
+                        sel("initWithTitle:action:keyEquivalent:"),
+                        ns_string(title) => Id,
+                        std::ptr::null_mut() => Sel,
+                        ns_string("") => Id;
+                        -> Id
+                    );
+                    let sub = build(items, target);
+                    send!(sub, sel("setTitle:"), ns_string(title) => Id; -> ());
+                    send!(mi, sel("setSubmenu:"), sub => Id; -> ());
+                    send!(sub, sel("release"); -> ());
+                    let count: isize = send!(main, sel("numberOfItems"); -> isize);
+                    let index = (1 + installed_top(&installed, main)).min(count);
+                    send!(main, sel("insertItem:atIndex:"), mi => Id, index => isize; -> ());
+                    installed.push(mi as usize);
+                }
+            }
+        }
+        if std::env::var_os("GBA_DEBUG_MENUBAR").is_some() && !main.is_null() {
+            let count: isize = send!(main, sel("numberOfItems"); -> isize);
+            for i in 0..count {
+                let item: Id = send!(main, sel("itemAtIndex:"), i => isize; -> Id);
+                let sub: Id = send!(item, sel("submenu"); -> Id);
+                let title: Id = if sub.is_null() {
+                    send!(item, sel("title"); -> Id)
+                } else {
+                    send!(sub, sel("title"); -> Id)
+                };
+                let utf8: *const c_char = send!(title, sel("UTF8String"); -> *const c_char);
+                let n: isize = if sub.is_null() {
+                    0
+                } else {
+                    send!(sub, sel("numberOfItems"); -> isize)
+                };
+                let mut names = Vec::new();
+                for j in 0..n {
+                    let it: Id = send!(sub, sel("itemAtIndex:"), j => isize; -> Id);
+                    let t: Id = send!(it, sel("title"); -> Id);
+                    let u: *const c_char = send!(t, sel("UTF8String"); -> *const c_char);
+                    // SAFETY: UTF8String returns a NUL-terminated string.
+                    names.push(
+                        unsafe { std::ffi::CStr::from_ptr(u) }
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
+                }
+                // SAFETY: as above.
+                let t = unsafe { std::ffi::CStr::from_ptr(utf8) }.to_string_lossy();
+                eprintln!("menubar[{i}] {t}: {names:?}");
+            }
+        }
+        // SAFETY: pops the pool pushed above.
+        unsafe { objc_autoreleasePoolPop(pool) };
+    }
+
+    /// Number of top-level items we already inserted in `main`.
+    fn installed_top(installed: &[usize], main: Id) -> isize {
+        installed
+            .iter()
+            .filter(|&&i| {
+                let menu: Id = send!(i as Id, sel("menu"); -> Id);
+                menu == main
+            })
+            .count() as isize
     }
 
     pub fn popup(items: &[CtxItem]) -> Option<u32> {
