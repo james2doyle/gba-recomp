@@ -547,7 +547,7 @@ def generate(mode: str = "valid") -> bytes:
         }
         source, destination = cases[mode]
         if mode == "thumb-neg-unsupported":
-            encoding = 0x4288
+            encoding = 0x4208
         elif mode == "thumb-neg-alias-branch":
             encoding = 0x4249
         else:
@@ -623,6 +623,48 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xD8:0xE8] = struct.pack(
             "<4I", 0x08000085, 0x080000E8, source, compare
+        )
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+    elif mode in (
+        "thumb-cmp-register-equal-branch",
+        "thumb-cmp-register-not-equal-branch",
+        "thumb-cmp-register-signed-ge-overflow-branch",
+        "thumb-cmp-register-unsupported",
+    ):
+        cases = {
+            "thumb-cmp-register-equal-branch": (0x42, 0x42, 1),
+            "thumb-cmp-register-not-equal-branch": (0x42, 0x41, 1),
+            "thumb-cmp-register-signed-ge-overflow-branch": (
+                0x7FFFFFFF,
+                0xFFFFFFFF,
+                10,
+            ),
+            "thumb-cmp-register-unsupported": (0x42, 0x41, 1),
+        }
+        lhs, rhs, condition = cases[mode]
+        compare_encoding = 0x42D1 if mode == "thumb-cmp-register-unsupported" else 0x4291
+        branch_encoding = 0xD000 | (condition << 8) | 0x03
+        image[0x84:0x94] = struct.pack(
+            "<8H",
+            compare_encoding,  # CMP r1,r2, except the deliberate unsupported CMN.
+            branch_encoding,  # BNE/BGE 0x08000090; fallthrough is 0x08000088.
+            0x2011,  # Fallthrough result: MOVS r0,#0x11.
+            0x4718,  # BX r3 -> ARM self-loop.
+            0x46C0,
+            0x46C0,
+            0x2022,  # Taken result: MOVS r0,#0x22.
+            0x4718,  # BX r3 -> ARM self-loop.
+        )
+        image[0xC0:0xD4] = struct.pack(
+            "<5I",
+            0xE59F200C,  # LDR r2,[pc,#0x0C] -> CMP rhs at 0xD4.
+            0xE59F100C,  # LDR r1,[pc,#0x0C] -> CMP lhs at 0xD8.
+            0xE59F300C,  # LDR r3,[pc,#0x0C] -> ARM self-loop at 0xE8.
+            0xE59F000C,  # LDR r0,[pc,#0x0C] -> Thumb entry | 1 at 0xE0.
+            0xE12FFF10,  # BX r0.
+        )
+        image[0xD4:0xE4] = struct.pack(
+            "<4I", rhs, lhs, 0x080000E8, 0x08000085
         )
         image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
     elif mode in (
@@ -1415,6 +1457,10 @@ def main() -> None:
             "thumb-asr-31-carry-clear-branch",
             "thumb-asr-31-carry-set-positive-branch",
             "thumb-asr-31-alias-branch",
+            "thumb-cmp-register-equal-branch",
+            "thumb-cmp-register-not-equal-branch",
+            "thumb-cmp-register-signed-ge-overflow-branch",
+            "thumb-cmp-register-unsupported",
             "thumb-orr-zero",
             "thumb-orr-positive-c0v0",
             "thumb-orr-negative-c1v1",

@@ -2224,6 +2224,82 @@ if [ -e "$thumb_asr_bad_package" ]; then
     exit 1
 fi
 
+begin_group_timing thumb_cmp_register_fixtures
+for mode in \
+    thumb-cmp-register-equal-branch \
+    thumb-cmp-register-not-equal-branch \
+    thumb-cmp-register-signed-ge-overflow-branch; do
+    cmp_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$cmp_rom" --mode "$mode"
+    case "$mode" in
+        thumb-cmp-register-equal-branch)
+            expected='{"status":"budget_exhausted","steps":10,"r0":17,"r1":66,"pc":"0x080000E8","cpsr":"0x2000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-cmp-register-not-equal-branch)
+            expected='{"status":"budget_exhausted","steps":10,"r0":34,"r1":66,"pc":"0x080000E8","cpsr":"0x2000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-cmp-register-signed-ge-overflow-branch)
+            expected='{"status":"budget_exhausted","steps":10,"r0":34,"r1":2147483647,"pc":"0x080000E8","cpsr":"0x1000001F","guest_cycle":10,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+    esac
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        compile_log="$root/target/gba020/$mode-compile-$optimization.txt"
+        rm -rf "$package"
+        if ! GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+            --rom "$cmp_rom" --out "$package" --opt "$optimization" --steps 10 \
+            >"$compile_log" 2>&1; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode failed to compile" >&2
+            exit 1
+        fi
+        if ! grep -Fxq 'instructions_aot: 11' "$compile_log"; then
+            cat "$compile_log" >&2
+            echo "$optimization $mode reported an unexpected AOT instruction count" >&2
+            exit 1
+        fi
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["instructions_aot"] == 11
+assert manifest["run_instruction_budget"] == 10
+PY
+    done
+done
+end_group_timing
+
+thumb_cmp_bad_rom="$root/target/gba020/thumb-cmp-register-unsupported.gba"
+thumb_cmp_bad_package="$root/target/gba020/thumb-cmp-register-unsupported-package"
+thumb_cmp_bad_output="$root/target/gba020/thumb-cmp-register-unsupported.txt"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$thumb_cmp_bad_rom" --mode thumb-cmp-register-unsupported
+rm -rf "$thumb_cmp_bad_package"
+if GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+    --rom "$thumb_cmp_bad_rom" --out "$thumb_cmp_bad_package" --opt O0 --steps 10 \
+    >"$thumb_cmp_bad_output" 2>&1; then
+    echo "unsupported Thumb CMN unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$thumb_cmp_bad_output"; then
+    cat "$thumb_cmp_bad_output" >&2
+    echo "unsupported Thumb CMN did not report its source PC" >&2
+    exit 1
+fi
+if [ -e "$thumb_cmp_bad_package" ]; then
+    echo "failed Thumb CMN compile left a partial package" >&2
+    exit 1
+fi
+
 verify_thumb_orr thumb-orr-zero '{"status":"budget_exhausted","steps":8,"r0":0,"r1":0,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_orr thumb-orr-positive-c0v0 '{"status":"budget_exhausted","steps":8,"r0":3,"r1":2,"pc":"0x08000086","cpsr":"0x0000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'
 verify_thumb_orr thumb-orr-negative-c1v1 '{"status":"budget_exhausted","steps":8,"r0":2147483649,"r1":1,"pc":"0x08000086","cpsr":"0xB000003F","guest_cycle":8,"ewram_word0":0,"iwram_word0":0}'

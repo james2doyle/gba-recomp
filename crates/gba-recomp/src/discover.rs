@@ -378,7 +378,13 @@ struct CompareFact {
     mode: IsaMode,
     guest_pc: u32,
     register: u8,
-    immediate: u32,
+    rhs: CompareRight,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompareRight {
+    Immediate(u32),
+    Register(u8),
 }
 
 impl AbstractState {
@@ -1128,31 +1134,60 @@ fn compare_branch_successors(
     else {
         return 0b11;
     };
-    let Some(values) = state.registers[fact.register as usize].values() else {
-        return 0b11;
-    };
-    if values.is_empty() {
+    if branch_pc
+        != fact.guest_pc.wrapping_add(match mode {
+            IsaMode::Arm => 4,
+            IsaMode::Thumb => 2,
+        })
+    {
         return 0b11;
     }
     let mut successors = 0;
-    for lhs in values {
-        if compare_condition_passed(condition, *lhs, fact.immediate) {
-            successors |= 0b01;
-        } else {
-            successors |= 0b10;
+    match fact.rhs {
+        CompareRight::Immediate(rhs) => {
+            let Some(lhs_values) = state.registers[fact.register as usize].values() else {
+                return 0b11;
+            };
+            if lhs_values.is_empty() {
+                return 0b11;
+            }
+            for lhs in lhs_values {
+                successors |= if compare_condition_passed(condition, *lhs, rhs) {
+                    0b01
+                } else {
+                    0b10
+                };
+            }
+        }
+        CompareRight::Register(rhs_register) if rhs_register == fact.register => {
+            successors = if compare_condition_passed(condition, 0, 0) {
+                0b01
+            } else {
+                0b10
+            };
+        }
+        CompareRight::Register(rhs_register) => {
+            let Some(lhs_values) = state.registers[fact.register as usize].values() else {
+                return 0b11;
+            };
+            let Some(rhs_values) = state.registers[rhs_register as usize].values() else {
+                return 0b11;
+            };
+            if lhs_values.is_empty() || rhs_values.is_empty() {
+                return 0b11;
+            }
+            for lhs in lhs_values {
+                for rhs in rhs_values {
+                    successors |= if compare_condition_passed(condition, *lhs, *rhs) {
+                        0b01
+                    } else {
+                        0b10
+                    };
+                }
+            }
         }
     }
-    if successors == 0
-        || branch_pc
-            != fact.guest_pc.wrapping_add(match mode {
-                IsaMode::Arm => 4,
-                IsaMode::Thumb => 2,
-            })
-    {
-        0b11
-    } else {
-        successors
-    }
+    if successors == 0 { 0b11 } else { successors }
 }
 
 fn thumb_branch_successors(instruction: ThumbInstruction, state: &AbstractState) -> u8 {
@@ -1233,7 +1268,7 @@ fn transfer_arm(instruction: ArmInstruction, incoming: &AbstractState) -> Abstra
                 mode: IsaMode::Arm,
                 guest_pc: instruction.guest_pc,
                 register: rn,
-                immediate: value,
+                rhs: CompareRight::Immediate(value),
             });
         }
         ArmOperation::AddPcRelativeImmediate { rd, value } => {
@@ -2046,7 +2081,24 @@ fn process_thumb_instruction(
                 mode: IsaMode::Thumb,
                 guest_pc: instruction.guest_pc,
                 register: rd,
-                immediate: u32::from(immediate),
+                rhs: CompareRight::Immediate(u32::from(immediate)),
+            });
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
+        ThumbOperation::CompareRegister { rd, rs } => {
+            let mut next_state = state.clone();
+            next_state.pending_compare = Some(CompareFact {
+                mode: IsaMode::Thumb,
+                guest_pc: instruction.guest_pc,
+                register: rd,
+                rhs: CompareRight::Register(rs),
             });
             enqueue_state(
                 IsaMode::Thumb,
@@ -4716,7 +4768,7 @@ mod tests {
             mode: IsaMode::Thumb,
             guest_pc: compare_pc,
             register: 0,
-            immediate: 10,
+            rhs: CompareRight::Immediate(10),
         });
         let unrefined_state = AbstractState::unknown();
         let incoming = BTreeMap::from([(
@@ -4732,6 +4784,196 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn thumb_cmp_register_refines_only_adjacent_branches_from_sound_values() {
+        let compare_pc = ROM_BASE + 0x84;
+        let branch_pc = compare_pc + 2;
+        let compare = ThumbInstruction {
+            guest_pc: compare_pc,
+            encoding: 0x428A,
+            operation: ThumbOperation::CompareRegister { rd: 2, rs: 1 },
+        };
+        let make_branch = |condition| ThumbInstruction {
+            guest_pc: branch_pc,
+            encoding: 0xD000 | (u16::from(condition) << 8),
+            operation: ThumbOperation::ConditionalBranch {
+                condition,
+                target: branch_pc + 4,
+                reachable_successors: 0b11,
+            },
+        };
+        let mask_after_cmp = |lhs: AbstractValue, rhs: AbstractValue, condition| {
+            let mut state = AbstractState::unknown();
+            state.registers[2] = lhs;
+            state.registers[1] = rhs;
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &counter_rom(),
+                compare,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+            let mut decoded = BTreeMap::from([(branch_pc, make_branch(condition))]);
+            resolve_thumb_branch_masks(&incoming, &mut decoded).unwrap();
+            match decoded[&branch_pc].operation {
+                ThumbOperation::ConditionalBranch {
+                    reachable_successors,
+                    ..
+                } => reachable_successors,
+                _ => unreachable!(),
+            }
+        };
+
+        assert_eq!(
+            mask_after_cmp(AbstractValue::constant(5), AbstractValue::constant(5), 1),
+            0b10
+        );
+        assert_eq!(
+            mask_after_cmp(AbstractValue::constant(0), AbstractValue::constant(1), 1),
+            0b01
+        );
+        assert_eq!(
+            mask_after_cmp(
+                AbstractValue::constant(0x8000_0000),
+                AbstractValue::constant(1),
+                11,
+            ),
+            0b01
+        );
+        assert_eq!(
+            mask_after_cmp(
+                AbstractValue::constant(0x7FFF_FFFF),
+                AbstractValue::constant(0xFFFF_FFFF),
+                10,
+            ),
+            0b01
+        );
+        assert_eq!(
+            mask_after_cmp(AbstractValue::Unknown, AbstractValue::Unknown, 0),
+            0b11
+        );
+        assert_eq!(
+            mask_after_cmp(
+                AbstractValue::Constants(BTreeSet::from([1, 2])),
+                AbstractValue::Constants(BTreeSet::from([1, 2])),
+                0,
+            ),
+            0b11
+        );
+
+        let mut equal_unknown = AbstractState::unknown();
+        let same_register_cmp = ThumbInstruction {
+            encoding: 0x4292,
+            operation: ThumbOperation::CompareRegister { rd: 2, rs: 2 },
+            ..compare
+        };
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &counter_rom(),
+            same_register_cmp,
+            &equal_unknown,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let mut decoded = BTreeMap::from([(branch_pc, make_branch(0))]);
+        resolve_thumb_branch_masks(&incoming, &mut decoded).unwrap();
+        assert!(matches!(
+            decoded[&branch_pc].operation,
+            ThumbOperation::ConditionalBranch {
+                reachable_successors: 0b01,
+                ..
+            }
+        ));
+
+        equal_unknown.registers[2] = AbstractValue::Unknown;
+        equal_unknown.registers[1] = AbstractValue::constant(9);
+        assert_eq!(
+            mask_after_cmp(
+                equal_unknown.registers[2].clone(),
+                equal_unknown.registers[1].clone(),
+                0,
+            ),
+            0b11
+        );
+
+        let mut compared = AbstractState::unknown();
+        compared.set_constant(2, 1);
+        compared.set_constant(1, 2);
+        compared.pending_compare = Some(CompareFact {
+            mode: IsaMode::Thumb,
+            guest_pc: compare_pc,
+            register: 2,
+            rhs: CompareRight::Register(1),
+        });
+        let mut incoming = BTreeMap::from([(
+            (IsaMode::Thumb, branch_pc),
+            vec![compared, AbstractState::unknown()],
+        )]);
+        let mut decoded = BTreeMap::from([(branch_pc, make_branch(1))]);
+        resolve_thumb_branch_masks(&incoming, &mut decoded).unwrap();
+        assert!(matches!(
+            decoded[&branch_pc].operation,
+            ThumbOperation::ConditionalBranch {
+                reachable_successors: 0b11,
+                ..
+            }
+        ));
+
+        let mut state = AbstractState::unknown();
+        state.set_constant(2, 1);
+        state.set_constant(1, 2);
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &counter_rom(),
+            compare,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let after_compare = only_state(&incoming[&(IsaMode::Thumb, branch_pc)]).clone();
+        let intervening = ThumbInstruction {
+            guest_pc: branch_pc,
+            encoding: 0x2307,
+            operation: ThumbOperation::MovImmediate { rd: 3, value: 7 },
+        };
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &counter_rom(),
+            intervening,
+            &after_compare,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let after_intervening = only_state(&incoming[&(IsaMode::Thumb, branch_pc + 2)]);
+        assert!(after_intervening.pending_compare.is_none());
+        let nonadjacent_branch = ThumbInstruction {
+            guest_pc: branch_pc + 2,
+            encoding: 0xD000,
+            operation: ThumbOperation::ConditionalBranch {
+                condition: 0,
+                target: branch_pc + 6,
+                reachable_successors: 0b11,
+            },
+        };
+        assert_eq!(
+            thumb_branch_successors(nonadjacent_branch, after_intervening),
+            0b11
+        );
     }
 
     #[test]
@@ -4752,7 +4994,7 @@ mod tests {
             mode: IsaMode::Arm,
             guest_pc: branch_pc - 4,
             register: 0,
-            immediate: 10,
+            rhs: CompareRight::Immediate(10),
         });
         state.set_constant(0, 9);
         assert_eq!(arm_branch_successors(branch, &state), 0b01);
@@ -5323,7 +5565,7 @@ mod tests {
             mode: IsaMode::Thumb,
             guest_pc: guest_pc - 2,
             register: 1,
-            immediate: 0,
+            rhs: CompareRight::Immediate(0),
         });
         let mut pending = VecDeque::new();
         let mut incoming = BTreeMap::new();
@@ -5473,7 +5715,7 @@ mod tests {
             mode: IsaMode::Thumb,
             guest_pc: guest_pc - 2,
             register: 0,
-            immediate: 0,
+            rhs: CompareRight::Immediate(0),
         });
         let mut pending = VecDeque::new();
         let mut incoming = BTreeMap::new();

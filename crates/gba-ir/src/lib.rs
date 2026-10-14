@@ -191,6 +191,10 @@ pub enum ThumbOperation {
         rd: u8,
         immediate: u8,
     },
+    CompareRegister {
+        rd: u8,
+        rs: u8,
+    },
     AddSubtractImmediate {
         rd: u8,
         immediate: u8,
@@ -365,6 +369,7 @@ pub enum VerifyError {
     InvalidThumbOrrRegister(u8),
     InvalidThumbAndRegister(u8),
     InvalidThumbNegateRegister(u8),
+    InvalidThumbCompareRegister(u8),
     InvalidThumbBranchCondition(u8),
     InvalidThumbBranchSuccessorMask(u8),
     InvalidArmBranchSuccessorMask(u8),
@@ -498,6 +503,9 @@ impl fmt::Display for VerifyError {
             }
             Self::InvalidThumbNegateRegister(register) => {
                 write!(f, "Thumb NEG register r{register} is not a low register")
+            }
+            Self::InvalidThumbCompareRegister(register) => {
+                write!(f, "Thumb CMP register r{register} is not a low register")
             }
             Self::InvalidThumbBranchCondition(condition) => write!(
                 f,
@@ -849,6 +857,21 @@ impl ArmProgram {
                     let encoded_rd = (encoding & 0x7) as u8;
                     let encoded_rs = ((encoding >> 3) & 0x7) as u8;
                     if encoding & 0xFFC0 != 0x4240 || rd != encoded_rd || rs != encoded_rs {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
+                ThumbOperation::CompareRegister { rd, rs } => {
+                    for register in [rd, rs] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbCompareRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    let encoded_rs = ((encoding >> 3) & 0x7) as u8;
+                    if encoding & 0xFFC0 != 0x4280 || rd != encoded_rd || rs != encoded_rs {
                         return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
                             encoding,
                         )));
@@ -1427,6 +1450,15 @@ impl ArmProgram {
                         });
                     }
                 }
+                ThumbOperation::CompareRegister { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
                 ThumbOperation::AddSubtract { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
@@ -1898,6 +1930,19 @@ pub fn execute_thumb_instruction(
                 | (u32::from(result == 0) << 30)
                 | (u32::from(old_source == 0) << 29)
                 | (u32::from(old_source == 0x8000_0000) << 28);
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
+        ThumbOperation::CompareRegister { rd, rs } => {
+            let lhs = state.r[rd as usize];
+            let rhs = state.r[rs as usize];
+            let result = lhs.wrapping_sub(rhs);
+            let carry = lhs >= rhs;
+            let overflow = ((lhs ^ rhs) & (lhs ^ result) & 0x8000_0000) != 0;
+            state.cpsr = (state.cpsr & !0xF000_0000)
+                | (result & 0x8000_0000)
+                | (u32::from(result == 0) << 30)
+                | (u32::from(carry) << 29)
+                | (u32::from(overflow) << 28);
             state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
         }
         ThumbOperation::AddSubtract {
@@ -3378,6 +3423,55 @@ mod tests {
     }
 
     #[test]
+    fn thumb_cmp_register_sets_nzcv_without_writing_registers() {
+        let guest_pc = 0x0800_0100;
+        let rd = 2;
+        let rs = 1;
+        let cases = [
+            (5, 5, 0x6000_0000),
+            (0, 1, 0x8000_0000),
+            (0x8000_0000, 1, 0x3000_0000),
+            (0x7FFF_FFFF, 0xFFFF_FFFF, 0x9000_0000),
+        ];
+        for (lhs, rhs, nzcv) in cases {
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding: 0x4280 | (u16::from(rs) << 3) | u16::from(rd),
+                operation: ThumbOperation::CompareRegister { rd, rs },
+            };
+            let mut cpu = state(guest_pc);
+            cpu.cpsr = 0xA5A5_5A7F;
+            cpu.r[rd as usize] = lhs;
+            cpu.r[rs as usize] = rhs;
+            let old_registers = cpu.r;
+            let old_non_flag_cpsr = cpu.cpsr & !0xF000_0000;
+
+            execute_thumb_instruction(&mut cpu, instruction).unwrap();
+
+            let mut expected_registers = old_registers;
+            expected_registers[REG_PC as usize] = guest_pc + 2;
+            assert_eq!(cpu.r, expected_registers);
+            assert_eq!(cpu.cpsr, old_non_flag_cpsr | nzcv);
+            assert_eq!(cpu.guest_cycle, 6);
+        }
+
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x4292,
+            operation: ThumbOperation::CompareRegister { rd: 2, rs: 2 },
+        };
+        let mut cpu = state(guest_pc);
+        cpu.cpsr = 0xB5A5_5A7F;
+        cpu.r[2] = 0xDEAD_BEEF;
+        let old_registers = cpu.r;
+        execute_thumb_instruction(&mut cpu, instruction).unwrap();
+        let mut expected_registers = old_registers;
+        expected_registers[REG_PC as usize] = guest_pc + 2;
+        assert_eq!(cpu.r, expected_registers);
+        assert_eq!(cpu.cpsr, (0xB5A5_5A7F & !0xF000_0000) | 0x6000_0000);
+    }
+
+    #[test]
     fn thumb_adds_subs_immediate_set_nzcv_and_write_wrapping_result() {
         let guest_pc = 0x0800_0100;
         let rd = 2;
@@ -4660,6 +4754,83 @@ mod tests {
             assert_eq!(
                 invalid_register.verify(),
                 Err(VerifyError::InvalidThumbNegateRegister(8))
+            );
+        }
+
+        let mut misaligned = make_program(instruction);
+        misaligned.thumb_instructions[0].guest_pc += 1;
+        assert_eq!(
+            misaligned.verify(),
+            Err(VerifyError::MisalignedThumbPc(guest_pc + 1))
+        );
+
+        let mut missing_successor = make_program(instruction);
+        missing_successor.thumb_instructions.pop();
+        missing_successor.branch_targets.clear();
+        assert_eq!(
+            missing_successor.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_cmp_register_fields_and_successor() {
+        let guest_pc = 0x0800_0100;
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x428A,
+            operation: ThumbOperation::CompareRegister { rd: 2, rs: 1 },
+        };
+        let bx = ThumbInstruction {
+            guest_pc: guest_pc + 2,
+            encoding: 0x4700,
+            operation: ThumbOperation::BranchExchange { rm: 0 },
+        };
+        let make_program = |instruction| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![instruction, bx],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc,
+            }],
+        };
+        assert!(make_program(instruction).verify().is_ok());
+
+        for operation in [
+            ThumbOperation::CompareRegister { rd: 2, rs: 2 },
+            ThumbOperation::CompareRegister { rd: 1, rs: 1 },
+        ] {
+            let mut mismatched = make_program(instruction);
+            mismatched.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                mismatched.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(0x428A))
+            );
+        }
+
+        let mut out_of_family = make_program(instruction);
+        out_of_family.thumb_instructions[0].encoding = 0x4200;
+        assert_eq!(
+            out_of_family.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x4200))
+        );
+
+        for operation in [
+            ThumbOperation::CompareRegister { rd: 8, rs: 1 },
+            ThumbOperation::CompareRegister { rd: 2, rs: 8 },
+        ] {
+            let mut invalid_register = make_program(instruction);
+            invalid_register.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                invalid_register.verify(),
+                Err(VerifyError::InvalidThumbCompareRegister(8))
             );
         }
 

@@ -229,6 +229,16 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xFFC0 == 0x4280 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::CompareRegister {
+                rd: (encoding & 0x7) as u8,
+                rs: ((encoding >> 3) & 0x7) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0x6000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -826,7 +836,8 @@ mod tests {
         }
 
         for encoding in (0x4000..0x4400_u16).step_by(0x40) {
-            if encoding != 0x4000 && encoding != 0x4240 && encoding != 0x4300 {
+            if encoding != 0x4000 && encoding != 0x4240 && encoding != 0x4280 && encoding != 0x4300
+            {
                 assert!(decode_thumb(0x0800_0084, encoding).is_err());
             }
         }
@@ -849,7 +860,8 @@ mod tests {
         }
 
         for encoding in (0x4000..0x4400_u16).step_by(0x40) {
-            if encoding != 0x4000 && encoding != 0x4240 && encoding != 0x4300 {
+            if encoding != 0x4000 && encoding != 0x4240 && encoding != 0x4280 && encoding != 0x4300
+            {
                 assert!(decode_thumb(0x0800_0084, encoding).is_err());
             }
         }
@@ -872,11 +884,43 @@ mod tests {
         }
 
         for encoding in (0x4000..0x4400_u16).step_by(0x40) {
-            if encoding != 0x4000 && encoding != 0x4240 && encoding != 0x4300 {
+            if encoding != 0x4000 && encoding != 0x4240 && encoding != 0x4280 && encoding != 0x4300
+            {
                 assert!(decode_thumb(0x0800_0084, encoding).is_err());
             }
         }
         assert!(decode_thumb(0x0800_0085, 0x4240).is_err());
+    }
+
+    #[test]
+    fn decodes_only_thumb_compare_register_format_4_suboperation() {
+        assert_eq!(
+            decode_thumb(0x0800_0C00, 0x428A).unwrap().operation,
+            ThumbOperation::CompareRegister { rd: 2, rs: 1 }
+        );
+        for rs in 0..8_u16 {
+            for rd in 0..8_u16 {
+                let encoding = 0x4280 | (rs << 3) | rd;
+                assert_eq!(
+                    decode_thumb(0x0800_0084, encoding).unwrap().operation,
+                    ThumbOperation::CompareRegister {
+                        rd: rd as u8,
+                        rs: rs as u8,
+                    }
+                );
+            }
+        }
+
+        for encoding in (0x4000..0x4400_u16).step_by(0x40) {
+            if encoding != 0x4000 && encoding != 0x4240 && encoding != 0x4280 && encoding != 0x4300
+            {
+                assert!(decode_thumb(0x0800_0084, encoding).is_err());
+            }
+        }
+        for encoding in [0x4200, 0x42C0, 0x42C1] {
+            assert!(decode_thumb(0x0800_0084, encoding).is_err());
+        }
+        assert!(decode_thumb(0x0800_0085, 0x428A).is_err());
     }
 
     #[test]

@@ -1945,6 +1945,24 @@ unsafe fn lower_thumb_instruction(
                 false,
             )?
         },
+        ThumbOperation::CompareRegister { rd, rs } => unsafe {
+            lower_thumb_add_sub(
+                context,
+                builder,
+                runtime_type,
+                exit_type,
+                runtime,
+                exit,
+                cycles,
+                instruction,
+                rd,
+                rd,
+                rs,
+                false,
+                true,
+                false,
+            )?
+        },
         ThumbOperation::AddSubtractImmediate {
             rd,
             immediate,
