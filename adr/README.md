@@ -23,3 +23,4 @@
 - [ADR-021-bounded-gba020-gate-parallelism](ADR-021-bounded-gba020-gate-parallelism.md)
 - [ADR-022-additive-thumb-ldmia-abi](ADR-022-additive-thumb-ldmia-abi.md)
 - [ADR-023-additive-thumb-stmia-abi](ADR-023-additive-thumb-stmia-abi.md)
+- [ADR-024-finite-rom-ldmia-specialization](ADR-024-finite-rom-ldmia-specialization.md)

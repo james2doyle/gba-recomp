@@ -38,3 +38,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-034 — Memória abstrata limitada para descoberta AOT](SPEC-034-abstract-memory-discovery.md)
 - [SPEC-035 — Thumb LDMIA de registradores baixos em AOT estrito](SPEC-035-thumb-ldmia.md)
 - [SPEC-036 — Thumb STMIA de registradores baixos em AOT estrito](SPEC-036-thumb-stmia.md)
+- [SPEC-037 — Thumb LDMIA de ROM com conjunto finito de bases](SPEC-037-thumb-ldmia-rom-cases.md)
