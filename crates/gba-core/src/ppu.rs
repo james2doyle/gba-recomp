@@ -626,3 +626,6 @@ fn darken(a: u16, evy: u32) -> u16 {
     let a = channels(a);
     pack([0, 1, 2].map(|i| a[i] - ((a[i] * evy) >> 4)))
 }
+
+#[cfg(test)]
+mod tests;

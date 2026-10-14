@@ -23,6 +23,10 @@ Sem modelagem do PWM/resolução de SOUNDBIAS (amostragem fixa 32768 Hz), sem la
 
 Testes de envelope/length/sweep, FIFO underrun/refill por timer+DMA e roteamento; captura WAV canônica comparável entre execuções com o mesmo input.
 
+## Verificação
+
+Testes em `crates/gba-core/src/apu/tests.rs` (13 testes, 2026-10-14): envelope a 64 Hz (aumento, diminuição, passo 0), length a 256 Hz, sweep a 128 Hz com overflow e com diminuição (shift 0 não altera), master off travando/zerando o PSG e preservando SOUNDCNT_H/SOUNDBIAS, banco de wave RAM acessível pela CPU, volumes do canal 3 (0/100/50/25/75%), taxa canônica de 512 ciclos, roteamento e clamp do mixer (FIFO 50/100%, PSG) e reset de FIFO; pelo bus, pop de FIFO no overflow do timer selecionado com contagem de underrun e refill por DMA especial (4 words, destino fixo, pedido só com ≤ 16 bytes). Canal de ruído (LFSR) e captura WAV comparável ainda sem teste dedicado. Bugs corrigidos: [KNO-007](../knowledge/KNO-007-interpreted-core.md#bugs-corrigidos-pelos-testes-unitários).
+
 ## Referências
 
 [SPEC-006](SPEC-006-video-audio.md), [SPEC-057](SPEC-057-bus-scheduler-io.md), GBATEK.

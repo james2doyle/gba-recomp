@@ -104,7 +104,11 @@ impl Square {
         self.sweep_timer = self.sweep_period;
         let delta = self.freq >> self.sweep_shift;
         if self.sweep_dec {
-            self.freq = self.freq.saturating_sub(delta);
+            // Shift 0 leaves the frequency unchanged (delta would be the
+            // whole frequency and silence the channel).
+            if self.sweep_shift != 0 {
+                self.freq = self.freq.saturating_sub(delta);
+            }
         } else {
             let new = u32::from(self.freq) + u32::from(delta);
             if new > 2047 {
@@ -414,8 +418,10 @@ impl Apu {
             }
             0x084
                 if value & 0x80 == 0 => {
-                    // Master off clears PSG registers and channels.
-                    for r in &mut self.regs[0x00..0x24] {
+                    // Master off clears the PSG registers 0x60-0x81 and the
+                    // channels; SOUNDCNT_H (0x82) and SOUNDBIAS stay as
+                    // written (GBATEK SOUNDCNT_X bit 7).
+                    for r in &mut self.regs[0x00..0x22] {
                         *r = 0;
                     }
                     self.ch1 = Square::default();
@@ -605,3 +611,6 @@ impl Apu {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -128,3 +128,6 @@ impl Gba {
         h
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -29,7 +29,7 @@ pub enum SystemFault {
     Cpu(crate::cpu::Fault),
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct Timer {
     pub reload: u16,
     pub control: u16,
@@ -38,6 +38,20 @@ pub struct Timer {
     start: u64,
     /// Cycle at which the counter overflows (only for running, non-cascade timers).
     overflow_at: u64,
+}
+
+impl Default for Timer {
+    fn default() -> Self {
+        Self {
+            reload: 0,
+            control: 0,
+            counter: 0,
+            start: 0,
+            // Never scheduled: a zero here made every untouched timer fire a
+            // spurious overflow (FIFO pop, DMA request) at the first event.
+            overflow_at: u64::MAX,
+        }
+    }
 }
 
 impl Timer {
@@ -65,8 +79,8 @@ pub struct Dma {
     pub dad: u32,
     pub count: u16,
     pub control: u16,
-    src: u32,
-    dst: u32,
+    pub(crate) src: u32,
+    pub(crate) dst: u32,
     remaining: u32,
 }
 
@@ -188,6 +202,11 @@ impl Bus {
             hle: crate::bios::HleState::default(),
         };
         bus.update_waitstates();
+        // Hardware reset values of the affine BG matrices: PA = PD = 1.0
+        // (identity), so bitmap modes display unscaled without setup.
+        for offset in [0x20, 0x26, 0x30, 0x36] {
+            bus.io_store16(offset, 0x0100);
+        }
         bus.next_event = bus.ppu_event;
         bus.apu.reset_clock(0);
         bus
@@ -321,6 +340,8 @@ impl Bus {
         match addr >> 24 {
             0x0E | 0x0F => u32::from(self.backup.read8(addr)) * 0x0101_0101,
             _ => {
+                // BUS-57-03: word accesses are word-aligned on the bus.
+                let addr = addr & !3;
                 let lo = u32::from(self.read_raw16(addr));
                 let hi = u32::from(self.read_raw16(addr | 2));
                 lo | (hi << 16)
@@ -377,6 +398,8 @@ impl Bus {
                 }
             }
             _ => {
+                // BUS-57-03: word accesses are word-aligned on the bus.
+                let addr = addr & !3;
                 self.write_raw16(addr, value as u16);
                 self.write_raw16(addr | 2, (value >> 16) as u16);
             }
@@ -429,6 +452,34 @@ impl Bus {
         let o = offset as usize;
         if o + 1 < self.io.len() {
             self.io[o..o + 2].copy_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    /// Last value written to a halfword register, including registers whose
+    /// state lives outside `io` (IE/WAITCNT/IME, DMA, timers). Byte writes
+    /// merge with this value so that writing one byte never clobbers the
+    /// other half of the register.
+    fn io_latched16(&self, offset: u32) -> u16 {
+        match offset {
+            0x0B0..=0x0DE => {
+                let d = &self.dma[((offset - 0xB0) / 12) as usize];
+                match (offset - 0xB0) % 12 {
+                    0 => d.sad as u16,
+                    2 => (d.sad >> 16) as u16,
+                    4 => d.dad as u16,
+                    6 => (d.dad >> 16) as u16,
+                    8 => d.count,
+                    _ => d.control,
+                }
+            }
+            0x100..=0x10E => {
+                let t = &self.timers[((offset - 0x100) / 4) as usize];
+                if offset & 2 == 0 { t.reload } else { t.control }
+            }
+            0x200 => self.ie,
+            0x204 => self.waitcnt,
+            0x208 => self.ime,
+            _ => self.io_stored16(offset),
         }
     }
 
@@ -519,7 +570,7 @@ impl Bus {
             0x060..=0x09F => self.apu.write8(offset, value),
             _ if offset < 0x400 => {
                 let aligned = offset & !1;
-                let current = self.io_stored16(aligned);
+                let current = self.io_latched16(aligned);
                 let shift = (offset & 1) * 8;
                 let merged = (current & !(0xFF << shift)) | (u16::from(value) << shift);
                 self.io_write16(aligned, merged);
@@ -638,7 +689,8 @@ impl Bus {
         // Freeze the counter at its current value before changing control.
         t.counter = t.current(now);
         t.start = now;
-        t.control = value & 0x00C7;
+        // TM0 has no count-up (cascade) mode: bit 2 is unused there.
+        t.control = value & if i == 0 { 0x00C3 } else { 0x00C7 };
         if !was_running && t.running() {
             t.counter = t.reload;
             // The timer starts counting after a short delay.
@@ -791,6 +843,15 @@ impl Bus {
                 _ => 0,
             }
         };
+        // CART-60-01: the EEPROM size is inferred from the length of the
+        // first DMA that addresses it (9/73 units → 512 B, 17/81 → 8 KiB).
+        let rom_len = self.rom.len();
+        if !fifo
+            && (self.backup.is_eeprom_address(d.src, rom_len)
+                || self.backup.is_eeprom_address(d.dst, rom_len))
+        {
+            self.backup.eeprom_dma_hint(count);
+        }
         let mut src = d.src;
         let mut dst = d.dst;
         self.cycles += 2;
@@ -931,7 +992,12 @@ fn dma_count(channel: usize, count: u16) -> u32 {
     } else if channel == 3 {
         u32::from(count)
     } else {
-        u32::from(count & 0x3FFF).max(1)
+        // Channels 0-2 have a 14-bit counter: 0x4000 (masked to 0) also
+        // means 0x4000 units.
+        match u32::from(count & 0x3FFF) {
+            0 => 0x4000,
+            n => n,
+        }
     }
 }
 
@@ -1002,3 +1068,6 @@ impl CpuBus for Bus {
 }
 
 pub use ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
+
+#[cfg(test)]
+pub(crate) mod tests;

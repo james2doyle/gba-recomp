@@ -24,6 +24,10 @@ Sem ciclos de acesso VRAM por pixel, sem contenção CPU/PPU, sem renderização
 
 Testes de composição por camada/prioridade, janelas e blend; comparação de framebuffer com mGBA (oráculo externo) nos mesmos frames de fixtures quando o diferencial existir. Evidência inicial: LeafGreen renderiza intro, título, tutorial e diálogo (KNO-007).
 
+## Verificação
+
+Testes de cena sintética em `crates/gba-core/src/ppu/tests.rs` (26 testes, 2026-10-14) montam VRAM/Palette/OAM/I/O pelo bus e conferem pixels após renderizar uma linha: BG texto 4/8 bpp, flips, banco de paleta, scroll com wrap, largura 512, prioridade entre BGs, mosaic H/V; BG affine com e sem wrap, ponto de referência (inclusive negativo de 28 bits), escala, avanço por linha e recarga no VBlank; modos 3/4/5 com page flip e limites do modo 5; OBJ normal (flips, X/Y negativos), 8 bpp, mapeamento 1D vs 2D, prioridade OBJ×OBJ e OBJ×BG, affine identidade/double size/espelho por PA, tiles < 512 em modo bitmap, semi-transparência, OBJ window; WIN0/WIN1 (prioridade e limites verticais), alpha com EVA/EVB saturados, backdrop como segundo alvo, brighten/darken, janela desabilitando efeitos e forced blank. Flags/IRQs de DISPSTAT e HBlank DMA estão em `bus/tests.rs`. Mosaic de OBJ e a comparação com mGBA continuam sem teste. Bugs corrigidos: [KNO-007](../knowledge/KNO-007-interpreted-core.md#bugs-corrigidos-pelos-testes-unitários).
+
 ## Referências
 
 [SPEC-006](SPEC-006-video-audio.md), [SPEC-057](SPEC-057-bus-scheduler-io.md), [ADR-041](../adr/ADR-041-interpreter-first-core.md), GBATEK.

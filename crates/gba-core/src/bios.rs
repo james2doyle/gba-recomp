@@ -559,3 +559,6 @@ fn midi_key_to_freq(bus: &mut Bus, cpu: &mut Cpu) {
     cpu.r[0] = (freq as f32 / exponent.exp2()) as u32;
     bus.add_cycles(60);
 }
+
+#[cfg(test)]
+mod tests;
