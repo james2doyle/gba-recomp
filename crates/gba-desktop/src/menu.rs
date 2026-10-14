@@ -159,6 +159,14 @@ impl Menu {
                     ));
                 }
                 v.push(row("Zona morta", format!("{:.2}", d.input.deadzone)));
+                v.push(row(
+                    "Controles na tela",
+                    match d.input.touch_controls {
+                        crate::settings::TouchMode::Auto => "Auto".into(),
+                        crate::settings::TouchMode::On => "Sim".into(),
+                        crate::settings::TouchMode::Off => "Nao".into(),
+                    },
+                ));
                 v.push(row("Restaurar padroes", String::new()));
                 v
             }
@@ -322,6 +330,16 @@ impl Menu {
                     let dz = (d.input.deadzone * 20.0).round() as i32;
                     let max = (DEADZONE_MAX * 20.0).round() as i32;
                     d.input.deadzone = step(dz, delta, 0, max, confirm) as f32 / 20.0;
+                } else if self.cursor == buttons + 1 {
+                    use crate::settings::TouchMode::*;
+                    d.input.touch_controls = match (d.input.touch_controls, delta > 0) {
+                        (Auto, true) => On,
+                        (On, true) => Off,
+                        (Off, true) => Auto,
+                        (Auto, false) => Off,
+                        (On, false) => Auto,
+                        (Off, false) => On,
+                    };
                 } else if confirm {
                     d.input = crate::settings::Input::default();
                 }

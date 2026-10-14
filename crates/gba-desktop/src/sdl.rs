@@ -91,6 +91,11 @@ const SDL_EVENT_QUIT: u32 = 0x100;
 const SDL_EVENT_WINDOW_FOCUS_LOST: u32 = 0x20F;
 const SDL_EVENT_KEY_DOWN: u32 = 0x300;
 const SDL_EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401;
+const SDL_EVENT_FINGER_DOWN: u32 = 0x700;
+const SDL_EVENT_FINGER_UP: u32 = 0x701;
+const SDL_EVENT_FINGER_MOTION: u32 = 0x702;
+const SDL_EVENT_FINGER_CANCELED: u32 = 0x703;
+const SDL_TOUCH_DEVICE_DIRECT: c_int = 1;
 const SDL_EVENT_GAMEPAD_BUTTON_DOWN: u32 = 0x651;
 const SDL_LOGICAL_PRESENTATION_LETTERBOX: c_int = 2;
 const SDL_SCALEMODE_LINEAR: c_int = 1;
@@ -173,6 +178,10 @@ unsafe extern "C" {
     fn SDL_GetNumJoystickAxes(joystick: *mut SdlJoystick) -> c_int;
     fn SDL_GetNumJoystickHats(joystick: *mut SdlJoystick) -> c_int;
     fn SDL_PumpEvents();
+    fn SDL_GetTouchDevices(count: *mut c_int) -> *mut u64;
+    fn SDL_GetTouchDeviceType(id: u64) -> c_int;
+    fn SDL_free(mem: *mut c_void);
+    fn SDL_GetRenderLogicalPresentationRect(renderer: *mut SdlRenderer, rect: *mut FRect) -> bool;
     fn SDL_SetHint(name: *const c_char, value: *const c_char) -> bool;
     fn SDL_IOFromConstMem(mem: *const c_void, size: usize) -> *mut SdlIoStream;
     fn SDL_LoadPNG_IO(src: *mut SdlIoStream, closeio: bool) -> *mut SdlSurface;
@@ -354,16 +363,43 @@ pub struct Context {
 pub enum Event {
     Quit,
     FocusLost,
-    KeyDown { scancode: usize, repeat: bool },
-    MouseDown { button: u8 },
-    PadDown { button: i32 },
+    KeyDown {
+        scancode: usize,
+        repeat: bool,
+    },
+    MouseDown {
+        button: u8,
+    },
+    /// Finger down/move at normalized window coordinates (0..1).
+    FingerDown {
+        finger: u64,
+        x: f32,
+        y: f32,
+    },
+    FingerUp {
+        finger: u64,
+    },
+    PadDown {
+        button: i32,
+    },
     GamepadAdded(u32),
     GamepadRemoved(u32),
     JoystickAdded(u32),
     JoystickRemoved(u32),
-    JoyButtonDown { which: u32, button: i32 },
-    JoyHat { which: u32, hat: i32, value: u8 },
-    JoyAxis { which: u32, axis: i32, value: i16 },
+    JoyButtonDown {
+        which: u32,
+        button: i32,
+    },
+    JoyHat {
+        which: u32,
+        hat: i32,
+        value: u8,
+    },
+    JoyAxis {
+        which: u32,
+        axis: i32,
+        value: i16,
+    },
     Other,
 }
 
@@ -391,6 +427,22 @@ impl Context {
             })
         } else {
             Err(last_error("SDL_Init"))
+        }
+    }
+
+    /// Whether a direct touch screen is present (not a trackpad).
+    pub fn has_touchscreen(&self) -> bool {
+        let mut n: c_int = 0;
+        // SAFETY: SDL returns an owned array of `n` ids (freed below) or null.
+        unsafe {
+            let ids = SDL_GetTouchDevices(&mut n);
+            if ids.is_null() {
+                return false;
+            }
+            let found = (0..n.max(0) as usize)
+                .any(|i| SDL_GetTouchDeviceType(*ids.add(i)) == SDL_TOUCH_DEVICE_DIRECT);
+            SDL_free(ids.cast());
+            found
         }
     }
 
@@ -479,6 +531,18 @@ impl Context {
             // SDL_MouseButtonEvent: button at 24.
             SDL_EVENT_MOUSE_BUTTON_DOWN => Event::MouseDown {
                 button: ev.bytes[24],
+            },
+            // SDL_TouchFingerEvent: fingerID at 24, x/y floats at 32/36.
+            SDL_EVENT_FINGER_DOWN | SDL_EVENT_FINGER_MOTION => {
+                let f = |at: usize| f32::from_ne_bytes(ev.bytes[at..at + 4].try_into().unwrap());
+                Event::FingerDown {
+                    finger: u64::from_ne_bytes(ev.bytes[24..32].try_into().unwrap()),
+                    x: f(32),
+                    y: f(36),
+                }
+            }
+            SDL_EVENT_FINGER_UP | SDL_EVENT_FINGER_CANCELED => Event::FingerUp {
+                finger: u64::from_ne_bytes(ev.bytes[24..32].try_into().unwrap()),
             },
             // SDL_GamepadButtonEvent: button at 20.
             SDL_EVENT_GAMEPAD_BUTTON_DOWN => Event::PadDown {
@@ -621,6 +685,31 @@ impl Video<'_> {
                 self.height * scale,
             )
         };
+    }
+
+    /// Map normalized window coordinates to guest logical coordinates
+    /// (240×160) through the current letterbox; `None` outside the game.
+    pub fn window_to_logical(&self, nx: f32, ny: f32) -> Option<(f32, f32)> {
+        let mut rect = FRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+        };
+        let (mut ow, mut oh) = (0, 0);
+        // SAFETY: renderer is live; out-parameters are valid.
+        unsafe {
+            SDL_GetRenderOutputSize(self.renderer.as_ptr(), &mut ow, &mut oh);
+            SDL_GetRenderLogicalPresentationRect(self.renderer.as_ptr(), &mut rect);
+        }
+        if rect.w <= 0.0 || rect.h <= 0.0 {
+            return None;
+        }
+        let (px, py) = (nx * ow as f32, ny * oh as f32);
+        let lx = (px - rect.x) * self.width as f32 / rect.w;
+        let ly = (py - rect.y) * self.height as f32 / rect.h;
+        ((0.0..self.width as f32).contains(&lx) && (0.0..self.height as f32).contains(&ly))
+            .then_some((lx, ly))
     }
 
     pub fn set_icon(&mut self, icon: &Surface) {

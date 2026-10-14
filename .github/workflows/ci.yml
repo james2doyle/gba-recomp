@@ -18,7 +18,7 @@ env:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -43,6 +43,15 @@ jobs:
             target: aarch64-apple-darwin
             llvm: LLVM-23.1.3-macOS-ARM64.tar.xz
             linker_var: CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER
+          # Intel Macs. LLVM 23.1.3 ships no macOS x86-64 binaries, so the
+          # Apple Silicon runner cross-builds the runtime, companions, SDL and
+          # demo for x86_64-apple-darwin and verifies the demo under Rosetta 2.
+          - name: macos-x86_64
+            os: macos-15
+            target: x86_64-apple-darwin
+            cross: x86_64-apple-darwin
+            llvm: LLVM-23.1.3-macOS-ARM64.tar.xz
+            linker_var: CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER
           - name: windows-x86_64
             os: windows-2025
             target: x86_64-pc-windows-msvc
@@ -61,7 +70,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/llvm
-          key: llvm-23.1.3-${{ matrix.llvm }}
+          key: llvm-23.1.3-v2-${{ matrix.llvm }}
 
       - name: LLVM 23.1.3
         run: scripts/ci/setup-llvm.sh "${{ matrix.llvm }}"
@@ -70,12 +79,26 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Use lld-link as the Rust linker
+        # Git Bash puts coreutils' /usr/bin/link ahead of MSVC's link.exe.
+        if: runner.os == 'Windows'
+        run: echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$LLVM_SYS_231_PREFIX/bin/lld-link.exe" >> "$GITHUB_ENV"
+
       - name: SDL 3
+        env:
+          SDL_ARCH: ${{ matrix.cross == 'x86_64-apple-darwin' && 'x86_64' || '' }}
         run: scripts/ci/setup-sdl3.sh
 
       - name: Use LLVM clang as the Rust linker
         if: matrix.linker_var != ''
         run: echo "${{ matrix.linker_var }}=$LLVM_SYS_231_PREFIX/bin/clang" >> "$GITHUB_ENV"
+
+      - name: Cross target
+        if: matrix.cross
+        run: |
+          rustup target add "${{ matrix.cross }}"
+          echo "CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=$LLVM_SYS_231_PREFIX/bin/clang" >> "$GITHUB_ENV"
+          softwareupdate --install-rosetta --agree-to-license || true
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -88,11 +111,23 @@ jobs:
           restore-keys: cargo-${{ matrix.name }}-
 
       - name: Build
+        if: ${{ !matrix.cross }}
         run: cargo build --release --locked --workspace
 
+      - name: Build (host compiler + cross target runtime)
+        if: matrix.cross
+        run: |
+          cargo build --release --locked -p gba-recomp
+          cargo build --release --locked --target "${{ matrix.cross }}" \
+            -p gba-native-rt -p gba-desktop -p gba-settings -p gba-party -p gba-run
+
       - name: Test (full suite)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && !matrix.cross
         run: cargo test --release --locked --workspace
+
+      - name: Test (cross target under Rosetta)
+        if: matrix.cross
+        run: cargo test --release --locked --target "${{ matrix.cross }}" -p gba-core -p gba-desktop -p gba-native-rt -p gba-net
 
       - name: Test (portable crates)
         if: runner.os == 'Windows'
@@ -101,6 +136,8 @@ jobs:
         run: cargo test --release --locked -p gba-core -p gba-desktop -p gba-native-rt -p gba-net -p gba-settings -p gba-party -p gba-run
 
       - name: Package toolchain and demo games
+        env:
+          CROSS_TARGET: ${{ matrix.cross }}
         run: scripts/ci/package.sh "${{ matrix.name }}"
 
       - uses: actions/upload-artifact@v4

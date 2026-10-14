@@ -1,6 +1,6 @@
 # SPEC-068 — Alvos multiplataforma, controles touch e CI de release
 
-Estado do documento: Accepted em 2026-10-14. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted em 2026-10-14. Implementado até aqui: `--target/--runtime-lib/--sdl-dir`, backends ARM/WebAssembly no LLVM, adaptadores macOS (verificado), Linux e Windows (verificados só por `cargo check`; execução pelo CI), símbolo `SDL_main` em iOS/Android, workflow `.github/workflows/ci.yml` (Linux x86-64/ARM64, macOS, Windows: build, testes, toolchain e demo Rkanoid verificado contra o interpretador; release em tags `v*`; `scripts/ci/package.sh` executado localmente no macOS) e controles touch (TOUCH-68-01: layout/teste de acerto com testes, opção `auto/on/off`, smoke com driver dummy; ainda não testado em tela touch real). iOS, Android e Web estão em implementação. Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Problema e escopo
 
