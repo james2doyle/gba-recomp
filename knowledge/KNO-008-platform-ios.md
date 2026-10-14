@@ -39,7 +39,8 @@ Observação de execução (comandos efetivamente rodados neste host):
 - **Assinatura**: o `.ipa` não é assinado. Para instalar em aparelho real é preciso re-assinar com certificado Apple e provisioning profile próprios (Xcode, `codesign` + `embedded.mobileprovision`, ou ferramentas de sideload). O executável de dispositivo pode conter a assinatura ad hoc que o `ld64.lld` aplica a binários arm64; isso não é assinatura de bundle e não permite instalação.
 - **Título**: a ROM livre de `games/` tem título de cabeçalho vazio (0xA0–0xAB zerados), então `CFBundleName` cai em "GBA Game", igual ao macOS.
 - Inferência (não testada): a SDL usa `UILaunchScreen` vazio e cria a janela em tela cheia; o comportamento ao ir para segundo plano (pausa, gravação do save) depende do frontend, que não trata eventos de ciclo de vida específicos de iOS. O save é persistido pelos pontos já existentes do frontend (menu/saída); se o iOS encerrar o app em segundo plano, progresso não salvo pode ser perdido.
-- Controles touch (TOUCH-68-01) são de outro trabalho; sem eles e sem controle físico o jogo não é jogável no aparelho.
+- Controles touch (TOUCH-68-01, `gba-desktop/src/touch.rs`, vindos de `main` no merge 4443b62) são compilados no runtime iOS, mas não foram exercitados em iOS; sem execução não há evidência de jogabilidade no aparelho.
+- Após o merge com `main` (4443b62), runtime iOS/simulador e `gba-recomp` foram recompilados e os dois bundles regenerados; `plutil -lint`, `LC_BUILD_VERSION` (2/7) e `codesign --verify` do simulador repetidos com o mesmo resultado.
 - O workflow `ios.yml` não foi executado neste host (só escrito); o release em tag compartilha a mesma Release com `ci.yml` via `softprops/action-gh-release@v2`.
 
 ## Questões abertas
