@@ -39,3 +39,4 @@
 - [ADR-037-thumb-negate-register](ADR-037-thumb-negate-register.md)
 - [ADR-038-thumb-asr-immediate](ADR-038-thumb-asr-immediate.md)
 - [ADR-039-thumb-cmp-register](ADR-039-thumb-cmp-register.md)
+- [ADR-040-interpreter-assisted-compatibility](ADR-040-interpreter-assisted-compatibility.md)
