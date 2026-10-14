@@ -128,6 +128,12 @@ No commit `57156d4949ce31bac2de5d72316e05d2195dd409`, POP Thumb de r0–r7 foi i
 
 Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-pop-20261013 --opt O2 --steps 100` para a ROM SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta estática passou pelo POP em `0x080009B6` (raw `0xBC08`) e parou em `0x080009BE`, raw `0x4700`, com `bx_target_unresolved: r0 is not statically bounded`. `0x4700` é inferido como Thumb `BX r0`; o destino de r0 não foi observado nem limitado estaticamente. A pasta de saída não foi criada, nenhum pacote LeafGreen foi produzido e a ROM não foi executada. REA falhou com `Transport closed`, sem Evidence ID ou decompilação. O registro descreve apenas a nova fronteira da descoberta estática.
 
+## Tentativa após SPEC-034 — memória abstrata limitada
+
+No commit de implementação `d74148b768261f7fca07cb9fbb20ec3e1c996429`, a descoberta ganhou uma sombra esparsa de até 64 palavras, preenchida por PUSH e consultada por POP. A fixture sintética `thumb-stack-return` compilou em strict-AOT O0/O2, executou 14 passos e restaurou o LR; a fixture com LR desconhecido continuou rejeitada em `BX r0` `0x08000090`. Os hashes e estados estão em [gba020-abstract-memory-macos-arm64.json](evidence/gba020-abstract-memory-macos-arm64.json).
+
+Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-amem-20261013-O2 --opt O2 --steps 100` para a ROM SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta passou pelo `BX r0` em `0x080009BE` e parou com `unsupported_thumb_instruction` em `0x080006A8`, raw `0xCB01`. A classificação de `0xCB01` como Thumb LDMIA `r3!,{r0}` é inferida pelos campos do encoding; não foi obtido estado de registradores em runtime. O diretório de pacote não foi criado, a ROM não foi executada e esta tentativa não produziu decompilação REA. A fronteira e os limites constam no relatório de evidência acima.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

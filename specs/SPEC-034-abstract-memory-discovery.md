@@ -1,6 +1,6 @@
 # SPEC-034 — Memória abstrata limitada para descoberta AOT
 
-Estado do documento: Accepted. Implementação pendente; progresso em [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementação strict-AOT de descoberta concluída no commit `d74148b`; evidência em [gba020-abstract-memory-macos-arm64.json](../knowledge/evidence/gba020-abstract-memory-macos-arm64.json). O progresso geral continua no [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 

@@ -127,7 +127,7 @@ O inventário de famílias e a comparação com o subset deste projeto estão em
 
 ## Limites
 
-Sem benchmarking ou decompilação. A fixture sintética Tiny Counter foi executada apenas na janela headless documentada abaixo; nenhum título comercial foi executado. Afirmações do vendor como compatibilidade ampla e custo desprezível de fallback permanecem não verificadas. Constantes de referência não substituem testes de borda de HBlank, bus e IRQ. GBA-010 e GBA-020 foram exercitados apenas em macOS arm64; Linux x86-64, SDL e garantias por jogo continuam sem prova.
+Não houve decompilação da ROM comercial. A fixture sintética Tiny Counter foi executada apenas na janela headless documentada abaixo; nenhum título comercial foi executado. Um benchmark local mediu três vezes o grupo de sete fixtures Thumb LSL em cada configuração, conforme [gba020-abstract-memory-macos-arm64.json](evidence/gba020-abstract-memory-macos-arm64.json); ele não mede compilação de ROM comercial nem throughput geral do recompilador. Afirmações do vendor como compatibilidade ampla e custo desprezível de fallback permanecem não verificadas. Constantes de referência não substituem testes de borda de HBlank, bus e IRQ. GBA-010 e GBA-020 foram exercitados apenas em macOS arm64; Linux x86-64, SDL e garantias por jogo continuam sem prova.
 
 ## Evidência de implementação GBA-020
 
