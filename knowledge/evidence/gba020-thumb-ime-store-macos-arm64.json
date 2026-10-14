@@ -1,0 +1,104 @@
+{
+  "record_type": "strict-aot-implementation-and-static-discovery",
+  "date": "2026-10-14",
+  "contract_commit": "341bb73322743673449ca4eac6eb4783dd92cc36",
+  "implementation_commit": "0d790e87f907c9de18bc817319d8558611d953c4",
+  "edge_case_test_commit": "4ed977002ae1d30b423d115fbad6ed0ed2d671b5",
+  "environment": {
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "rust": "1.99.0",
+    "llvm_backend": "23.1.3",
+    "target": "aarch64-apple-darwin"
+  },
+  "workspace_tests": {
+    "command": "cargo test --locked --workspace --jobs 10",
+    "llvm_sys_231_prefix": "target/toolchains/LLVM-23.1.3-macOS-ARM64",
+    "result": "passed",
+    "gba_ir_tests": 64,
+    "gba_recomp_tests": 89,
+    "log": "cargo-test-spec044-macos-arm64.log",
+    "log_sha256": "89842635364b3c5af3cf86003598e5b808631ded380d02da9a3b297484c4651a"
+  },
+  "headless_gate": {
+    "command": "scripts/verify-gba020.sh",
+    "configuration": {
+      "cargo_build_jobs": 10,
+      "fixture_workers": 10,
+      "lld_threads_per_worker": 1,
+      "worker_times_lld_threads": 10
+    },
+    "result": "passed",
+    "host": "Darwin/arm64",
+    "strict_aot": true,
+    "log": "gba020-thumb-ime-store-macos-arm64.log",
+    "log_sha256": "2e4c58fda3e69cae0425d4f95332301f4dd4c7d8be538844528be5a4f00c6e67",
+    "scheduled_group_wall_ms": {
+      "thumb-ldrword": 3129.6,
+      "thumb-ldrh": 2928.6,
+      "thumb-format3": 3566.9,
+      "thumb-lsl-lsr": 4688.0,
+      "thumb-addsub": 2807.3
+    },
+    "ime_fixture": {
+      "name": "thumb-strh-ime-clear",
+      "rom_sha256": "56383efc5c2ccbbd6ca85f248e7796bd73b5488b4150777ac60eed9601699689",
+      "execution_mode": "strict-aot",
+      "instructions_aot": 12,
+      "run_instruction_budget": 11,
+      "expected_state": "steps=11; r0=0; r1=134217968; pc=0x080000F0; cpsr=0x0000001F; guest_cycle=11; ewram_word0=0; iwram_word0=0",
+      "O0": {
+        "game_sha256": "04a8c6093d49ad4cdba9f508b84b722193a2526a9061d71a52912e61e114bb73",
+        "manifest_sha256": "998f72425068a5475915c030fe9f30033f3d44642c14a494826286749d9f91d3"
+      },
+      "O2": {
+        "game_sha256": "bdc597e108b12d114070f18c52ecb26e30307600137063c415673559c2fc197f",
+        "manifest_sha256": "5b45ca76f08f23c5095e5cae7aa21e2d7ee1a9fa1dc542897c1d102d579ba71b"
+      }
+    },
+    "runtime_hle_c_test": {
+      "result": "passed",
+      "binary_sha256": "4cca1a88b0252fce848e05591595d52d99a4ba73db28dea957bba8018ca895a9",
+      "covers": [
+        "IME zero masks and updates the latch",
+        "IME bit zero active faults atomically with code 8",
+        "physical RAM delegates to the v3 helper",
+        "physical IWRAM delegates to the v3 helper",
+        "odd guest EA targeting IME aligns down and updates the latch",
+        "other I/O faults with the original guest address",
+        "runtime, CPU, and machine ABI validation precedes mutation"
+      ]
+    }
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "compiler_sha256": "b8c01808cbc1cb9f3d251475167384d76f050a0f7b1fa8fd66426c145d51a1d0",
+    "command": "target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-ime-20261014-O2-run2 --opt O2 --steps 100",
+    "exit_code": 1,
+    "diagnostic": "bx_target_unresolved at 0x08000B6A: r0 is not statically bounded",
+    "log": "leafgreen-after-ime-20261014-O2.log",
+    "log_sha256": "350f0654af027709dc8982a02b6f1fdc9332b508df0da2dacfc30279ea5cda1f",
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea_decompilation": false,
+    "static_observations_and_inferences": [
+      "The halfword 0xD009 at 0x08000B50 has condition code 0xD (LE) and target 0x08000B66; discovery retains both successors because the preceding LDRB value remains Unknown.",
+      "The fallthrough contains 0x8811 at 0x08000B54, an LDRH from the inferred IME address 0x04000208. Current load helpers accept only physical EWRAM/IWRAM, so this access is outside the runtime contract and would fault if executed.",
+      "The exact IME-zero store at 0x08000B58 (raw 0x8014) now preserves the abstract stack shadow under the SPEC-044 exception.",
+      "A later STRH at 0x08000B60 (raw 0x8018) uses the literal 0x04000200, identified as IE by the fixed mGBA source; this address remains outside the runtime helper contract and the conservative discovery exception.",
+      "A later STRH at 0x08000B62 (raw 0x8011) writes an abstractly unknown value back to IME after the preceding LDRH; the current shadow exception requires the value singleton zero.",
+      "The compiler still reports the same unresolved BX. This is static discovery output, not a dynamic trace or evidence that either branch executes."
+    ]
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  },
+  "limitations": [
+    "The implemented slice accepts only physical EWRAM/IWRAM stores plus STRH to IME when bit zero is clear; it does not implement IE writes, MMIO reads, interrupt delivery, or general bus effects.",
+    "The synthetic strict-AOT fixture verifies the emitted call path and CPU advancement, while the C harness directly observes the IME latch update; the packaged runner does not expose machine.io[0x208] for an end-to-end latch assertion. Neither validates LeafGreen or hardware behavior.",
+    "Ten fixture workers times one LLD thread respects the ten-CPU host budget. Group timings are fixture throughput only; no sustained CPU saturation measurement was made, and CFG discovery plus LLVM emission for one ROM remain serial.",
+    "Linux x86-64 qualification remains pending. No vendor source was modified or copied."
+  ]
+}

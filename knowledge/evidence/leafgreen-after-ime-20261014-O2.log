@@ -1,0 +1,1 @@
+gba-recomp: bx_target_unresolved at 0x08000B6A: r0 is not statically bounded

@@ -1,10 +1,12 @@
 # SPEC-044 — Thumb STRH para IME em AOT estrito
 
-Estado do documento: Draft. Implementação: não iniciada. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementação: `0d790e87f907c9de18bc817319d8558611d953c4`. Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 
 A tentativa estática O2 da LeafGreen fixada em [KNO-004](../knowledge/KNO-004-rom-intake.md) encontra `STRH` com endereço guest inferido `0x04000208` e valor abstrato zero em `0x08000B58`. `0x04000208` é o registrador IME no mapa I/O. A instrução ocorre entre um `PUSH` rastreado e `POP {r0}`; a política atual da sombra abstrata limpa todas as palavras porque o destino não é RAM física, deixando o `BX r0` em `0x08000B6A` sem destino provado. Endereço, valor e sequência são resultados da análise estática local; não são observações de execução do jogo.
+
+A implementação valida o store IME isolado em fixtures strict-AOT O0/O2 e preserva a sombra nesse store zero. A tentativa LeafGreen após a mudança continua sem resolver o mesmo `BX`: no caminho fallthrough há uma escrita posterior inferida para IE em `0x04000200` e uma escrita de valor abstrato desconhecido de volta ao IME. Esses acessos permanecem fora do contrato; veja [a evidência SPEC-044](../knowledge/evidence/gba020-thumb-ime-store-macos-arm64.json). Portanto, aceitar esta spec não significa que o título comercial compile.
 
 Adicionar suporte estritamente limitado a uma escrita halfword no IME por Thumb STRH imediato. A escrita zero atualiza o latch IME versionado já presente em `GbaMachineStateV1`. O analisador pode preservar fatos de stack somente quando cada alternativa tem endereço exatamente `0x04000208` e valor exatamente zero. A ABI v3 e o helper RAM v3 permanecem congelados; a operação usa helper v4 aditivo.
 
@@ -38,8 +40,12 @@ Adicionar suporte estritamente limitado a uma escrita halfword no IME por Thumb 
 | Outro destino I/O ou região não suportada | Fault de região, sem mutação |
 | Discovery de STRH `{IME},{0}` entre PUSH e POP | Fatos de stack ficam disponíveis e o valor de POP é propagado |
 | Discovery para IME com valor desconhecido/não zero | Sombra limpa; BX sem destino continua rejeitado |
-| Fixture strict-AOT O0/O2 | Estado e decisão de fault idênticos; manifesto identifica strict-AOT |
+| Fixture strict-AOT O0/O2 | Mesmo estado de CPU, execução da chamada AOT e manifesto strict-AOT; o harness C exercita faults do helper |
 | LeafGreen com SHA-256 fixado | Registrar somente a próxima fronteira estática ou pacote realmente criado; não inferir execução |
+
+## Implementação verificada
+
+O commit `0d790e87f907c9de18bc817319d8558611d953c4` implementa o helper ABI v4, o lowering Thumb STRH, a exceção exata da sombra de discovery, o fixture sintético e as verificações C. `cargo test --locked --workspace --jobs 10` passou com 64 testes em `gba-ir` e 89 em `gba-recomp`; `scripts/verify-gba020.sh` passou em macOS arm64 com workers 10 × LLD 1. A fixture strict-AOT verifica o caminho de chamada emitido e o avanço da CPU; o harness C observa diretamente a alteração do latch. O runner do pacote não expõe `machine.io[0x208]`, portanto a fixture ainda não faz uma asserção end-to-end desse latch. A tentativa LeafGreen terminou com `bx_target_unresolved` em `0x08000B6A`, sem diretório de pacote. Hashes e saídas estão em [gba020-thumb-ime-store-macos-arm64.json](../knowledge/evidence/gba020-thumb-ime-store-macos-arm64.json).
 
 ## Fontes e referências
 

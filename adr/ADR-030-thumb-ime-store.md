@@ -21,7 +21,11 @@ Implementar [SPEC-044](../specs/SPEC-044-thumb-ime-store.md): adicionar `gba_sto
 
 ## Consequências e limites
 
-O helper v4 adiciona uma capacidade sem alterar layouts ABI, versões, manifesto ou GBA IR. O subset pode compilar e executar a escrita de IME zero; outras escritas I/O continuam faultando. O estado de máquina mantém o latch, mas este slice não entrega IRQ nem avança periféricos, e não modela DMA preexistente ou interferência assíncrona. A passagem do `BX` estático não demonstra execução ou compatibilidade de LeafGreen. O próximo trabalho de GBA-030 precisa completar leitura/escrita do bus e integração de IRQ/DMA/timers com eventos antes de qualificar cenários de jogo.
+O helper v4 adiciona uma capacidade sem alterar layouts ABI, versões, manifesto ou GBA IR. A fixture sintética compila e executa a escrita isolada de IME zero; outras escritas I/O continuam faultando. O estado de máquina mantém o latch, mas este slice não entrega IRQ nem avança periféricos, e não modela DMA preexistente ou interferência assíncrona. Após a implementação, LeafGreen ainda termina na análise estática com `bx_target_unresolved` em `0x08000B6A`: a sequência fallthrough contém uma escrita inferida para IE em `0x04000200` e uma escrita posterior de valor abstrato desconhecido para IME. O jogo não gerou pacote nem foi executado. O próximo trabalho de GBA-030 precisa definir o contrato de IE/IRQ e os demais efeitos do bus antes de qualificar cenários de jogo.
+
+## Implementação e evidência
+
+O commit `0d790e87f907c9de18bc817319d8558611d953c4` implementa SPEC-044. A suíte completa e o gate GBA-020 passaram; fixtures O0/O2 cobrem a sequência sintética e o harness C verifica latch, fault atômico, delegação de RAM e validação do runtime. Consulte [relatório e hashes](../knowledge/evidence/gba020-thumb-ime-store-macos-arm64.json). A tentativa LeafGreen após o commit não avançou a fronteira estática e continua sem pacote ou execução.
 
 ## Referências
 

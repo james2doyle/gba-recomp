@@ -147,7 +147,7 @@
       "0x08000B48": "0xB530 PUSH {r4,r5,lr}",
       "0x08000B4C": "0x7828 LDRB r0,[r5,#0]",
       "0x08000B4E": "0x2800 CMP r0,#0",
-      "0x08000B50": "0xD009 BNE; both successors remain possible while the loaded byte is Unknown",
+      "0x08000B50": "0xD009 conditional branch with condition code 0xD (LE), target 0x08000B66; both successors remain possible while the loaded byte is Unknown",
       "0x08000B52": "0x4A07 LDR r2,[pc,#0x1C]; literal statically resolves to 0x04000208",
       "0x08000B54": "0x8811 LDRH r1,[r2,#0]",
       "0x08000B58": "0x8014 STRH r4,[r2,#0]",
@@ -156,7 +156,7 @@
       "0x08000B68": "0xBC01 POP {r0}",
       "0x08000B6A": "0x4700 BX r0"
     },
-    "interpretation": "LDRB r0 is followed by CMP r0,#0, so discovery keeps both BNE successors. On the fallthrough path the LDR literal sets r2 to the statically inferred address 0x04000208 and STRH writes there; the current abstract memory policy conservatively clears its RAM stack shadow for a write outside supported physical RAM. The later LDRH destination is overwritten by POP {r0}; because the shadow was cleared on this path, POP {r0} is Unknown and the final BX cannot be closed. This is static analyzer behavior and encoding/address inference, not a guest execution trace."
+    "interpretation": "LDRB r0 is followed by CMP r0,#0, so discovery keeps both successors of the LE branch. On the fallthrough path the LDR literal sets r2 to the statically inferred address 0x04000208 and STRH writes there; before SPEC-044, the abstract memory policy conservatively cleared its RAM stack shadow for a write outside supported physical RAM. The later LDRH destination is overwritten by POP {r0}; because the shadow was cleared on this path in that compiler version, POP {r0} is Unknown and the final BX cannot be closed. This is static analyzer behavior and encoding/address inference, not a guest execution trace."
   },
   "limitations": [
     "LeafGreen was not packaged or executed; REA did not provide a decompilation session for this .gba artifact.",
