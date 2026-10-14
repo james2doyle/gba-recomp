@@ -94,11 +94,13 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     let mut output = None;
     let mut optimization = None;
     let mut steps = 100_u64;
+    let mut mode = ExecutionMode::StrictAot;
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--rom" => rom_path = Some(PathBuf::from(args.next().ok_or_else(usage)?)),
             "--out" => output = Some(PathBuf::from(args.next().ok_or_else(usage)?)),
             "--opt" => optimization = Some(parse_optimization(&args.next().ok_or_else(usage)?)?),
+            "--mode" => mode = parse_execution_mode(&args.next().ok_or_else(usage)?)?,
             "--steps" => {
                 steps = args
                     .next()
@@ -115,6 +117,8 @@ fn run_compile(arguments: Vec<String>) -> Result<(), String> {
     let rom_path = rom_path.ok_or_else(usage)?;
     let output = output.ok_or_else(usage)?;
     let optimization = optimization.ok_or_else(usage)?;
+    println!("execution_mode: {}", mode.as_str());
+    require_available_mode(mode)?;
     let image = rom::RomImage::read(&rom_path)?;
     let program = discover::discover_arm_program(&image)?;
     let package = build_native_package(&image, &program, optimization, steps, &output)?;
@@ -384,7 +388,7 @@ fn render_manifest(
     emit_info: &gba_llvm::EmitInfo,
 ) -> String {
     format!(
-        "{{\n  \"format_version\": 1,\n  \"rom_sha256\": \"{}\",\n  \"rom_size\": {},\n  \"game_code\": \"{}\",\n  \"rom_header_version\": {},\n  \"entrypoint\": \"0x{:08X}\",\n  \"ir_version\": {},\n  \"abi_version\": {},\n  \"machine_state_version\": {},\n  \"bios_hle_version\": {},\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"execution_mode\": \"strict-aot\",\n  \"timing_model\": \"one abstract unit per instruction\",\n  \"interrupt_model\": \"none\",\n  \"io_initialization\": \"all-zero\",\n  \"instructions_aot\": {},\n  \"run_instruction_budget\": {}\n}}\n",
+        "{{\n  \"format_version\": 1,\n  \"rom_sha256\": \"{}\",\n  \"rom_size\": {},\n  \"game_code\": \"{}\",\n  \"rom_header_version\": {},\n  \"entrypoint\": \"0x{:08X}\",\n  \"ir_version\": {},\n  \"abi_version\": {},\n  \"machine_state_version\": {},\n  \"bios_hle_version\": {},\n  \"llvm_version\": \"{}\",\n  \"target_triple\": \"{}\",\n  \"optimization\": \"{}\",\n  \"execution_mode\": \"{}\",\n  \"timing_model\": \"one abstract unit per instruction\",\n  \"interrupt_model\": \"none\",\n  \"io_initialization\": \"all-zero\",\n  \"instructions_aot\": {},\n  \"run_instruction_budget\": {}\n}}\n",
         image.sha256,
         image.size(),
         json_escape(&image.header.game_code),
@@ -397,6 +401,7 @@ fn render_manifest(
         emit_info.llvm_version,
         emit_info.triple,
         optimization.as_str(),
+        ExecutionMode::StrictAot.as_str(),
         instruction_count(program),
         step_limit,
     )
@@ -404,6 +409,43 @@ fn render_manifest(
 
 fn instruction_count(program: &ArmProgram) -> usize {
     program.instructions.len() + program.thumb_instructions.len()
+}
+
+/// Package execution mode (SPEC-055). `strict-aot` is the default and never
+/// calls an interpreter or JIT; `aot-compatible` must be selected explicitly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExecutionMode {
+    StrictAot,
+    AotCompatible,
+}
+
+impl ExecutionMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            ExecutionMode::StrictAot => "strict-aot",
+            ExecutionMode::AotCompatible => "aot-compatible",
+        }
+    }
+}
+
+fn parse_execution_mode(value: &str) -> Result<ExecutionMode, String> {
+    match value {
+        "strict-aot" => Ok(ExecutionMode::StrictAot),
+        "aot-compatible" => Ok(ExecutionMode::AotCompatible),
+        _ => Err(format!(
+            "unsupported execution mode `{value}`; use strict-aot or aot-compatible"
+        )),
+    }
+}
+
+/// IAC-02/IAC-03/IAC-09: `aot-compatible` needs a local ARMv4T interpreter with
+/// declared exact support. None exists yet, so the mode is rejected before
+/// discovery or package output instead of degrading to `strict-aot`.
+fn require_available_mode(mode: ExecutionMode) -> Result<(), String> {
+    match mode {
+        ExecutionMode::StrictAot => Ok(()),
+        ExecutionMode::AotCompatible => Err("execution mode `aot-compatible` is not available: no local interpreter satisfies SPEC-055 (IAC-03/IAC-09); no package was produced and the mode was not changed to strict-aot".to_owned()),
+    }
 }
 
 fn parse_optimization(value: &str) -> Result<Optimization, String> {
@@ -443,9 +485,70 @@ fn print_emit_info(info: &gba_llvm::EmitInfo) {
 fn usage() -> String {
     let target = native_target();
     format!(
-        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--steps N]\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
+        "usage:\n  gba-recomp inspect-rom --rom <path.gba>\n  gba-recomp compile --rom <path.gba> --out <package-dir> --opt O0|O2 [--mode strict-aot|aot-compatible] [--steps N]\n  gba-recomp emit-fixture --out <object.o> --opt O0|O2\n       native target: {}",
         target.triple
     )
+}
+
+#[cfg(test)]
+mod execution_mode_tests {
+    use super::{ExecutionMode, parse_execution_mode, require_available_mode, run_compile};
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn execution_mode_parses_only_contracted_values() {
+        assert_eq!(
+            parse_execution_mode("strict-aot").unwrap(),
+            ExecutionMode::StrictAot
+        );
+        assert_eq!(
+            parse_execution_mode("aot-compatible").unwrap(),
+            ExecutionMode::AotCompatible
+        );
+        assert_eq!(ExecutionMode::StrictAot.as_str(), "strict-aot");
+        assert_eq!(ExecutionMode::AotCompatible.as_str(), "aot-compatible");
+        for rejected in ["", "strict", "STRICT-AOT", "jit", "interpreter", "aot"] {
+            assert!(parse_execution_mode(rejected).is_err(), "{rejected:?}");
+        }
+    }
+
+    #[test]
+    fn compatible_mode_is_rejected_without_local_interpreter() {
+        assert!(require_available_mode(ExecutionMode::StrictAot).is_ok());
+        let error = require_available_mode(ExecutionMode::AotCompatible).unwrap_err();
+        assert!(error.contains("aot-compatible"), "{error}");
+        assert!(error.contains("not changed to strict-aot"), "{error}");
+    }
+
+    #[test]
+    fn compile_rejects_compatible_mode_before_reading_rom_or_writing_package() {
+        let output = std::env::temp_dir().join(format!(
+            "gba-recomp-compatible-rejected-{}",
+            std::process::id()
+        ));
+        let error = run_compile(args(&[
+            "--rom",
+            "/nonexistent/rom.gba",
+            "--out",
+            output.to_str().unwrap(),
+            "--opt",
+            "O0",
+            "--mode",
+            "aot-compatible",
+        ]))
+        .unwrap_err();
+        assert!(error.contains("aot-compatible"), "{error}");
+        assert!(!output.exists());
+
+        let error = run_compile(args(&[
+            "--rom", "x.gba", "--out", "y", "--opt", "O0", "--mode", "jit",
+        ]))
+        .unwrap_err();
+        assert!(error.contains("unsupported execution mode"), "{error}");
+    }
 }
 
 #[cfg(test)]

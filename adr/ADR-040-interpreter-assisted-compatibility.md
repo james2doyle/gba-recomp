@@ -1,6 +1,6 @@
 # ADR-040 — Modo AOT compatível com interpretação explícita
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 
 ## Contexto

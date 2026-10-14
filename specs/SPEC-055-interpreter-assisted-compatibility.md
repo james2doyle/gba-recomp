@@ -1,6 +1,6 @@
 # SPEC-055 — Interpretação explícita em pacotes AOT compatíveis
 
-Estado do documento: Draft. Progresso e gates de implementação: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted em 2026-10-14. Progresso e gates de implementação: [ROADMAP](../ROADMAP.md). Primeira etapa implementada: seleção explícita `--mode strict-aot|aot-compatible` em `gba-recomp compile` (IAC-01/IAC-02); `strict-aot` continua padrão e o manifesto registra o modo. Como ainda não existe interpretador local que satisfaça IAC-03/IAC-09, `aot-compatible` é rejeitado antes de discovery e sem pacote parcial, nunca rebaixado para `strict-aot`. Estado no runner, shells, dispatcher de misses, métricas, chaves de cache e diferencial seguem pendentes.
 
 ## Problema e escopo
 

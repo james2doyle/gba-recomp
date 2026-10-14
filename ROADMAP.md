@@ -13,7 +13,7 @@ Fonte única de andamento. Data: 2026-10-14. `DONE` exige evidência; `BACKLOG` 
 | GBA-040 | P0 | PPU software e APU canônica | BACKLOG | GBA-030 | SPEC-006; gráfico e áudio homebrew |
 | GBA-045 | P0 | HLE mínimo, backups e estado | IN_PROGRESS | GBA-030 (HLE RegisterRamReset v1 tem estado ABI v4 próprio; backup/save-state seguem dependentes do bus) | SPEC-007/023; somente RegisterRamReset #1 com latches parciais e memória definida; backup, save/restore e demais SWIs pendentes |
 | GBA-050 | P0 | Driver AOT, passes O0/O2 e cache | BACKLOG | GBA-025, GBA-030 | SPEC-004; mesma execução em ambos os pipelines |
-
+| GBA-055 | P1 | Interpretador local e modo híbrido opt-in sem JIT | IN_PROGRESS | GBA-025, GBA-030, GBA-045 | SPEC-055/ADR-040 Accepted. Etapa 1 implementada: `compile --mode strict-aot|aot-compatible`, padrão strict-aot, modo no manifesto e rejeição explícita de `aot-compatible` sem pacote parcial enquanto não houver interpretador local. Pendentes: elegibilidade por caso de semântica e perfil, métricas de fallback completas, diferencial e isolamento do strict-AOT |
 | GBA-060 | P0 | Parser/perfis, hints e digests | BACKLOG | GBA-025, GBA-050 | SPEC-008; exemplos e rejeições |
 | GBA-070 | P0 | Frontend/menu, input e configurações | BACKLOG | GBA-040, GBA-045, GBA-060 | SPEC-009; fluxo sem mouse e hotplug |
 | GBA-080 | P0 | Pacotes Linux x86-64/macOS arm64 | BACKLOG | GBA-070 | SPEC-010/011; máquina sem LLVM |
