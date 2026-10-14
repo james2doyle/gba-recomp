@@ -15,6 +15,8 @@ const MAX_ABSTRACT_STATES: usize = 100_000;
 const MAX_ROM_LDMIA_CASES: usize = 16;
 const MAX_ABSTRACT_MEMORY_WORDS: usize = 64;
 const MAX_ANALYSIS_UPDATES: usize = MAX_DISCOVERED_INSTRUCTIONS * 32;
+const IO_REGION_START: u32 = 0x0400_0000;
+const IO_REGION_END: u32 = 0x0500_0000;
 const IO_IE: u32 = 0x0400_0200;
 const IO_IF: u32 = 0x0400_0202;
 const IO_IME: u32 = 0x0400_0208;
@@ -556,42 +558,66 @@ impl AbstractState {
         }
 
         let mut overwritten_words = BTreeSet::new();
+        let mut clear_memory = false;
         for raw_address in addresses {
             let address = raw_address & !align_mask;
             if (byte_count == 4 && address & 3 != 0) || !supported_ram_interval(address, byte_count)
             {
-                self.clear_memory();
-                self.invalidate_io_for_unmodeled_store(address, byte_count);
-                return;
+                clear_memory = true;
+            } else {
+                for offset in 0..byte_count {
+                    overwritten_words.insert(address + offset & !3);
+                }
             }
-            for offset in 0..byte_count {
-                overwritten_words.insert(address.wrapping_add(offset) & !3);
-            }
+            self.invalidate_io_for_unmodeled_store(address, byte_count);
         }
-        let memory_words = Arc::make_mut(&mut self.memory_words);
-        for address in overwritten_words {
-            memory_words.remove(&address);
+        if clear_memory {
+            self.clear_memory();
+        } else {
+            let memory_words = Arc::make_mut(&mut self.memory_words);
+            for address in overwritten_words {
+                memory_words.remove(&address);
+            }
         }
     }
 
     fn invalidate_io_for_unmodeled_store(&mut self, address: u32, byte_count: u32) {
+        if !matches!(byte_count, 1 | 2 | 4) {
+            self.clear_io();
+            return;
+        }
         let Some(end) = address.checked_add(byte_count) else {
             self.clear_io();
             return;
         };
-        if address < 0x0400_0000 || end > 0x0400_0400 {
+        let io_start = address.max(IO_REGION_START);
+        let io_end = end.min(IO_REGION_END);
+        if io_start >= io_end {
+            return;
+        }
+
+        let mut covered_until = io_start;
+        let mut overlapped_latches = Vec::new();
+        for latch in [IO_IE, IO_IF, IO_IME] {
+            let latch_end = latch + 2;
+            let overlap_start = io_start.max(latch);
+            let overlap_end = io_end.min(latch_end);
+            if overlap_start < overlap_end {
+                if overlap_start > covered_until {
+                    self.clear_io();
+                    return;
+                }
+                covered_until = covered_until.max(overlap_end);
+                overlapped_latches.push(latch);
+            }
+        }
+
+        if covered_until < io_end {
             self.clear_io();
             return;
         }
-        let mut overlaps_tracked_latch = false;
-        for latch in [IO_IE, IO_IF, IO_IME] {
-            if address < latch + 2 && end > latch {
-                overlaps_tracked_latch = true;
-                self.set_io_halfword(latch, AbstractValue::Unknown);
-            }
-        }
-        if !overlaps_tracked_latch {
-            self.clear_io();
+        for latch in overlapped_latches {
+            self.set_io_halfword(latch, AbstractValue::Unknown);
         }
     }
 
@@ -1879,6 +1905,25 @@ mod tests {
             AbstractValue::Constants(values) if values.len() == 1 => *values.first().unwrap(),
             value => panic!("r{register} is not one exact constant: {value:?}"),
         }
+    }
+
+    fn state_with_known_io() -> AbstractState {
+        let mut state = AbstractState::unknown();
+        state.set_io_halfword(IO_IE, AbstractValue::constant(0x1234));
+        state.set_io_halfword(IO_IF, AbstractValue::constant(0x0056));
+        state.set_io_halfword(IO_IME, AbstractValue::constant(1));
+        state
+    }
+
+    fn assert_io_facts(
+        state: &AbstractState,
+        ie: AbstractValue,
+        interrupt_flags: AbstractValue,
+        ime: AbstractValue,
+    ) {
+        assert_eq!(state.io_halfword(IO_IE), ie);
+        assert_eq!(state.io_halfword(IO_IF), interrupt_flags);
+        assert_eq!(state.io_halfword(IO_IME), ime);
     }
 
     fn pending_keys(pending: &VecDeque<((IsaMode, u32), AbstractState)>) -> Vec<(IsaMode, u32)> {
@@ -3271,6 +3316,201 @@ mod tests {
                     .is_empty()
             );
         }
+    }
+
+    #[test]
+    fn palette_ram_stores_preserve_io_facts_and_clear_ram_shadow() {
+        for address in [0x0500_0000, 0x0500_0002] {
+            let mut state = state_with_known_io();
+            state.set_memory_word(0x0200_0100, AbstractValue::constant(0x0800_0085));
+            state.invalidate_store(&AbstractValue::constant(address), 2, 1);
+
+            assert_io_facts(
+                &state,
+                AbstractValue::constant(0x1234),
+                AbstractValue::constant(0x0056),
+                AbstractValue::constant(1),
+            );
+            assert!(state.memory_words.is_empty());
+        }
+    }
+
+    #[test]
+    fn supported_ram_store_keeps_io_facts_and_invalidates_only_overlapped_words() {
+        let address = 0x0200_0100;
+        let mut state = state_with_known_io();
+        state.set_memory_word(address, AbstractValue::constant(0x0800_0085));
+        state.set_memory_word(address + 4, AbstractValue::constant(0x0800_0099));
+        state.invalidate_store(&AbstractValue::constant(address), 4, 0);
+
+        assert_io_facts(
+            &state,
+            AbstractValue::constant(0x1234),
+            AbstractValue::constant(0x0056),
+            AbstractValue::constant(1),
+        );
+        assert!(!state.memory_words.contains_key(&address));
+        assert_eq!(
+            state.memory_words[&(address + 4)],
+            AbstractValue::constant(0x0800_0099)
+        );
+    }
+
+    #[test]
+    fn byte_stores_invalidate_the_entire_overlapped_io_latch() {
+        for (address, expected_latch) in [
+            (IO_IE, IO_IE),
+            (IO_IE + 1, IO_IE),
+            (IO_IF, IO_IF),
+            (IO_IF + 1, IO_IF),
+            (IO_IME, IO_IME),
+            (IO_IME + 1, IO_IME),
+        ] {
+            let mut state = state_with_known_io();
+            state.invalidate_store(&AbstractValue::constant(address), 1, 0);
+            assert_io_facts(
+                &state,
+                if expected_latch == IO_IE {
+                    AbstractValue::Unknown
+                } else {
+                    AbstractValue::constant(0x1234)
+                },
+                if expected_latch == IO_IF {
+                    AbstractValue::Unknown
+                } else {
+                    AbstractValue::constant(0x0056)
+                },
+                if expected_latch == IO_IME {
+                    AbstractValue::Unknown
+                } else {
+                    AbstractValue::constant(1)
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn aligned_word_store_spanning_ie_and_if_preserves_ime_fact() {
+        let mut state = state_with_known_io();
+        state.invalidate_store(&AbstractValue::constant(IO_IE), 4, 0);
+
+        assert_io_facts(
+            &state,
+            AbstractValue::Unknown,
+            AbstractValue::Unknown,
+            AbstractValue::constant(1),
+        );
+    }
+
+    #[test]
+    fn odd_halfword_store_address_is_normalized_before_io_classification() {
+        let mut state = state_with_known_io();
+        state.invalidate_store(&AbstractValue::constant(IO_IE + 1), 2, 1);
+
+        assert_io_facts(
+            &state,
+            AbstractValue::Unknown,
+            AbstractValue::constant(0x0056),
+            AbstractValue::constant(1),
+        );
+    }
+
+    #[test]
+    fn untracked_io_bytes_and_invalid_intervals_clear_all_io_facts() {
+        for (address, byte_count, align_mask) in [
+            (0x0400_0400, 2, 1),
+            (0x0400_0800, 2, 1),
+            (0x0400_01FE, 4, 0),
+            (0x0400_0207, 2, 1), // Normalizes to 0x04000206.
+            (IO_IME, 4, 0),      // IME plus untracked bytes.
+            (0x04FF_FFFF, 1, 0),
+            (0x04FF_FFFF, 2, 1), // Normalizes to 0x04FFFFFE.
+            (0x04FF_FFFE, 4, 0), // Crosses from decode region 0x04 into 0x05.
+            (0xFFFF_FFFE, 4, 0), // Interval overflow.
+            (IO_IE, 3, 0),       // Unsupported store width.
+        ] {
+            let mut state = state_with_known_io();
+            state.invalidate_store(&AbstractValue::constant(address), byte_count, align_mask);
+            assert_io_facts(
+                &state,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+            );
+        }
+    }
+
+    #[test]
+    fn finite_store_targets_apply_every_alternative() {
+        let cases = [
+            (
+                BTreeSet::from([0, IO_IE]),
+                AbstractValue::Unknown,
+                AbstractValue::constant(0x0056),
+                AbstractValue::constant(1),
+            ),
+            (
+                BTreeSet::from([IO_IE, IO_IME]),
+                AbstractValue::Unknown,
+                AbstractValue::constant(0x0056),
+                AbstractValue::Unknown,
+            ),
+            (
+                BTreeSet::from([0x0500_0000, IO_IE]),
+                AbstractValue::Unknown,
+                AbstractValue::constant(0x0056),
+                AbstractValue::constant(1),
+            ),
+            (
+                BTreeSet::from([IO_IE, 0x0400_0800]),
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+            ),
+            (
+                BTreeSet::from([0x0500_0000, 0x0400_0800]),
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+            ),
+        ];
+
+        for (targets, ie, interrupt_flags, ime) in cases {
+            let mut state = state_with_known_io();
+            state.invalidate_store(&AbstractValue::Constants(targets), 2, 1);
+            assert_io_facts(&state, ie, interrupt_flags, ime);
+        }
+    }
+
+    #[test]
+    fn io_fact_invalidation_handles_unknown_empty_and_target_count_boundaries() {
+        for addresses in [
+            AbstractValue::Unknown,
+            AbstractValue::Constants(BTreeSet::new()),
+            AbstractValue::Constants((0..=MAX_CONSTANT_TARGETS as u32).collect()),
+        ] {
+            let mut state = state_with_known_io();
+            state.invalidate_store(&addresses, 2, 1);
+            assert_io_facts(
+                &state,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+                AbstractValue::Unknown,
+            );
+        }
+
+        let mut exact_limit = state_with_known_io();
+        let targets = std::iter::once(IO_IE)
+            .chain(std::iter::once(IO_IME))
+            .chain((0..MAX_CONSTANT_TARGETS - 2).map(|index| 0x0500_0000 + index as u32 * 2))
+            .collect();
+        exact_limit.invalidate_store(&AbstractValue::Constants(targets), 2, 1);
+        assert_io_facts(
+            &exact_limit,
+            AbstractValue::Unknown,
+            AbstractValue::constant(0x0056),
+            AbstractValue::Unknown,
+        );
     }
 
     #[test]
