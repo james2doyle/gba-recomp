@@ -106,6 +106,11 @@ pub enum ThumbOperation {
         rs: u8,
         amount: u8,
     },
+    AsrImmediate {
+        rd: u8,
+        rs: u8,
+        amount: u8,
+    },
     OrrRegister {
         rd: u8,
         rs: u8,
@@ -356,6 +361,7 @@ pub enum VerifyError {
     InvalidThumbWordLoadRegister(u8),
     InvalidThumbHalfwordLoadRegister(u8),
     InvalidThumbLsrRegister(u8),
+    InvalidThumbAsrRegister(u8),
     InvalidThumbOrrRegister(u8),
     InvalidThumbAndRegister(u8),
     InvalidThumbNegateRegister(u8),
@@ -476,6 +482,12 @@ impl fmt::Display for VerifyError {
                 write!(
                     f,
                     "Thumb LSR immediate register r{register} is not a low register"
+                )
+            }
+            Self::InvalidThumbAsrRegister(register) => {
+                write!(
+                    f,
+                    "Thumb ASR immediate register r{register} is not a low register"
                 )
             }
             Self::InvalidThumbOrrRegister(register) => {
@@ -768,6 +780,26 @@ impl ArmProgram {
                     let encoded_rs = ((encoding >> 3) & 0x7) as u8;
                     let encoded_amount = ((encoding >> 6) & 0x1F) as u8;
                     if encoding & 0xF800 != 0x0800
+                        || rd != encoded_rd
+                        || rs != encoded_rs
+                        || amount != encoded_amount
+                    {
+                        return Err(VerifyError::UnsupportedInstructionEncoding(u32::from(
+                            encoding,
+                        )));
+                    }
+                }
+                ThumbOperation::AsrImmediate { rd, rs, amount } => {
+                    for register in [rd, rs] {
+                        if register > 7 {
+                            return Err(VerifyError::InvalidThumbAsrRegister(register));
+                        }
+                    }
+                    let encoding = instruction.encoding;
+                    let encoded_rd = (encoding & 0x7) as u8;
+                    let encoded_rs = ((encoding >> 3) & 0x7) as u8;
+                    let encoded_amount = ((encoding >> 6) & 0x1F) as u8;
+                    if encoding & 0xF800 != 0x1000
                         || rd != encoded_rd
                         || rs != encoded_rs
                         || amount != encoded_amount
@@ -1359,6 +1391,15 @@ impl ArmProgram {
                         });
                     }
                 }
+                ThumbOperation::AsrImmediate { .. } => {
+                    let fallthrough = instruction.guest_pc.wrapping_add(2);
+                    if !thumb_pcs.contains(&fallthrough) {
+                        return Err(VerifyError::MissingSuccessor {
+                            pc: instruction.guest_pc,
+                            target: fallthrough,
+                        });
+                    }
+                }
                 ThumbOperation::OrrRegister { .. } => {
                     let fallthrough = instruction.guest_pc.wrapping_add(2);
                     if !thumb_pcs.contains(&fallthrough) {
@@ -1800,6 +1841,24 @@ pub fn execute_thumb_instruction(
             } else {
                 (
                     old_source >> amount,
+                    old_source & (1_u32 << (u32::from(amount) - 1)) != 0,
+                )
+            };
+            state.r[rd as usize] = result;
+            state.cpsr = (state.cpsr & !0xE000_0000)
+                | (result & 0x8000_0000)
+                | (u32::from(result == 0) << 30)
+                | (u32::from(carry) << 29);
+            state.r[REG_PC as usize] = instruction.guest_pc.wrapping_add(2);
+        }
+        ThumbOperation::AsrImmediate { rd, rs, amount } => {
+            let old_source = state.r[rs as usize];
+            let (result, carry) = if amount == 0 {
+                let sign = old_source & 0x8000_0000 != 0;
+                (if sign { u32::MAX } else { 0 }, sign)
+            } else {
+                (
+                    ((old_source as i32) >> amount) as u32,
                     old_source & (1_u32 << (u32::from(amount) - 1)) != 0,
                 )
             };
@@ -3507,6 +3566,57 @@ mod tests {
     }
 
     #[test]
+    fn thumb_asr_immediate_updates_nzc_and_preserves_v_control_and_alias() {
+        let guest_pc = 0x0800_0100;
+        let cases = [
+            (0, 0, 0x0ABC_1000, 0, 0, 0, 1),
+            (0x8000_0000, 0, 0x3ABC_2000, u32::MAX, 1, 0, 1),
+            (0x4000_0003, 1, 0x1ABC_3000, 0x2000_0001, 1, 0, 1),
+            (0x4000_0002, 1, 0x2ABC_4000, 0x2000_0001, 0, 0, 1),
+            (0x0001_8000, 16, 0x0ABC_5000, 1, 1, 0, 1),
+            (0x0001_0000, 16, 0x3ABC_6000, 1, 0, 0, 1),
+            (0, 31, 0x0ABC_7000, 0, 0, 0, 1),
+            (0x4000_0000, 31, 0x3ABC_8000, 0, 1, 0, 1),
+            (0x8000_0000, 31, 0x2ABC_9000, u32::MAX, 0, 0, 1),
+            (0xC000_0000, 31, 0x1ABC_A000, u32::MAX, 1, 0, 1),
+            // Rd == Rs reads the original source value before the write.
+            (0xC000_0000, 31, 0x0ABC_B000, u32::MAX, 1, 2, 2),
+        ];
+
+        for (source, amount, initial_cpsr, expected_result, carry, rd, rs) in cases {
+            let initial_cpsr = initial_cpsr | 0x3F;
+            let encoding = 0x1000 | (u16::from(amount) << 6) | (u16::from(rs) << 3) | u16::from(rd);
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::AsrImmediate { rd, rs, amount },
+            };
+            let mut cpu = state(guest_pc);
+            cpu.cpsr = initial_cpsr;
+            cpu.r[rd as usize] = 0xAABB_CCDD;
+            cpu.r[rs as usize] = source;
+            cpu.r[3] = 0x5566_7788;
+            let mut expected_registers = cpu.r;
+            expected_registers[rd as usize] = expected_result;
+            expected_registers[15] = guest_pc + 2;
+            let expected_cpsr = (initial_cpsr & !0xE000_0000)
+                | (expected_result & 0x8000_0000)
+                | (u32::from(expected_result == 0) << 30)
+                | (carry << 29);
+
+            execute_thumb_instruction(&mut cpu, instruction).unwrap();
+
+            assert_eq!(cpu.r, expected_registers);
+            assert_eq!(cpu.cpsr, expected_cpsr);
+            assert_eq!(cpu.cpsr & 0x2000_0000 != 0, carry != 0);
+            assert_eq!(cpu.cpsr & 0x1000_0000, initial_cpsr & 0x1000_0000);
+            assert_eq!(cpu.cpsr & !0xF000_0000, initial_cpsr & !0xF000_0000);
+            assert_eq!(cpu.r[15], guest_pc + 2);
+            assert_eq!(cpu.guest_cycle, 6);
+        }
+    }
+
+    #[test]
     fn thumb_orr_register_sets_nz_and_preserves_cv_and_other_cpsr_bits() {
         let guest_pc = 0x0800_0100;
         let instruction = ThumbInstruction {
@@ -4284,6 +4394,120 @@ mod tests {
         let mut missing_successor = make_program(valid);
         missing_successor.thumb_instructions.pop();
         missing_successor.branch_targets.clear();
+        assert_eq!(
+            missing_successor.verify(),
+            Err(VerifyError::MissingSuccessor {
+                pc: guest_pc,
+                target: guest_pc + 2,
+            })
+        );
+    }
+
+    #[test]
+    fn arm_program_verifier_checks_thumb_asr_immediate_fields_registers_and_successor() {
+        let guest_pc = 0x0800_0100;
+        let make_program = |instruction: ThumbInstruction| ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![
+                instruction,
+                ThumbInstruction {
+                    guest_pc: guest_pc + 2,
+                    encoding: 0x4700,
+                    operation: ThumbOperation::BranchExchange { rm: 0 },
+                },
+            ],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![StaticBranchTarget {
+                source_mode: IsaMode::Thumb,
+                source_pc: guest_pc + 2,
+                target_mode: IsaMode::Thumb,
+                target_pc: guest_pc + 2,
+            }],
+        };
+
+        for (rd, rs, amount) in [(0, 0, 0), (1, 2, 16), (7, 7, 31)] {
+            let encoding = 0x1000 | (u16::from(amount) << 6) | (u16::from(rs) << 3) | u16::from(rd);
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::AsrImmediate { rd, rs, amount },
+            };
+            assert!(make_program(instruction).verify().is_ok());
+        }
+
+        let valid = ThumbInstruction {
+            guest_pc,
+            encoding: 0x17C1,
+            operation: ThumbOperation::AsrImmediate {
+                rd: 1,
+                rs: 0,
+                amount: 31,
+            },
+        };
+        for operation in [
+            ThumbOperation::AsrImmediate {
+                rd: 0,
+                rs: 0,
+                amount: 31,
+            },
+            ThumbOperation::AsrImmediate {
+                rd: 1,
+                rs: 1,
+                amount: 31,
+            },
+            ThumbOperation::AsrImmediate {
+                rd: 1,
+                rs: 0,
+                amount: 30,
+            },
+        ] {
+            let mut mismatched = make_program(valid);
+            mismatched.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                mismatched.verify(),
+                Err(VerifyError::UnsupportedInstructionEncoding(0x17C1))
+            );
+        }
+        for operation in [
+            ThumbOperation::AsrImmediate {
+                rd: 8,
+                rs: 0,
+                amount: 31,
+            },
+            ThumbOperation::AsrImmediate {
+                rd: 1,
+                rs: 8,
+                amount: 31,
+            },
+        ] {
+            let mut invalid = make_program(valid);
+            invalid.thumb_instructions[0].operation = operation;
+            assert_eq!(
+                invalid.verify(),
+                Err(VerifyError::InvalidThumbAsrRegister(8))
+            );
+        }
+        let mut out_of_family = make_program(valid);
+        out_of_family.thumb_instructions[0].encoding = 0x0FC1;
+        assert_eq!(
+            out_of_family.verify(),
+            Err(VerifyError::UnsupportedInstructionEncoding(0x0FC1))
+        );
+
+        let mut misaligned = make_program(valid);
+        misaligned.thumb_instructions[0].guest_pc += 1;
+        assert_eq!(
+            misaligned.verify(),
+            Err(VerifyError::MisalignedThumbPc(guest_pc + 1))
+        );
+        let missing_successor = ArmProgram {
+            version: GBA_IR_VERSION,
+            instructions: vec![],
+            thumb_instructions: vec![valid],
+            thumb_ldmia_rom_tables: vec![],
+            branch_targets: vec![],
+        };
         assert_eq!(
             missing_successor.verify(),
             Err(VerifyError::MissingSuccessor {

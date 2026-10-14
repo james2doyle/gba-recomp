@@ -1,6 +1,6 @@
 # SPEC-053 — ASR Thumb imediato Format 1 em AOT estrito
 
-Estado do documento: Draft. Progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementação strict-AOT e evidências O0/O2: [relatório](../knowledge/evidence/gba020-thumb-asr-immediate-macos-arm64.json). Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 
@@ -61,5 +61,7 @@ A discovery não interpreta flags de shifts como prova para branches. O ASR por 
 
 - [SPEC-002](SPEC-002-armv4t-semantics.md), [SPEC-004](SPEC-004-ir-llvm.md), [SPEC-024](SPEC-024-thumb-lsl-immediate.md) e [SPEC-041](SPEC-041-thumb-lsr-immediate.md).
 - [SRC-39](../knowledge/KNO-001-evidence.md) registra as revisões fixadas e os limites da inferência `ASRS r1,r0,#31`.
+- [SRC-47](../knowledge/KNO-001-evidence.md) registra a próxima fronteira após ASR e a confirmação limitada do vendor para CMP register.
+- [KNO-006](../knowledge/KNO-006-vendor-gba-recomp.md) compara a cobertura do vendor e registra que seu build de LeafGreen não foi verificado.
 - [KNO-004](../knowledge/KNO-004-rom-intake.md) fixa a identidade/hash da ROM e a tentativa após NEGS.
 - [ADR-038](../adr/ADR-038-thumb-asr-immediate.md).

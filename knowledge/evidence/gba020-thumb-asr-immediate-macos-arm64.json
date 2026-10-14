@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "source_commit_before_implementation": "8a8b76b",
+  "compiler_sha256": "f7169c79f3084085850f4731403658c9e8886abefbd5856b14273b248a05aadf",
+  "gate_script_sha256": "cb870feaee6c4ef520a5e4885fd3efabfdfb4f1d531d36e71dcecd7658d447ad",
+  "fixture_generator_sha256": "935d0ca4c28b342bbd551ffd8dcf46b13b76be9b97158b781d4c3dba88b0d198",
+  "host": {
+    "os": "Darwin",
+    "architecture": "arm64",
+    "detected_logical_cpus": 10,
+    "automatic_cpu_budget": 10,
+    "cargo_jobs": 10,
+    "cargo_link_threads": 10,
+    "fixture_workers": 10,
+    "lld_threads_per_fixture": 1,
+    "max_phase_slots": 10
+  },
+  "implementation": {
+    "feature": "Thumb ASR immediate Format 1",
+    "operation": "ThumbOperation::AsrImmediate { rd, rs, amount }",
+    "ir_version": 2,
+    "runtime_abi_version": 4,
+    "runtime_abi_changed": false,
+    "strict_aot": true
+  },
+  "workspace_tests": {
+    "command": "cargo test --workspace --locked --jobs 10",
+    "exit_code": 0,
+    "results": {
+      "gba_ir_passed": 74,
+      "gba_recomp_passed": 119,
+      "failed": 0
+    }
+  },
+  "gba020_gate": {
+    "command": "GBA020_JOBS=10 GBA020_LINK_THREADS=1 scripts/verify-gba020.sh",
+    "result": "passed",
+    "target": "aarch64-apple-darwin",
+    "timing_seconds": {
+      "real": 59.63,
+      "user": 38.36,
+      "system": 17.8
+    },
+    "thumb_asr_fixture_group": {
+      "independent_compilations": 10,
+      "workers": 10,
+      "lld_threads_per_worker": 1,
+      "max_phase_slots": 10,
+      "wall_ms": 1969.9,
+      "baseline_comparison": null
+    },
+    "sustained_saturation_measured": false,
+    "log": {
+      "path": "knowledge/evidence/gba020-thumb-asr-immediate-macos-arm64.log",
+      "sha256": "2fbd81ac9816696da6be91fcc1d08df1f3d6fd06b54c61a81586b64bcfe28fb9"
+    }
+  },
+  "fixtures": [
+    {
+      "rom_mode": "thumb-asr-zero-positive-branch",
+      "rom_sha256": "b5cf2c306ea99d4122f356cd55c38138d77c52c03abe620ab8a4eec150e87f40",
+      "run_instruction_budget": 9,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 0,
+        "r1": 1073741824,
+        "pc": "0x08000090",
+        "cpsr": "0x5000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "638f34a426d0eef25e369133658860b53479c5a756184e5b8fd574b8cc1593a3",
+          "manifest_sha256": "c113ea857e3ad1e94878ceb606e260879beaf31d21dfe8b1fca6b1dd07d71ae5",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "937cef64f9df218e1e6163a56ddca3cfc4bae9d22660343d2c803bc4d07c5571",
+          "manifest_sha256": "9a0e6561e1748eac766910d458c0aace8631bcfb4299559f938552d72fb079cc",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-asr-zero-negative-branch",
+      "rom_sha256": "44392ead9c2306d8cfe5dfecd1e26256776380a80c791b6bb4bb68a79719df5c",
+      "run_instruction_budget": 9,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 4294967295,
+        "r1": 2147483648,
+        "pc": "0x08000090",
+        "cpsr": "0xA000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "d1e155a8fcef2aa7f8ea8872af08bd201b2311a14903d07efb7627079232e836",
+          "manifest_sha256": "d1d352f1fee9385ee2207044ff19cad5dfd0099a9522cdad98a3614aacac320e",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "9bfd82c0bf02a18d9cbf490fe023c31a570a0c34923087945ce8baacbc330e7f",
+          "manifest_sha256": "630ddf12999e4bf3ece9bf1464554a43fa0edd233bd0fa7c2ae7cbd3a56c1d4c",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-asr-31-carry-clear-branch",
+      "rom_sha256": "2a217f6e7b217e0d7831f870bc5df24d10a271cdb99c744e01de6e10c9501e9a",
+      "run_instruction_budget": 9,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 4294967295,
+        "r1": 2147483648,
+        "pc": "0x08000090",
+        "cpsr": "0x9000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "a7a5f6fa7ed1e5c71498292bba22e30c47ce309b0462bdb590bf53e7e60faec7",
+          "manifest_sha256": "04c922afef98a980acb502f7f1058a7b0bf79d9bbfb4b4f0552760734f59877a",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "865a68d09953e00719c9bf6f81cb86c1a7b738c1b7cd8b4def4836b6e754e503",
+          "manifest_sha256": "ab4be082e36f188a774a5ff25617f20823ae7dc8c4bd46645e3c395f9bcb47fe",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-asr-31-carry-set-positive-branch",
+      "rom_sha256": "e6f609b15f1de2960a4591fd1a5fc8d4fb56b61872b19cf9b3235084cea86f21",
+      "run_instruction_budget": 9,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 0,
+        "r1": 1073741824,
+        "pc": "0x08000090",
+        "cpsr": "0x6000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "e36b33d9fef42257a11a7231c5788b49f1c10502038b0c5aebf8662e8b223c16",
+          "manifest_sha256": "be3d60b7fec1cf6ba2d55d7806f7c0ad7eb3cfb887b5413960ae560359bc1c25",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "c059c39e54eb6c82c542687f64c7b0d271a4b22998accae3d083105b3c4fc213",
+          "manifest_sha256": "d39d8dc8b2d861c2753c428fa202bca445ae86677d32b966c1f85f5cf6fe0c6c",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        }
+      }
+    },
+    {
+      "rom_mode": "thumb-asr-31-alias-branch",
+      "rom_sha256": "2537120e8126ebe4db1d1d0c9db9f68c08886998188557eabcedde0ea5a8f2eb",
+      "run_instruction_budget": 9,
+      "verified_state_O0_O2": {
+        "status": "budget_exhausted",
+        "steps": 9,
+        "r0": 2147483648,
+        "r1": 4294967295,
+        "pc": "0x08000090",
+        "cpsr": "0xB000003F",
+        "guest_cycle": 9,
+        "ewram_word0": 0,
+        "iwram_word0": 0
+      },
+      "packages": {
+        "O0": {
+          "game_sha256": "bbdf2c8c13da3b725f5270ebccc6074ee3679455c6b7efda28f399901a3cad01",
+          "manifest_sha256": "bbdc0a65735b0d2fc46428299636161136d3dbac402973aae5157410886f20a6",
+          "execution_mode": "strict-aot",
+          "optimization": "O0",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        },
+        "O2": {
+          "game_sha256": "4d6db1d467c0893afeebc57a9875f1dd20fd10aecdc3bab9ade913bdc2c88bd6",
+          "manifest_sha256": "f2b27b6bd69013f47003316e4795fba0c86073b55e118798223aaa4a1be4638a",
+          "execution_mode": "strict-aot",
+          "optimization": "O2",
+          "abi_version": 4,
+          "aot_instruction_count": 12
+        }
+      }
+    }
+  ],
+  "negative_case": {
+    "rom_mode": "thumb-asr-neighbor-unsupported",
+    "rom_sha256": "6fbaf341e586f9c91c37c23adad1f8ebff68165ffcbd2e46e7260cedf2691ebf",
+    "diagnostic": "gba-recomp: unsupported_thumb_instruction at 0x08000084: 0x4089",
+    "package_created": false
+  },
+  "leafgreen_static_discovery": {
+    "rom_path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "GBA_RECOMP_LINK_THREADS=10 target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-asr-20261014-O2 --opt O2 --steps 100",
+    "exit_code": 1,
+    "diagnostic": "gba-recomp: unsupported_thumb_instruction at 0x08000C00: 0x428A\nreal 0.67\nuser 0.62\nsys 0.01",
+    "frontier_pc": "0x08000C00",
+    "frontier_halfword": "0x428A",
+    "source_classification": "Thumb Format 4 CMP r2,r1 (encoding inference corroborated by SRC-47; no dynamic register/flag values observed)",
+    "real_seconds": 0.67,
+    "user_seconds": 0.62,
+    "system_seconds": 0.01,
+    "analysis": "static discovery only; no guest execution",
+    "llvm_emission_reached": false,
+    "link_reached": false,
+    "package_created": false,
+    "rom_executed": false,
+    "rea_decompilation_performed": false,
+    "rea_attempt": "mcp__rea__open_binary returned Transport closed",
+    "log": {
+      "path": "knowledge/evidence/leafgreen-after-asr-20261014-O2.log",
+      "sha256": "dbd2d9b87aef5211394f655a50c9e78507afdf53720738370cc4d125656e1266"
+    }
+  },
+  "limitations": [
+    "Fixtures prove only their configured initial states and strict-AOT subsets on macOS arm64.",
+    "Discovery propagates ASR values but does not track ASR-produced NZCV; it conservatively retains conditional successors without an independent compare proof.",
+    "LeafGreen reached CMP register by static discovery only; no LLVM, link, package, guest execution, or REA decompilation was produced.",
+    "The 0.67 second LeafGreen failure is not an end-to-end compile benchmark.",
+    "The gate was configured for a ten-slot budget; this does not establish sustained CPU saturation.",
+    "The fixture-group timing has no before/after baseline and does not measure a commercial ROM speedup."
+  ]
+}

@@ -1,6 +1,6 @@
 # ADR-038 — ASR Thumb imediato como operação IR específica
 
-- Estado: Proposed
+- Estado: Accepted
 - Data: 2026-10-14
 - Supersede: —
 
@@ -8,7 +8,7 @@
 
 Após SPEC-052, a discovery O2 da LeafGreen parou em `0x17C1` em `0x08000BEE`. SRC-39 confirma pelas fontes fixadas a inferência Thumb Format 1 `ASRS r1,r0,#31`. O projeto já implementa LSL e LSR imediatos, mas ASR usa preenchimento de sinal, carry próprio e o caso `imm5==0` significa shift 32.
 
-## Decisão proposta
+## Decisão
 
 Adotar [SPEC-053](../specs/SPEC-053-thumb-asr-immediate.md) e adicionar `ThumbOperation::AsrImmediate { rd, rs, amount }`. Emitir ASR aritmético em LLVM; para `amount==0`, produzir explicitamente zero ou `0xFFFFFFFF` conforme o sinal e usar esse sinal como carry. Atualizar N/Z/C e preservar V e os demais bits. Propagar valores limitados em discovery, sem inferir flags. Não ampliar a aceitação para outros shifts.
 
@@ -33,4 +33,5 @@ Revisitar uma IR genérica de shifts quando houver contrato conjunto para todas 
 - [SPEC-053](../specs/SPEC-053-thumb-asr-immediate.md).
 - [SPEC-024 — Thumb LSL imediato](../specs/SPEC-024-thumb-lsl-immediate.md) e [SPEC-041 — Thumb LSR imediato](../specs/SPEC-041-thumb-lsr-immediate.md).
 - [SRC-39](../knowledge/KNO-001-evidence.md).
+- [Evidência de implementação e gate](../knowledge/evidence/gba020-thumb-asr-immediate-macos-arm64.json).
 - [KNO-004 — identidade e tentativa LeafGreen](../knowledge/KNO-004-rom-intake.md).

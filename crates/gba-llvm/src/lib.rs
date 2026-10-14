@@ -1726,6 +1726,183 @@ unsafe fn lower_thumb_instruction(
                 )
             };
         }
+        ThumbOperation::AsrImmediate { rd, rs, amount } => {
+            if rd > 7 || rs > 7 || amount > 31 {
+                return Err(format!(
+                    "invalid Thumb ASR operands at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+            let source_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rs) };
+            let old_source = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i32_type,
+                    source_pointer,
+                    c"thumb_asr_source".as_ptr(),
+                )
+            };
+            // ARMv4T encodes imm5=0 as ASR #32. Express it with a sign test
+            // instead of a shift by 32, which LLVM treats as poison.
+            let (result, shifted_out_bit) = if amount == 0 {
+                let sign_bit = unsafe {
+                    LLVMBuildAnd(
+                        builder,
+                        old_source,
+                        LLVMConstInt(i32_type, 0x8000_0000, 0),
+                        c"thumb_asr_sign_bit".as_ptr(),
+                    )
+                };
+                let is_negative = unsafe {
+                    LLVMBuildICmp(
+                        builder,
+                        LLVMIntPredicate::LLVMIntNE,
+                        sign_bit,
+                        LLVMConstInt(i32_type, 0, 0),
+                        c"thumb_asr_is_negative".as_ptr(),
+                    )
+                };
+                let result = unsafe {
+                    LLVMBuildSelect(
+                        builder,
+                        is_negative,
+                        LLVMConstInt(i32_type, u64::from(u32::MAX), 0),
+                        LLVMConstInt(i32_type, 0, 0),
+                        c"thumb_asr_result_32".as_ptr(),
+                    )
+                };
+                let shifted_out_bit = unsafe {
+                    LLVMBuildLShr(
+                        builder,
+                        old_source,
+                        LLVMConstInt(i32_type, 31, 0),
+                        c"thumb_asr_shift_zero_carry_source".as_ptr(),
+                    )
+                };
+                (result, shifted_out_bit)
+            } else {
+                let amount_value = unsafe { LLVMConstInt(i32_type, u64::from(amount), 0) };
+                let result = unsafe {
+                    LLVMBuildAShr(
+                        builder,
+                        old_source,
+                        amount_value,
+                        c"thumb_asr_result".as_ptr(),
+                    )
+                };
+                let shifted_out_bit = unsafe {
+                    LLVMBuildLShr(
+                        builder,
+                        old_source,
+                        LLVMConstInt(i32_type, u64::from(amount - 1), 0),
+                        c"thumb_asr_shifted_out_bit".as_ptr(),
+                    )
+                };
+                (result, shifted_out_bit)
+            };
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            unsafe { LLVMBuildStore(builder, result, destination_pointer) };
+
+            let cpsr_pointer = unsafe {
+                LLVMBuildStructGEP2(builder, runtime_type, runtime, 1, c"cpsr_ptr".as_ptr())
+            };
+            let old_cpsr =
+                unsafe { LLVMBuildLoad2(builder, i32_type, cpsr_pointer, c"cpsr".as_ptr()) };
+            let preserved_cpsr = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    old_cpsr,
+                    LLVMConstInt(i32_type, u64::from(!0xE000_0000_u32), 0),
+                    c"thumb_asr_cpsr_without_nzc".as_ptr(),
+                )
+            };
+            let negative_flag = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    result,
+                    LLVMConstInt(i32_type, 0x8000_0000, 0),
+                    c"thumb_asr_negative_flag".as_ptr(),
+                )
+            };
+            let is_zero = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    result,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_asr_is_zero".as_ptr(),
+                )
+            };
+            let zero_flag = unsafe {
+                LLVMBuildSelect(
+                    builder,
+                    is_zero,
+                    LLVMConstInt(i32_type, 0x4000_0000, 0),
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_asr_zero_flag".as_ptr(),
+                )
+            };
+            let carry_bit = unsafe {
+                LLVMBuildAnd(
+                    builder,
+                    shifted_out_bit,
+                    LLVMConstInt(i32_type, 1, 0),
+                    c"thumb_asr_carry_bit".as_ptr(),
+                )
+            };
+            let carry_flag = unsafe {
+                LLVMBuildShl(
+                    builder,
+                    carry_bit,
+                    LLVMConstInt(i32_type, 29, 0),
+                    c"thumb_asr_carry_flag".as_ptr(),
+                )
+            };
+            let flags_with_n = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    preserved_cpsr,
+                    negative_flag,
+                    c"thumb_asr_cpsr_with_n".as_ptr(),
+                )
+            };
+            let flags_with_nz = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    flags_with_n,
+                    zero_flag,
+                    c"thumb_asr_cpsr_with_nz".as_ptr(),
+                )
+            };
+            let updated_cpsr = unsafe {
+                LLVMBuildOr(
+                    builder,
+                    flags_with_nz,
+                    carry_flag,
+                    c"thumb_asr_updated_cpsr".as_ptr(),
+                )
+            };
+            unsafe { LLVMBuildStore(builder, updated_cpsr, cpsr_pointer) };
+
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
         ThumbOperation::AddSubtract {
             rd,
             rn,

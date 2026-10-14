@@ -1,0 +1,284 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded ahash v0.8.12
+  Downloaded arrayvec v0.7.6
+  Downloaded dasp_sample v0.11.0
+  Downloaded document-features v0.2.12
+  Downloaded block v0.1.6
+  Downloaded scopeguard v1.2.0
+  Downloaded dispatch v0.2.0
+  Downloaded rustc-hash v1.1.0
+  Downloaded serde_spanned v0.6.9
+  Downloaded gpu-descriptor-types v0.2.0
+  Downloaded smol_str v0.2.2
+  Downloaded cfg_aliases v0.2.1
+  Downloaded cursor-icon v1.2.0
+  Downloaded gpu-alloc-types v0.3.0
+  Downloaded gpu-descriptor v0.3.2
+  Downloaded core-graphics-types v0.2.0
+  Downloaded dpi v0.1.2
+  Downloaded spirv v0.3.0+sdk-1.3.268.0
+  Downloaded block-buffer v0.12.0
+  Downloaded core-graphics-types v0.1.3
+  Downloaded profiling v1.0.18
+  Downloaded toml_datetime v0.6.11
+  Downloaded toml_write v0.1.2
+  Downloaded vec_map v0.8.2
+  Downloaded bit-set v0.8.0
+  Downloaded malloc_buf v0.0.6
+  Downloaded renderdoc-sys v1.1.0
+  Downloaded fnv v1.0.7
+  Downloaded foreign-types-shared v0.3.1
+  Downloaded hexf-parse v0.2.1
+  Downloaded static_assertions v1.1.0
+  Downloaded thiserror-impl v2.0.18
+  Downloaded thiserror v2.0.18
+  Downloaded core-graphics v0.23.2
+  Downloaded foreign-types-macros v0.2.3
+  Downloaded pollster v0.4.0
+  Downloaded objc2-io-surface v0.3.2
+  Downloaded foreign-types v0.5.0
+  Downloaded smallvec v1.15.1
+  Downloaded toml v0.8.23
+  Downloaded fallible-streaming-iterator v0.1.9
+  Downloaded termcolor v1.4.1
+  Downloaded serde_derive v1.0.228
+  Downloaded serde_core v1.0.228
+  Downloaded bitflags v1.3.2
+  Downloaded core-foundation v0.9.4
+  Downloaded tracing-core v0.1.36
+  Downloaded foldhash v0.1.5
+  Downloaded uuid v1.23.3
+  Downloaded gpu-alloc v0.6.0
+  Downloaded pin-project-lite v0.2.17
+  Downloaded bytemuck_derive v1.10.2
+  Downloaded pkg-config v0.3.33
+  Downloaded objc2-core-data v0.2.2
+  Downloaded objc2-core-audio v0.3.2
+  Downloaded jobserver v0.1.34
+  Downloaded serde v1.0.228
+  Downloaded softbuffer v0.4.8
+  Downloaded bit-vec v0.8.0
+  Downloaded block2 v0.5.1
+  Downloaded toml_edit v0.22.27
+  Downloaded khronos-egl v6.0.0
+  Downloaded quote v1.0.45
+  Downloaded core-foundation v0.10.1
+  Downloaded objc2-encode v4.1.0
+  Downloaded objc2-quartz-core v0.3.2
+  Downloaded objc2-core-audio-types v0.3.2
+  Downloaded zerocopy-derive v0.8.52
+  Downloaded block2 v0.6.2
+  Downloaded hashlink v0.9.1
+  Downloaded paste v1.0.15
+  Downloaded libloading v0.8.9
+  Downloaded raw-window-handle v0.6.2
+  Downloaded mach2 v0.4.3
+  Downloaded objc-sys v0.3.5
+  Downloaded objc2-quartz-core v0.2.2
+  Downloaded ordered-float v5.0.0
+  Downloaded lock_api v0.4.14
+  Downloaded fallible-iterator v0.3.0
+  Downloaded parking_lot v0.12.5
+  Downloaded litrs v1.0.0
+  Downloaded codespan-reporting v0.12.0
+  Downloaded coreaudio-rs v0.13.0
+  Downloaded hybrid-array v0.4.12
+  Downloaded objc2-core-video v0.3.2
+  Downloaded dispatch2 v0.3.1
+  Downloaded objc2-core-image v0.2.2
+  Downloaded bitflags v2.13.0
+  Downloaded log v0.4.32
+  Downloaded winnow v0.7.15
+  Downloaded proc-macro2 v1.0.106
+  Downloaded parking_lot_core v0.9.12
+  Downloaded syn v2.0.117
+  Downloaded gilrs-core v0.6.8
+  Downloaded wgpu-core-deps-apple v26.0.0
+  Downloaded getrandom v0.3.4
+  Downloaded bytemuck v1.25.0
+  Downloaded half v2.7.1
+  Downloaded vcpkg v0.2.15
+  Downloaded objc v0.2.7
+  Downloaded objc2-metal v0.2.2
+  Downloaded objc2-core-graphics v0.3.2
+  Downloaded zerocopy v0.8.52
+  Downloaded memchr v2.8.1
+  Downloaded wgpu-types v26.0.0
+  Downloaded wgpu-core v26.0.1
+  Downloaded cc v1.2.63
+  Downloaded cpal v0.16.0
+  Downloaded indexmap v2.14.0
+  Downloaded gilrs v0.11.2
+  Downloaded wgpu v26.0.1
+  Downloaded hashbrown v0.15.5
+  Downloaded tracing v0.1.44
+  Downloaded hashbrown v0.14.5
+  Downloaded rusqlite v0.32.1
+  Downloaded glow v0.16.0
+  Downloaded libm v0.2.16
+  Downloaded objc2-core-foundation v0.3.2
+  Downloaded objc2 v0.5.2
+  Downloaded wgpu-hal v26.0.6
+  Downloaded winit v0.30.13
+  Downloaded objc2-audio-toolbox v0.3.2
+  Downloaded objc2-foundation v0.2.2
+  Downloaded objc2-metal v0.3.2
+  Downloaded objc2 v0.6.4
+  Downloaded objc2-io-kit v0.3.2
+  Downloaded objc2-app-kit v0.2.2
+  Downloaded objc2-foundation v0.3.2
+  Downloaded ash v0.38.0+1.3.281
+  Downloaded naga v26.0.0
+  Downloaded libc v0.2.186
+  Downloaded metal v0.32.0
+  Downloaded libsqlite3-sys v0.30.1
+   Compiling libc v0.2.186
+   Compiling serde_core v1.0.228
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling objc2-encode v4.1.0
+   Compiling syn v2.0.117
+   Compiling objc2 v0.6.4
+   Compiling cfg_aliases v0.2.1
+   Compiling cfg-if v1.0.4
+   Compiling zerocopy v0.8.52
+   Compiling core-foundation-sys v0.8.7
+   Compiling hashbrown v0.17.1
+   Compiling bitflags v2.13.0
+   Compiling equivalent v1.0.2
+   Compiling dispatch2 v0.3.1
+   Compiling block2 v0.6.2
+   Compiling once_cell v1.21.4
+   Compiling indexmap v2.14.0
+   Compiling objc2-core-foundation v0.3.2
+   Compiling autocfg v1.5.1
+   Compiling libm v0.2.16
+   Compiling log v0.4.32
+   Compiling num-traits v0.2.19
+   Compiling thiserror v2.0.18
+   Compiling foreign-types-shared v0.3.1
+   Compiling smallvec v1.15.1
+   Compiling zerocopy-derive v0.8.52
+   Compiling foreign-types-macros v0.2.3
+   Compiling foreign-types v0.5.0
+   Compiling objc2-foundation v0.3.2
+   Compiling thiserror-impl v2.0.18
+   Compiling parking_lot_core v0.9.12
+   Compiling paste v1.0.15
+   Compiling bytemuck_derive v1.10.2
+   Compiling core-foundation v0.10.1
+   Compiling naga v26.0.0
+   Compiling malloc_buf v0.0.6
+   Compiling unicode-width v0.2.2
+   Compiling bit-vec v0.8.0
+   Compiling scopeguard v1.2.0
+   Compiling foldhash v0.1.5
+   Compiling raw-window-handle v0.6.2
+   Compiling serde v1.0.228
+   Compiling hashbrown v0.15.5
+   Compiling lock_api v0.4.14
+   Compiling bytemuck v1.25.0
+   Compiling codespan-reporting v0.12.0
+   Compiling bit-set v0.8.0
+   Compiling objc v0.2.7
+   Compiling core-graphics-types v0.2.0
+   Compiling half v2.7.1
+   Compiling wgpu-hal v26.0.6
+   Compiling rustc-hash v1.1.0
+   Compiling hexf-parse v0.2.1
+   Compiling arrayvec v0.7.6
+   Compiling objc-sys v0.3.5
+   Compiling version_check v0.9.5
+   Compiling block v0.1.6
+   Compiling metal v0.32.0
+   Compiling ahash v0.8.12
+   Compiling parking_lot v0.12.5
+   Compiling wgpu-types v26.0.0
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling profiling v1.0.18
+   Compiling cc v1.2.63
+   Compiling objc2-metal v0.3.2
+   Compiling wgpu-core v26.0.1
+   Compiling bitflags v1.3.2
+   Compiling vcpkg v0.2.15
+   Compiling pkg-config v0.3.33
+   Compiling litrs v1.0.0
+   Compiling typenum v1.20.1
+   Compiling document-features v0.2.12
+   Compiling libsqlite3-sys v0.30.1
+   Compiling hybrid-array v0.4.12
+   Compiling objc2-core-graphics v0.3.2
+   Compiling objc2 v0.5.2
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling objc2-core-video v0.3.2
+   Compiling objc2-core-audio-types v0.3.2
+   Compiling wgpu v26.0.1
+   Compiling toml_write v0.1.2
+   Compiling winnow v0.7.15
+   Compiling option-ext v0.2.0
+   Compiling dirs-sys v0.5.0
+   Compiling wgpu-core-deps-apple v26.0.0
+   Compiling toml_edit v0.22.27
+   Compiling objc2-core-audio v0.3.2
+   Compiling objc2-quartz-core v0.3.2
+   Compiling block2 v0.5.1
+   Compiling hashbrown v0.14.5
+   Compiling core-foundation v0.9.4
+   Compiling tracing-core v0.1.36
+   Compiling static_assertions v1.1.0
+   Compiling dispatch v0.2.0
+   Compiling pin-project-lite v0.2.17
+   Compiling armv4t v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/armv4t)
+   Compiling gba-core v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/gba-core)
+   Compiling tracing v0.1.44
+   Compiling objc2-foundation v0.2.2
+   Compiling core-graphics-types v0.1.3
+   Compiling hashlink v0.9.1
+   Compiling toml v0.8.23
+   Compiling objc2-audio-toolbox v0.3.2
+   Compiling dirs v6.0.0
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.0
+   Compiling objc2-io-kit v0.3.2
+   Compiling libloading v0.8.9
+   Compiling winit v0.30.13
+   Compiling uuid v1.23.3
+   Compiling const-oid v0.10.2
+   Compiling fallible-iterator v0.3.0
+   Compiling pollster v0.4.0
+   Compiling vec_map v0.8.2
+   Compiling cpal v0.16.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling gilrs v0.11.2
+   Compiling gilrs-core v0.6.8
+   Compiling rusqlite v0.32.1
+   Compiling screen v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/screen)
+   Compiling digest v0.11.3
+   Compiling recomp-core v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/recomp-core)
+   Compiling objc2-app-kit v0.2.2
+   Compiling coreaudio-rs v0.13.0
+   Compiling core-graphics v0.23.2
+   Compiling mach2 v0.4.3
+   Compiling cpufeatures v0.3.0
+   Compiling input-config v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/input-config)
+   Compiling cursor-icon v1.2.0
+   Compiling dasp_sample v0.11.0
+   Compiling smol_str v0.2.2
+   Compiling dpi v0.1.2
+   Compiling fnv v1.0.7
+   Compiling menu v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/menu)
+   Compiling sha2 v0.11.0
+   Compiling gamedb v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/gamedb)
+   Compiling softbuffer v0.4.8
+   Compiling recomp v0.2.0 (/Users/celsoinacio/projects/gba-recomp/vendor-ref/gba-recomp/crates/recomp)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 38.83s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running `target/vendor-gba-recomp/debug/recomp build '/Users/celsoinacio/projects/gba-recomp/roms/Pokemon - Leaf Green Version (U) (V1.1).gba'`
+compiler: system compiler (/usr/bin/cc)
+[K  [■···························]   5%  charting every reachable code path…blocks: 16734 instructions: 107499
+[K  [■···························]   6%  map drawn: 16734 code blocks to translate[K  [■···························]   6%  translating to C — 1 units emitted…[K  [■···························]   6%  translating to C — 2 units emitted…[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■···························]   7%  forging native code on 2 cores — 0/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■··············]  51%  forging native code on 2 cores — 1/2 units[K  [■■■■■■■■■■■■■■■■■■■■■■■■■■··]  96%  forging native code on 2 cores — 2/2 units[K  [■■■■■■■■■■■■■■■■■■■■■■■■■■■·]  97%  linking it all together…[K  [■■■■■■■■■■■■■■■■■■■■■■■■■■■■] 100%  ready to playwrote out/Pokemon - Leaf Green Version (U) (V1.1).dylib (2 units)

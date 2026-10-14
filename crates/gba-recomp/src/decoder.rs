@@ -306,6 +306,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0x1000 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::AsrImmediate {
+                rd: (encoding & 0x7) as u8,
+                rs: ((encoding >> 3) & 0x7) as u8,
+                amount: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -719,7 +730,7 @@ mod tests {
                 amount: 0,
             }
         );
-        for encoding in [0x1049, 0x4089] {
+        for encoding in [0x4089] {
             assert!(decode_thumb(0x0800_0084, encoding).is_err());
         }
     }
@@ -738,8 +749,8 @@ mod tests {
             );
         }
 
-        // Keep the neighboring LSL family classified as LSL and reject ASR
-        // immediate and register-shift forms until their own contracts exist.
+        // Keep the neighboring LSL family classified as LSL and reject the
+        // register-shift format until its own contract exists.
         assert_eq!(
             decode_thumb(0x0800_0084, 0x0000).unwrap().operation,
             ThumbOperation::LslImmediate {
@@ -748,12 +759,46 @@ mod tests {
                 amount: 0,
             }
         );
-        for encoding in [0x1049, 0x4089] {
+        for encoding in [0x4089] {
             assert!(
                 decode_thumb(0x0800_0084, encoding).is_err(),
                 "encoding 0x{encoding:04X} must remain unsupported"
             );
         }
+    }
+
+    #[test]
+    fn decodes_all_thumb_asr_immediate_encodings_and_rejects_odd_pc() {
+        for encoding in 0x1000..=0x17FF_u16 {
+            let rd = (encoding & 0x7) as u8;
+            let rs = ((encoding >> 3) & 0x7) as u8;
+            let amount = ((encoding >> 6) & 0x1F) as u8;
+            assert_eq!(
+                decode_thumb(0x0800_0084, encoding).unwrap().operation,
+                ThumbOperation::AsrImmediate { rd, rs, amount },
+                "encoding 0x{encoding:04X}"
+            );
+        }
+        assert!(decode_thumb(0x0800_0085, 0x17C1).is_err());
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x0FFF).unwrap().operation,
+            ThumbOperation::LsrImmediate {
+                rd: 7,
+                rs: 7,
+                amount: 31,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_0084, 0x1800).unwrap().operation,
+            ThumbOperation::AddSubtract {
+                rd: 0,
+                rn: 0,
+                operand: 0,
+                immediate: false,
+                subtract: false,
+            }
+        );
+        assert!(decode_thumb(0x0800_0084, 0x4089).is_err());
     }
 
     #[test]

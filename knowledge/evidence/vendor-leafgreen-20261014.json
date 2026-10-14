@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "vendor": {
+    "repository": "vendor-ref/gba-recomp",
+    "commit": "de4edf59b872d887046d6a3b005e2df551b6d44c",
+    "checkout_modified": false,
+    "gamedb_sha256": "459078aa1a3f22a316211c5d983794c291a6faea841cd37cbabd8f9fb0461ab6",
+    "gamedb_contains_rom_sha256": false
+  },
+  "rom": {
+    "path": "roms/Pokemon - Leaf Green Version (U) (V1.1).gba",
+    "sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825"
+  },
+  "host": {
+    "os": "Darwin",
+    "architecture": "arm64",
+    "cargo_build_jobs": 4,
+    "recomp_jobs_requested": 4,
+    "native_compile_workers_effective": 2,
+    "native_compiler": "/usr/bin/cc"
+  },
+  "build": {
+    "command": "cargo run --manifest-path vendor-ref/gba-recomp/Cargo.toml --locked -p recomp -- build '<ROM>'",
+    "labels_argument": false,
+    "gamedb_argument": false,
+    "ram_profile_argument": false,
+    "result": "success",
+    "static_discovery": {
+      "blocks": 16734,
+      "instructions": 107499
+    },
+    "output": {
+      "path": "out/Pokemon - Leaf Green Version (U) (V1.1).dylib",
+      "preserved_path": "target/vendor-leafgreen/Pokemon - Leaf Green Version (U) (V1.1).dylib",
+      "format": "Mach-O 64-bit dynamically linked shared library arm64",
+      "size_bytes": 6101744,
+      "sha256": "c0fa9322f2d1f5146a5e515b1730ecef40612d2b8bfea97544bb628e1fa85991"
+    },
+    "log": {
+      "path": "knowledge/evidence/vendor-leafgreen-build.log",
+      "sha256": "e24494c6efec588b58723c3ec12d70ccef576c8602f18832b7b56b9647ea6537"
+    }
+  },
+  "execution": {
+    "one_frame": {
+      "runc": {
+        "native_blocks": 82,
+        "dispatch_fallback_steps_reported": 0,
+        "frame_hash": "3864bd4d57df1f25",
+        "log_path": "knowledge/evidence/vendor-leafgreen-runc-1frame.log",
+        "log_sha256": "71df168e5737d5a3df9388ef1168506f45e5cdd0908e3a57dcc32290a4f076b0"
+      },
+      "differential": {
+        "result": "MATCH",
+        "interpreter_hash": "3864bd4d57df1f25",
+        "recompiled_hash": "3864bd4d57df1f25",
+        "log_path": "knowledge/evidence/vendor-leafgreen-verify-1frame.log",
+        "log_sha256": "1bb778f82c0f99289cbf9b8b1f47bb0b198d2f779afa7b8eb80fe9c1cdee0184"
+      }
+    },
+    "sixty_frames": {
+      "runc": {
+        "native_blocks": 4090,
+        "dispatch_fallback_steps_reported": 35586,
+        "frame_hash": "7af84b7e8461e452",
+        "log_path": "knowledge/evidence/vendor-leafgreen-runc-60frames.log",
+        "log_sha256": "68cb173f916df70bf8fc4d2a0e47d26030b465b9520becdacef4a013b4e4eace"
+      },
+      "differential": {
+        "result": "MATCH",
+        "frames": 60,
+        "interpreter_hash": "7af84b7e8461e452",
+        "recompiled_hash": "7af84b7e8461e452",
+        "log_path": "knowledge/evidence/vendor-leafgreen-verify-60frames.log",
+        "log_sha256": "9ada2a5e9b3eaa39906800f9566a0cbddaca0779c293fa10a15284b00f6ac062"
+      },
+      "fallback_counter_limit": "runc reports dispatch misses; generated per-instruction interp_one shells may also invoke the interpreter and are not counted by this counter"
+    }
+  },
+  "strict_full_recomp": {
+    "package_build_attempted": false,
+    "full_recomp_proven": false,
+    "reason": "the supplied function database has no exact LeafGreen ROM SHA match; vendor packaging requires a label map when interpreter=false",
+    "fallback_present_in_vendor_source": true,
+    "fallback_source": "crates/recomp-core/src/emit.rs:124-135,559-570; docs/packaging.md:116-140"
+  },
+  "scope_limits": [
+    "The build and 60-frame match prove a ROM-specific hybrid translation on this host, not complete game compatibility.",
+    "The first 60 frames are not a representative coverage soak of all routes, saves, or computed branches.",
+    "The reported 35,586 dispatch fallback steps do not include interpreter calls through emitted interp_one shells.",
+    "No code was copied into the local project and no vendor source was modified."
+  ]
+}

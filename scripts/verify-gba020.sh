@@ -1771,7 +1771,7 @@ fi
 
 scripts/verify-gba020-lsl.sh "$gba020_jobs" "$gba020_link_threads" "$GBA020_EFFECTIVE_BUDGET"
 
-for mode in thumb-lsr-register-unsupported thumb-asr-unsupported thumb-lsl-register-unsupported; do
+for mode in thumb-lsr-register-unsupported thumb-lsl-register-unsupported; do
     thumb_shift_rom="$root/target/gba020/$mode.gba"
     thumb_shift_package="$root/target/gba020/$mode-package"
     thumb_shift_output="$root/target/gba020/$mode.txt"
@@ -2103,6 +2103,124 @@ if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$thumb_neg_bad_outp
 fi
 if [ -e "$thumb_neg_bad_package" ]; then
     echo "failed Thumb Format 4 compile left a partial package" >&2
+    exit 1
+fi
+
+verify_thumb_asr_branch() {
+    mode=$1
+    optimization=$2
+    expected=$3
+    rom="$root/target/gba020/$mode.gba"
+    package="$root/target/gba020/$mode-package-$optimization"
+    rm -rf "$package"
+    GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+        --rom "$rom" --out "$package" --opt "$optimization" --steps 9
+    actual=$("$package/game")
+    if [ "$actual" != "$expected" ]; then
+        echo "$optimization $mode fixture produced an unexpected state: $actual" >&2
+        exit 1
+    fi
+    python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["abi_version"] == 4
+assert manifest["instructions_aot"] == 12
+PY
+}
+
+thumb_asr_active_pids=
+thumb_asr_active_modes=
+thumb_asr_active_count=0
+wait_thumb_asr_batch() {
+    failed=0
+    for pid in $thumb_asr_active_pids; do
+        if ! wait "$pid"; then
+            failed=1
+        fi
+    done
+    if [ "$failed" -ne 0 ]; then
+        for mode_opt in $thumb_asr_active_modes; do
+            cat "$root/target/gba020/$mode_opt-asr-worker.log" >&2
+        done
+        return 1
+    fi
+    for mode_opt in $thumb_asr_active_modes; do
+        cat "$root/target/gba020/$mode_opt-asr-worker.log"
+        rm -f "$root/target/gba020/$mode_opt-asr-worker.log"
+    done
+    thumb_asr_active_pids=
+    thumb_asr_active_modes=
+    thumb_asr_active_count=0
+}
+
+begin_group_timing thumb_asr_immediate_fixtures
+for mode in \
+    thumb-asr-zero-positive-branch \
+    thumb-asr-zero-negative-branch \
+    thumb-asr-31-carry-clear-branch \
+    thumb-asr-31-carry-set-positive-branch \
+    thumb-asr-31-alias-branch; do
+    asr_rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$asr_rom" --mode "$mode"
+    case "$mode" in
+        thumb-asr-zero-positive-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":0,"r1":1073741824,"pc":"0x08000090","cpsr":"0x5000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-asr-zero-negative-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":4294967295,"r1":2147483648,"pc":"0x08000090","cpsr":"0xA000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-asr-31-carry-clear-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":4294967295,"r1":2147483648,"pc":"0x08000090","cpsr":"0x9000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-asr-31-carry-set-positive-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":0,"r1":1073741824,"pc":"0x08000090","cpsr":"0x6000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+        thumb-asr-31-alias-branch)
+            expected='{"status":"budget_exhausted","steps":9,"r0":2147483648,"r1":4294967295,"pc":"0x08000090","cpsr":"0xB000003F","guest_cycle":9,"ewram_word0":0,"iwram_word0":0}'
+            ;;
+    esac
+    for optimization in O0 O2; do
+        mode_opt="$mode-$optimization"
+        worker_log="$root/target/gba020/$mode_opt-asr-worker.log"
+        (verify_thumb_asr_branch "$mode" "$optimization" "$expected") \
+            >"$worker_log" 2>&1 &
+        thumb_asr_active_pids="$thumb_asr_active_pids $!"
+        thumb_asr_active_modes="$thumb_asr_active_modes $mode_opt"
+        thumb_asr_active_count=$((thumb_asr_active_count + 1))
+        if [ "$thumb_asr_active_count" -ge "$gba020_jobs" ]; then
+            wait_thumb_asr_batch
+        fi
+    done
+done
+if [ "$thumb_asr_active_count" -gt 0 ]; then
+    wait_thumb_asr_batch
+fi
+end_group_timing
+
+thumb_asr_bad_rom="$root/target/gba020/thumb-asr-neighbor-unsupported.gba"
+thumb_asr_bad_package="$root/target/gba020/thumb-asr-neighbor-unsupported-package"
+thumb_asr_bad_output="$root/target/gba020/thumb-asr-neighbor-unsupported.txt"
+python3 fixtures/tiny-counter/make_rom.py \
+    --out "$thumb_asr_bad_rom" --mode thumb-asr-neighbor-unsupported
+rm -rf "$thumb_asr_bad_package"
+if GBA_RECOMP_LINK_THREADS=$gba020_link_threads "$recomp_bin" compile \
+    --rom "$thumb_asr_bad_rom" --out "$thumb_asr_bad_package" --opt O0 --steps 9 \
+    >"$thumb_asr_bad_output" 2>&1; then
+    echo "unsupported Thumb ASR neighbor unexpectedly produced a package" >&2
+    exit 1
+fi
+if ! grep -Fq 'unsupported_thumb_instruction at 0x08000084' "$thumb_asr_bad_output"; then
+    cat "$thumb_asr_bad_output" >&2
+    echo "unsupported Thumb ASR neighbor did not report its source PC" >&2
+    exit 1
+fi
+if [ -e "$thumb_asr_bad_package" ]; then
+    echo "failed Thumb ASR compile left a partial package" >&2
     exit 1
 fi
 

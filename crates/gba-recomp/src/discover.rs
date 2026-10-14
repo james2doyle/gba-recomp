@@ -1694,6 +1694,37 @@ fn process_thumb_instruction(
                 total_states,
             )?;
         }
+        ThumbOperation::AsrImmediate { rd, rs, amount } => {
+            let shifted_source = match &state.registers[rs as usize] {
+                AbstractValue::Unknown => AbstractValue::Unknown,
+                AbstractValue::Constants(values) => AbstractValue::Constants(
+                    values
+                        .iter()
+                        .map(|value| {
+                            if amount == 0 {
+                                if value & 0x8000_0000 != 0 {
+                                    u32::MAX
+                                } else {
+                                    0
+                                }
+                            } else {
+                                ((*value as i32) >> amount) as u32
+                            }
+                        })
+                        .collect(),
+                ),
+            };
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = shifted_source;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+                total_states,
+            )?;
+        }
         ThumbOperation::BranchExchange { rm } => {
             let targets = read_operand(state, rm, instruction.guest_pc.wrapping_add(4));
             let Some(values) = targets.values() else {
@@ -4975,6 +5006,163 @@ mod tests {
         assert_eq!(next.registers[1], AbstractValue::Unknown);
         assert_eq!(next.registers[3], AbstractValue::constant(0x5566_7788));
         assert_eq!(pending_keys(&pending), vec![successor]);
+    }
+
+    #[test]
+    fn propagates_thumb_asr_immediate_and_keeps_both_edges_after_flags_change() {
+        let image = counter_rom();
+        let guest_pc = ROM_BASE + 0x84;
+        let source_values = BTreeSet::from([0, 0x4000_0000, 0x8000_0000, 0xC000_0000]);
+        let instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x17C1,
+            operation: ThumbOperation::AsrImmediate {
+                rd: 1,
+                rs: 0,
+                amount: 31,
+            },
+        };
+        let mut state = AbstractState::unknown();
+        state.registers[0] = AbstractValue::Constants(source_values.clone());
+        state.set_constant(2, 0x1122_3344);
+        let mut pending = VecDeque::new();
+        let mut incoming = BTreeMap::new();
+        process_thumb_instruction(
+            &image,
+            instruction,
+            &state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let successor = (IsaMode::Thumb, guest_pc + 2);
+        let exact_pairs: BTreeSet<_> = incoming[&successor]
+            .iter()
+            .map(|next| (state_constant(next, 0), state_constant(next, 1)))
+            .collect();
+        assert_eq!(
+            exact_pairs,
+            BTreeSet::from([
+                (0, 0),
+                (0x4000_0000, 0),
+                (0x8000_0000, u32::MAX),
+                (0xC000_0000, u32::MAX),
+            ])
+        );
+        assert!(incoming[&successor].iter().all(|next| {
+            next.pending_compare.is_none()
+                && next.registers[2] == AbstractValue::constant(0x1122_3344)
+        }));
+
+        let mut unknown_state = AbstractState::unknown();
+        unknown_state.set_constant(2, 0x5566_7788);
+        let unknown_instruction = ThumbInstruction {
+            guest_pc,
+            encoding: 0x1008,
+            operation: ThumbOperation::AsrImmediate {
+                rd: 0,
+                rs: 1,
+                amount: 0,
+            },
+        };
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            unknown_instruction,
+            &unknown_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let unknown_next = only_state(&incoming[&successor]);
+        assert_eq!(unknown_next.registers[0], AbstractValue::Unknown);
+        assert_eq!(unknown_next.registers[1], AbstractValue::Unknown);
+        assert_eq!(
+            unknown_next.registers[2],
+            AbstractValue::constant(0x5566_7788)
+        );
+
+        // CMP at PC, ASR at PC+2, BNE at PC+4: the ASR flags are not modeled,
+        // so the stale CMP proof must be discarded and both branch edges kept.
+        let cmp_pc = ROM_BASE + 0x90;
+        let cmp = ThumbInstruction {
+            guest_pc: cmp_pc,
+            encoding: 0x2800,
+            operation: ThumbOperation::CompareImmediate {
+                rd: 0,
+                immediate: 0,
+            },
+        };
+        let asr = ThumbInstruction {
+            guest_pc: cmp_pc + 2,
+            encoding: 0x1009,
+            operation: ThumbOperation::AsrImmediate {
+                rd: 1,
+                rs: 1,
+                amount: 0,
+            },
+        };
+        let branch_pc = cmp_pc + 4;
+        let branch_target = cmp_pc + 8;
+        let branch = ThumbInstruction {
+            guest_pc: branch_pc,
+            encoding: 0xD101,
+            operation: ThumbOperation::ConditionalBranch {
+                condition: 1,
+                target: branch_target,
+                reachable_successors: 0b11,
+            },
+        };
+        let mut cmp_state = AbstractState::unknown();
+        cmp_state.set_constant(0, 0);
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            cmp,
+            &cmp_state,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let cmp_next = only_state(&incoming[&(IsaMode::Thumb, cmp_pc + 2)]).clone();
+        assert!(cmp_next.pending_compare.is_some());
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            asr,
+            &cmp_next,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        let asr_next = only_state(&incoming[&(IsaMode::Thumb, branch_pc)]).clone();
+        assert!(asr_next.pending_compare.is_none());
+        assert_eq!(thumb_branch_successors(branch, &asr_next), 0b11);
+        pending.clear();
+        incoming.clear();
+        process_thumb_instruction(
+            &image,
+            branch,
+            &asr_next,
+            &mut pending,
+            &mut incoming,
+            &mut BTreeSet::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            pending_keys(&pending),
+            vec![
+                (IsaMode::Thumb, branch_target),
+                (IsaMode::Thumb, branch_pc + 2),
+            ]
+        );
     }
 
     #[test]

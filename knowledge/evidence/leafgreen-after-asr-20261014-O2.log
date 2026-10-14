@@ -1,0 +1,4 @@
+gba-recomp: unsupported_thumb_instruction at 0x08000C00: 0x428A
+real 0.67
+user 0.62
+sys 0.01

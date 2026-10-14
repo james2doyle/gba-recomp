@@ -441,7 +441,6 @@ def generate(mode: str = "valid") -> bytes:
         "thumb-lsr-thirtyone",
         "thumb-lsr-alias",
         "thumb-lsr-register-unsupported",
-        "thumb-asr-unsupported",
         "thumb-lsl-register-unsupported",
     ):
         cases = {
@@ -458,7 +457,6 @@ def generate(mode: str = "valid") -> bytes:
             "thumb-lsr-thirtyone": (0x0FC9, 0x80000000, 0x80000000),
             "thumb-lsr-alias": (0x0C09, 0x12345678, 0x80000000),
             "thumb-lsr-register-unsupported": (0x40C9, 0x00000001, 0x00000000),
-            "thumb-asr-unsupported": (0x1049, 0x00000001, 0x00000000),
             "thumb-lsl-register-unsupported": (0x4089, 0x00000001, 0x00000000),
         }
         shift, source, compare = cases[mode]
@@ -579,6 +577,52 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xD8:0xE8] = struct.pack(
             "<4I", 0x08000085, 0x080000E8, source, destination
+        )
+        image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
+    elif mode in (
+        "thumb-asr-zero-positive-branch",
+        "thumb-asr-zero-negative-branch",
+        "thumb-asr-31-carry-clear-branch",
+        "thumb-asr-31-carry-set-positive-branch",
+        "thumb-asr-31-alias-branch",
+        "thumb-asr-neighbor-unsupported",
+    ):
+        cases = {
+            # source, CMP seed, ASR encoding, branch condition
+            "thumb-asr-zero-positive-branch": (0x40000000, 0x80000000, 0x1008, 0),
+            "thumb-asr-zero-negative-branch": (0x80000000, 1, 0x1008, 4),
+            "thumb-asr-31-carry-clear-branch": (0x80000000, 0x80000000, 0x17C8, 3),
+            "thumb-asr-31-carry-set-positive-branch": (0x40000000, 1, 0x17C8, 2),
+            "thumb-asr-31-alias-branch": (0xC0000000, 0x80000000, 0x17C9, 2),
+            "thumb-asr-neighbor-unsupported": (1, 0x80000000, 0x4089, 0),
+        }
+        source, compare, encoding, condition = cases[mode]
+        branch_encoding = 0xD000 | (condition << 8) | 0x03
+        image[0x84:0x9A] = struct.pack(
+            "<11H",
+            encoding,  # ASRS; the unsupported mode uses an unimplemented Format 4 op.
+            branch_encoding,  # Conditional branch checks ASR-produced N/Z/C.
+            0xE006,  # Fallthrough B 0x08000098.
+            0x46C0,
+            0x46C0,
+            0x46C0,
+            0xE002,  # Taken-path B 0x08000098.
+            0x46C0,
+            0x46C0,
+            0x46C0,
+            0xE7FE,  # Shared self-loop.
+        )
+        image[0xC0:0xD8] = struct.pack(
+            "<6I",
+            0xE59F1018,  # LDR r1,[pc,#0x18] -> ASR source at 0xE0.
+            0xE59F0018,  # LDR r0,[pc,#0x18] -> CMP seed at 0xE4.
+            0xE3500001,  # CMP r0,#1 seeds C/V before ASR replaces NZC.
+            0xE59F2004,  # LDR r2,[pc,#4] -> Thumb entry | 1 at 0xD8.
+            0xE59F3004,  # LDR r3,[pc,#4] -> ARM loop at 0xE8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xD8:0xE8] = struct.pack(
+            "<4I", 0x08000085, 0x080000E8, source, compare
         )
         image[0xE8:0xEC] = struct.pack("<I", branch(0xE8, 0xE8))
     elif mode in (
@@ -1344,7 +1388,7 @@ def main() -> None:
             "thumb-lsr-thirtyone",
             "thumb-lsr-alias",
             "thumb-lsr-register-unsupported",
-            "thumb-asr-unsupported",
+            "thumb-asr-neighbor-unsupported",
             "thumb-lsl-register-unsupported",
             "thumb-addsub-add-register",
             "thumb-addsub-sub-register",
@@ -1366,6 +1410,11 @@ def main() -> None:
             "thumb-neg-overflow-branch",
             "thumb-neg-ones-branch",
             "thumb-neg-unsupported",
+            "thumb-asr-zero-positive-branch",
+            "thumb-asr-zero-negative-branch",
+            "thumb-asr-31-carry-clear-branch",
+            "thumb-asr-31-carry-set-positive-branch",
+            "thumb-asr-31-alias-branch",
             "thumb-orr-zero",
             "thumb-orr-positive-c0v0",
             "thumb-orr-negative-c1v1",
