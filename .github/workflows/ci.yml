@@ -79,6 +79,11 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Use lld-link as the Rust linker
+        # Git Bash puts coreutils' /usr/bin/link ahead of MSVC's link.exe.
+        if: runner.os == 'Windows'
+        run: echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$LLVM_SYS_231_PREFIX/bin/lld-link.exe" >> "$GITHUB_ENV"
+
       - name: SDL 3
         env:
           SDL_ARCH: ${{ matrix.cross == 'x86_64-apple-darwin' && 'x86_64' || '' }}

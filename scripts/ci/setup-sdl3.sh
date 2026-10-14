@@ -7,7 +7,7 @@ case "$(uname -s)" in
     sudo apt-get update -qq
     sudo apt-get install -y -qq cmake ninja-build pkg-config patchelf \
       libasound2-dev libpulse-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-      libxi-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+      libxi-dev libxss-dev libxtst-dev libxfixes-dev libxkbcommon-dev libwayland-dev wayland-protocols \
       libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev
     src="${RUNNER_TEMP:-/tmp}/SDL"
     git clone --depth 1 --branch "release-$version" https://github.com/libsdl-org/SDL.git "$src"
@@ -28,6 +28,8 @@ case "$(uname -s)" in
       cmake --build "$src/build" --parallel
       cmake --install "$src/build"
       echo "SDL3_LIB_DIR=$prefix/lib" >> "$GITHUB_ENV"
+      # Test binaries of the cross target load this libSDL3 under Rosetta.
+      echo "DYLD_FALLBACK_LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
     else
       brew install sdl3
       echo "SDL3_LIB_DIR=$(brew --prefix)/lib" >> "$GITHUB_ENV"
