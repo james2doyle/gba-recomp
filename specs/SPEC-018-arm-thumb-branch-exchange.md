@@ -19,7 +19,7 @@ Adicionar `BX Rm` ARM e Thumb, trocar o bit T do CPSR conforme o bit 0 do operan
 
 ## Limites desta tranche
 
-O decoder Thumb reconhece apenas `BX`; outras instruções Thumb alcançáveis continuam sendo rejeitadas. Valores carregados de RAM/MMIO ou calculados por operações não rastreadas são desconhecidos e bloqueiam a compilação do destino indireto. O limite deliberado evita tratar um trace ou um literal como prova de todos os possíveis destinos do jogo.
+Esta spec define apenas a semântica de `BX`. Na tranche original, o decoder Thumb aceitava somente BX; formatos Thumb adicionais exigem seus próprios contratos, como SPEC-019–SPEC-032. Valores carregados de RAM/MMIO ou calculados por operações não rastreadas são desconhecidos e bloqueiam a compilação do destino indireto. O limite deliberado evita tratar um trace ou um literal como prova de todos os possíveis destinos do jogo.
 
 ## Evidência e referências
 

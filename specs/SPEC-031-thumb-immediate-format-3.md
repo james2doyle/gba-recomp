@@ -1,6 +1,6 @@
 # SPEC-031 — Thumb Format 3 imediato em AOT estrito
 
-Estado do documento: Accepted. Implementação pendente; progresso: [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementada no commit `2020649`; evidência: [gate GBA-020](../knowledge/evidence/gba020-thumb-format-3-macos-arm64.json). Progresso: [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 

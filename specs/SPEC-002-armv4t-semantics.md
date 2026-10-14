@@ -13,6 +13,7 @@ Decodificar ARM de 32 bits e Thumb de 16 bits do ARM7TDMI e preservar resultado,
 - CPU-20: Thumb `STRH` imediato Format 10 só é suportado nos limites de [SPEC-027](SPEC-027-thumb-strh-immediate.md); isso não estende o suporte a outros loads/stores nem ao bus geral.
 - CPU-21: Thumb `STRB` imediato Format 9 só é suportado nos limites de [SPEC-028](SPEC-028-thumb-strb-immediate.md); isso não estende o suporte a outros loads/stores nem ao bus geral.
 - CPU-22: Thumb `LDRB` imediato Format 9 só é suportado nos limites de [SPEC-029](SPEC-029-thumb-ldrb-immediate.md), com zero-extension e leitura restrita a EWRAM/IWRAM físicas; isso não estende o suporte a outros loads/stores nem ao bus geral.
+- CPU-23: branch condicional Thumb Format 16 com condições `0x0..=0xD` só é suportado nos limites de [SPEC-032](SPEC-032-thumb-conditional-branch.md); a descoberta fecha alvo e fallthrough sem inferir flags, e a seleção por NZCV ocorre no runtime AOT.
 
 - CPU-01: cada instrução MUST manter endereço, bytes de origem, modo ISA e tamanho. Decoder MUST distinguir instrução definida, encoding indefinido e família não implementada; nunca reinterpretar extensão moderna como instrução suportada.
 - CPU-02: estado MUST conter r0–r15, CPSR, bancos de registradores e SPSRs aplicáveis a User/System, IRQ, SVC, FIQ, Abort e Undefined. Não usar SPSR inexistente em User/System.

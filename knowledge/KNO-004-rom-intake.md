@@ -110,6 +110,12 @@ No commit `2530ef2c7292b833c4d4b0591c0927c5754b402c`, `cargo test --locked --wor
 
 Repetindo `cargo run --locked --quiet -p gba-recomp -- compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-orr-run --opt O2 --steps 100` para a ROM SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta estática passou por `0x4318` em `0x0800099E` e parou com `unsupported_thumb_instruction` em `0x080009A2`, raw `0x3201`. Os campos inferem Thumb Format 3 `ADDS r2,#1`, corroborado como formato pelas referências SRC-22. A saída `target/leafgreen-after-orr-run` não foi criada; não houve pacote, execução da ROM ou decompilação REA. O limite é resultado da descoberta estática local para o hash fixado, não trace dinâmico nem cobertura total do jogo.
 
+## Tentativa após SPEC-031 — Thumb Format 3 imediato
+
+No commit `2020649`, `cargo test --locked --workspace --jobs 10` passou com 45 testes em `gba-ir` e 45 em `gba-recomp`; `scripts/verify-gba020.sh` passou em Darwin/arm64 com fixtures O0/O2 para MOVS/CMP/ADDS/SUBS, flags, CMP sem writeback, propagação de constantes e rejeição sem pacote parcial. Os hashes de ROMs, executáveis e manifestos constam em [gba020-thumb-format-3-macos-arm64.json](evidence/gba020-thumb-format-3-macos-arm64.json).
+
+Com a ROM identificada acima, a descoberta estática passou por `0x3201` em `0x080009A2` (inferido como `ADDS r2,#1`) e parou em `0x080009A6`, raw `0xDDF6`, com `unsupported_thumb_instruction`. Pelos campos, `0xDDF6` infere `BLE` com imm8 assinado `-10`; PC Thumb `+4` calcula o destino `0x08000996` e o caminho sequencial é `0x080009A8`. Isso não revela NZCV, caminho tomado, nem execução dinâmica. O diretório de saída não foi criado; LeafGreen não foi empacotada ou executada. A chamada REA `binary_session` desta retomada falhou com `Transport closed`, sem produzir Evidence ID nem decompilação.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

@@ -1,0 +1,238 @@
+{
+  "record_type": "local-build-and-static-discovery",
+  "date": "2026-10-13",
+  "spec_commit": "734281b0349230cee9819cf43a30baa1be7b68c7",
+  "source_commit": "2020649e3252bb1e96f92df2fc6011fe21701b7a",
+  "environment": {
+    "os": "macOS",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "rust": "1.99.0",
+    "llvm_backend": "23.1.3",
+    "target": "aarch64-apple-darwin"
+  },
+  "parallelism": {
+    "cargo_jobs": 10,
+    "lld_threads": 10,
+    "observation": "Amostras pontuais durante o build frio registraram aproximadamente 792–827% de CPU para LLD e até cerca de 2 GB de RSS; não é medida sustentada."
+  },
+  "build_acceleration": {
+    "gate_script": "scripts/verify-gba020.sh",
+    "cargo_run_invocations_before": 45,
+    "cargo_build_invocations_after": 1,
+    "execution_after_build": "Invoca target/debug/gba-recomp diretamente para as fixtures, sem novas inicializações de Cargo.",
+    "hot_gate_wall_seconds_sample": 47.54,
+    "hot_gate_user_seconds_sample": 17.33,
+    "hot_gate_system_seconds_sample": 7.97,
+    "sustained_benchmark": false
+  },
+  "rust_tests": {
+    "workspace_command": "cargo test --locked --workspace --jobs 10",
+    "workspace_result": "passed",
+    "gba_ir_tests": 45,
+    "gba_recomp_tests": 45,
+    "doc_tests": "passed"
+  },
+  "headless_gate": {
+    "script": "scripts/verify-gba020.sh",
+    "host": "Darwin/arm64",
+    "result": "passed",
+    "strict_aot": true,
+    "optimization_levels": [
+      "O0",
+      "O2"
+    ],
+    "positive_fixtures": {
+      "thumb-f3-movs-zero": {
+        "rom_sha256": "ba1a38297cefa1e4bc4b17a4f7fe77f2ef9971f07755215af4c60d6a661726a6",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":0,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x7000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "d9c09e0ccfa4779d2ccd0dd0c2764958d34b3ce08d4b7d3f32923898a0359dff",
+          "manifest_sha256": "8dc3a370a9583c0526ebe659aa2a02d372b35bdde55abf72717f0ab954eb051b",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "367c54f792dfcb9bf3ec30b80a328591545a1f0f0b0e19e85bac9bc3f422df1f",
+          "manifest_sha256": "5dec662e8fd52442fbcca0c88fbab5e6e07b52bd2c61811da59e2a331e96d0ae",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-movs-ff": {
+        "rom_sha256": "9179304cbc82af961a6d21fb633ab6d8b635e004dc688fabf2b6144ee6ec44a9",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":255,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x3000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "082fe57f3cb23c64a1965d314d83e0c6f64aa420fe2c5a04dc73f95d7ec9f58d",
+          "manifest_sha256": "90cc73397e2131a040653e89eeae6862738ac8e6d1b74addb64ab4a309f87f98",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "9baeb4f658fa5e8e817db7417bc2fdce7c66af5a9e03ec4c3ca45a0deac02cc7",
+          "manifest_sha256": "2a2169833b726a5c4442096962de9817b7e60cd564bbbf2fcde96b8519e07e49",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-cmp-equal": {
+        "rom_sha256": "2af934922267788713cc9a5f7f68311e3a86dd6d8f31359ca2cdbbd90faca2f5",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":1,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x6000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "37185b8e592b47aeefea6b4876d28797de3e2045b0821bb6a1ed6b5ac6dd54fc",
+          "manifest_sha256": "a3082e378565bec702fd3225f607ace8d188df68a56dbefcb2e824201fe65a0d",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "20f64e831e2b493a10db1450d7d04486086c9645fa16a5cb52ac7aa64a8e1889",
+          "manifest_sha256": "0da8d7572f9174d6ed1ca90880c74991cd26c24401e6ac81ef55afd5d389834f",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-cmp-borrow": {
+        "rom_sha256": "28b1dd59f1d7f7ab6e22524ed699ec9206ef8ff61d11e02f7fda7ea7e768b61f",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":0,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x8000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "967849b5a627405ca65e2595dc7989f618fff450a744e7afbbc5df329019817b",
+          "manifest_sha256": "456df3155c119ee830b5207c0bed0cbe1c41de90519df7dc29cc4a0c0ef21d77",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "dd4a631e38a96670d8942877f9f512c846dcd3032cd117d15ab38bf9f125c38c",
+          "manifest_sha256": "d8129d2ad7e814e79dc1db2bf19f56a329d903d4b0407de36aa3b07622c8440e",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-cmp-overflow": {
+        "rom_sha256": "a0f3f88cbd7046eae5feade33347f45a99a5a2dd144d3845d321321e0d2cefbf",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2147483648,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x3000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "dcd76f08f87621242ba53af87cb4e74f37ebb4457bb4e2afe04372168510d6dd",
+          "manifest_sha256": "c0d8ea8db4bd08e718a61d4449606b3c2c1567836ec6a5b285cee0882bc1e8c9",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "482d66357d8ce82b4968932b95505e76ae7212c22adeb8b4af4476b4adb0ba7d",
+          "manifest_sha256": "9160636526db96d10572742079b49d91fca681b218c1ea8231bd990458baed5a",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-add-carry": {
+        "rom_sha256": "76aa2765da32e2bb6bb595e29d2e7651f6d6180ec07f62986cc7b91c070e9b41",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":0,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x6000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "ec66400841afb18e5741e2727000c24a2e73bf6889b9636ee27a4976f05015f4",
+          "manifest_sha256": "5a44a9afd506ebebaee287db79ca9497de7717a51354f7096ac7859bb98832c3",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "e70e841db3539df7f8ff4c2fea749a6dce3207c8a8fd873d3e23c8213255f6b7",
+          "manifest_sha256": "835200b61d190602a5b2b389f8dba142f7ffb7e7b53987ba4f8fb7cb9acc6d09",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-add-overflow": {
+        "rom_sha256": "22f2179ba0c61eba7a14c9f916f424533b57179262bf834d8b56ad8895a2f4f1",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2147483648,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x9000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "c5f31433412bad4aa74f0fac1656c0957487ead298c31939ba02b11720325ca6",
+          "manifest_sha256": "cf521139ad3a4e4804813fe4e70d84ec815f82b8ec34acf69723cddde116a37a",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "4b61cf0c5dbe3381327ee42857d7b75097201b0c598a008f406bf5c12931c8ec",
+          "manifest_sha256": "62fb75aa82c3e3fb109c51464e185e1a26424391af3022a1dcd3452121795796",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-add-alias": {
+        "rom_sha256": "675f8b32327081d92ca10a6d4cbaae532c06f427dd29e1a903a9769dfad77130",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":305419903,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x0000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "c68260073a29edfcfd84b030e9ca48e7d47273ab6f36c80d20abb30b7a5987fd",
+          "manifest_sha256": "6d9747cc191292d265e020d26b86b2f7641a7989ffbf875ed15285cb1eca4849",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "cbb5456f9edc5e23478f4a9534c12204cbb619368921b9aa1a14d969bfe32507",
+          "manifest_sha256": "936d84deaa5545283178334da1459b3564da669ecf7c75339ab29c8ab0f21395",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-sub-borrow": {
+        "rom_sha256": "c93a6fdf3138582b5d6decc00167a0ea843f327b4820dde4f5379ff25a0fa2f2",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":4294967295,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x8000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "c19ec8f58e477a92044896d4692cff92df172c0cab4169919951a675c88d86e1",
+          "manifest_sha256": "edc8206f718f7b95bc4b369557a777cb9ac9a65397471105a739feed04817cda",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "2ee6365a8aac9b05fd4106875b3e2424aa4a0822cdd61c5babe6be2b8d608d29",
+          "manifest_sha256": "ef765e60d2442b53ffec4f1816eb977aa1abea5d4bd3d4bda9ecbc1d9c144b1b",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      },
+      "thumb-f3-sub-overflow": {
+        "rom_sha256": "71a31eeb1cba061fe6edbfa6c016f49cc3723f69525d037c4c267bc32e768bb2",
+        "expected_state": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":2147483647,\"r1\":0,\"pc\":\"0x080000E8\",\"cpsr\":\"0x3000009F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+        "O0": {
+          "game_sha256": "76a38db966db18a0f1a7d2fcb9cb77a4e6f0365872d8bf563fac268000b21a51",
+          "manifest_sha256": "56029344d796d9ccad4bc59ed2e3c1325324e7b7f844db434de9249dcac079f6",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        },
+        "O2": {
+          "game_sha256": "854cdad81c7589c88a8b3e38cd0a92af911cd679d30bb1b9899ae113a4a2d223",
+          "manifest_sha256": "b45a7f6c5f3e2e778c71d754c1df5117595ce9c3b211c53aae31b58320e4ed06",
+          "execution_mode": "strict-aot",
+          "instructions_aot": 10
+        }
+      }
+    },
+    "negative_fixtures": {
+      "thumb-f3-neighbor-unsupported": {
+        "rom_sha256": "30cca42641b641be03273a34c08bf39b87397d0d9a759e0aec19d8fa96e3cdc6",
+        "encoding": "0x4008",
+        "result": "gba-recomp: unsupported_thumb_instruction at 0x08000084: 0x4008",
+        "package_directory_created": false
+      }
+    }
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-format3-20261013 --opt O2 --steps 100",
+    "result": "rejected before package creation",
+    "reported_pc": "0x080009A6",
+    "raw_halfword": "0xDDF6",
+    "diagnostic": "unsupported_thumb_instruction",
+    "classification": "Thumb conditional B, condition LE and signed imm8 -10 inferred from fields; target arithmetic is 0x08000996 from Thumb PC+4 and sequential successor is 0x080009A8. No NZCV or chosen path was observed.",
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea_decompilation": false
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  },
+  "limitations": [
+    "Fixtures cobrem somente o subconjunto e vetores descritos pela SPEC-031, em macOS arm64.",
+    "Linux x86-64 continua sem emissão, link e execução nativos verificados.",
+    "LeafGreen registra descoberta estática somente; não há pacote, valores de registradores/flags, execução dinâmica nem decompilação REA.",
+    "As leituras de CPU e duração são amostras pontuais; não houve benchmark sustentado nem comparação A/B."
+  ]
+}

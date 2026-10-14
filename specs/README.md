@@ -33,3 +33,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-029 — LDRB Thumb imediato Format 9 em AOT estrito](SPEC-029-thumb-ldrb-immediate.md)
 - [SPEC-030 — ORRS Thumb Format 4 por registrador em AOT estrito](SPEC-030-thumb-orr-register.md)
 - [SPEC-031 — Thumb Format 3 imediato em AOT estrito](SPEC-031-thumb-immediate-format-3.md)
+- [SPEC-032 — Branch condicional Thumb Format 16 em AOT estrito](SPEC-032-thumb-conditional-branch.md)
