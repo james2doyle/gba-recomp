@@ -428,6 +428,17 @@ fn process_thumb_instruction(
                 incoming,
             );
         }
+        ThumbOperation::LoadByteImmediate { rd, .. } => {
+            let mut next_state = state.clone();
+            next_state.registers[rd as usize] = AbstractValue::Unknown;
+            enqueue_state(
+                IsaMode::Thumb,
+                instruction.guest_pc.wrapping_add(2),
+                next_state,
+                pending,
+                incoming,
+            );
+        }
         ThumbOperation::AddSubtract {
             rd,
             rn,
@@ -1319,5 +1330,39 @@ mod tests {
         let successor = (IsaMode::Thumb, guest_pc + 2);
         assert_eq!(pending, VecDeque::from([successor]));
         assert_eq!(incoming[&successor], before);
+    }
+
+    #[test]
+    fn thumb_ldrb_marks_only_destination_unknown_and_enqueues_pc_plus_two() {
+        let guest_pc = ROM_BASE + 0x84;
+        for (encoding, rd, rb, imm5) in [(0x7808, 0, 1, 0), (0x7FC9, 1, 1, 31)] {
+            let instruction = ThumbInstruction {
+                guest_pc,
+                encoding,
+                operation: ThumbOperation::LoadByteImmediate { rd, rb, imm5 },
+            };
+            let mut state = AbstractState::unknown();
+            state.set_constant(0, 0x1122_3344);
+            state.set_constant(1, 0x0200_0001);
+            state.set_constant(2, 0xAABB_CCDD);
+
+            let mut expected = state.clone();
+            expected.registers[rd as usize] = AbstractValue::Unknown;
+            let mut pending = VecDeque::new();
+            let mut incoming = BTreeMap::new();
+            process_thumb_instruction(
+                &counter_rom(),
+                instruction,
+                &state,
+                &mut pending,
+                &mut incoming,
+                &mut BTreeSet::new(),
+            )
+            .unwrap();
+
+            let successor = (IsaMode::Thumb, guest_pc + 2);
+            assert_eq!(pending, VecDeque::from([successor]));
+            assert_eq!(incoming[&successor], expected);
+        }
     }
 }

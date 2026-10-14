@@ -519,6 +519,89 @@ verify_thumb_strb thumb-strb-iwram-thirtyone-even \
 verify_thumb_strb thumb-strb-ewram-thirtyone-even-alias \
     '{"status":"budget_exhausted","steps":12,"r0":0,"r1":33554401,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":1144201953,"iwram_word0":0}'
 
+verify_thumb_ldrb() {
+    mode=$1
+    expected=$2
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        rm -rf "$package"
+        cargo run --locked --quiet -p gba-recomp -- compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 12
+        actual=$("$package/game")
+        if [ "$actual" != "$expected" ]; then
+            echo "$optimization $mode Thumb LDRB fixture produced an unexpected state: $actual" >&2
+            exit 1
+        fi
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 14
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == 12
+PY
+    done
+}
+
+verify_thumb_ldrb thumb-ldrb-ewram-zero-even-80 \
+    '{"status":"budget_exhausted","steps":12,"r0":128,"r1":33554434,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":4286611200,"iwram_word0":0}'
+verify_thumb_ldrb thumb-ldrb-ewram-thirtyone-odd-ff \
+    '{"status":"budget_exhausted","steps":12,"r0":255,"r1":33554404,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":4286611200,"iwram_word0":0}'
+verify_thumb_ldrb thumb-ldrb-iwram-zero-odd-7f \
+    '{"status":"budget_exhausted","steps":12,"r0":127,"r1":50331649,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":4286611200}'
+verify_thumb_ldrb thumb-ldrb-iwram-thirtyone-even-zero \
+    '{"status":"budget_exhausted","steps":12,"r0":0,"r1":50331617,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":0,"iwram_word0":4286611200}'
+verify_thumb_ldrb thumb-ldrb-ewram-thirtyone-alias-80 \
+    '{"status":"budget_exhausted","steps":12,"r0":2864434397,"r1":128,"pc":"0x08000086","cpsr":"0x6000003F","guest_cycle":12,"ewram_word0":4286611200,"iwram_word0":0}'
+
+for mode in thumb-ldrb-invalid-odd thumb-ldrb-wraparound; do
+    rom="$root/target/gba020/$mode.gba"
+    python3 fixtures/tiny-counter/make_rom.py --out "$rom" --mode "$mode"
+    for optimization in O0 O2; do
+        package="$root/target/gba020/$mode-package-$optimization"
+        output="$root/target/gba020/$mode-$optimization.txt"
+        rm -rf "$package"
+        cargo run --locked --quiet -p gba-recomp -- compile \
+            --rom "$rom" --out "$package" --opt "$optimization" --steps 12
+        python3 - "$package/manifest.json" "$optimization" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert manifest["execution_mode"] == "strict-aot"
+assert manifest["abi_version"] == 4
+assert manifest["machine_state_version"] == 1
+assert manifest["bios_hle_version"] == 1
+assert manifest["instructions_aot"] == 14
+assert manifest["optimization"] == sys.argv[2]
+assert manifest["run_instruction_budget"] == 12
+PY
+        if "$package/game" >"$output" 2>&1; then
+            echo "$optimization $mode unexpectedly completed without a fault" >&2
+            exit 1
+        fi
+        if [ "$mode" = thumb-ldrb-invalid-odd ]; then
+            expected_fault='guest stopped: reason=4 pc=0x08000084 address=0x04000001 fault_code=5'
+        else
+            expected_fault='guest stopped: reason=4 pc=0x08000084 address=0x00000000 fault_code=5'
+        fi
+        if ! grep -Fq "$expected_fault" "$output"; then
+            cat "$output" >&2
+            echo "$optimization $mode did not report the expected faulting PC and EA" >&2
+            exit 1
+        fi
+    done
+done
+
 thumb_strb_invalid_rom="$root/target/gba020/thumb-strb-invalid-odd.gba"
 python3 fixtures/tiny-counter/make_rom.py \
     --out "$thumb_strb_invalid_rom" --mode thumb-strb-invalid-odd
@@ -593,7 +676,7 @@ PY
     fi
 done
 
-for mode in thumb-ldrb-unsupported thumb-strb-register-unsupported; do
+for mode in thumb-ldrb-register-unsupported thumb-strb-register-unsupported; do
     rom="$root/target/gba020/$mode.gba"
     package="$root/target/gba020/$mode-package"
     output="$root/target/gba020/$mode.txt"

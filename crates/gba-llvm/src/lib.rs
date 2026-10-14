@@ -297,6 +297,7 @@ unsafe fn build_arm_program_function(
     exit_type: LLVMTypeRef,
     program: &ArmProgram,
 ) -> Result<(), String> {
+    let i8_type = unsafe { LLVMInt8TypeInContext(context) };
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
     let i64_type = unsafe { LLVMInt64TypeInContext(context) };
     let mut parameters = unsafe {
@@ -433,6 +434,28 @@ unsafe fn build_arm_program_function(
         unsafe { LLVMAddFunction(module, store8_helper_name.as_ptr(), store8_helper_type) };
     if store8_helper.is_null() {
         return Err("LLVMAddFunction for gba_store8_v3 returned null".to_owned());
+    }
+    let mut load8_parameters = unsafe {
+        [
+            LLVMPointerType(runtime_v3_type, 0),
+            LLVMPointerType(exit_type, 0),
+            i32_type,
+            LLVMPointerType(i8_type, 0),
+        ]
+    };
+    let load8_helper_type = unsafe {
+        LLVMFunctionType(
+            i32_type,
+            load8_parameters.as_mut_ptr(),
+            load8_parameters.len() as u32,
+            0,
+        )
+    };
+    let load8_helper_name = CString::new("gba_load8_v3").expect("static name contains no NUL");
+    let load8_helper =
+        unsafe { LLVMAddFunction(module, load8_helper_name.as_ptr(), load8_helper_type) };
+    if load8_helper.is_null() {
+        return Err("LLVMAddFunction for gba_load8_v3 returned null".to_owned());
     }
     let mut push_parameters = unsafe {
         [
@@ -710,6 +733,8 @@ unsafe fn build_arm_program_function(
                 store16_helper,
                 store8_helper_type,
                 store8_helper,
+                load8_helper_type,
+                load8_helper,
                 runtime_v4,
                 hle_helper_type,
                 hle_helper,
@@ -1195,10 +1220,13 @@ unsafe fn lower_thumb_instruction(
     store16_helper: LLVMValueRef,
     store8_helper_type: LLVMTypeRef,
     store8_helper: LLVMValueRef,
+    load8_helper_type: LLVMTypeRef,
+    load8_helper: LLVMValueRef,
     runtime_v4: LLVMValueRef,
     hle_helper_type: LLVMTypeRef,
     hle_helper: LLVMValueRef,
 ) -> Result<(), String> {
+    let i8_type = unsafe { LLVMInt8TypeInContext(context) };
     let i32_type = unsafe { LLVMInt32TypeInContext(context) };
     match instruction.operation {
         ThumbOperation::LslImmediate { rd, rs, amount } => {
@@ -1524,6 +1552,100 @@ unsafe fn lower_thumb_instruction(
             unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
             unsafe { LLVMBuildRet(builder, status) };
             unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let next_pc = unsafe {
+                LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
+            };
+            unsafe {
+                commit_thumb_instruction(
+                    context,
+                    builder,
+                    runtime_type,
+                    exit_type,
+                    runtime,
+                    exit,
+                    cycles,
+                    i32_type,
+                    next_pc,
+                )
+            };
+        }
+        ThumbOperation::LoadByteImmediate { rd, rb, imm5 } => {
+            if rd > 7 || rb > 7 || imm5 > 31 {
+                return Err(format!(
+                    "invalid Thumb LDRB operands at 0x{:08X}",
+                    instruction.guest_pc
+                ));
+            }
+            let base_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rb) };
+            // Snapshot Rb before the helper so Rd==Rb uses the old base value.
+            let base = unsafe {
+                LLVMBuildLoad2(builder, i32_type, base_pointer, c"thumb_ldrb_base".as_ptr())
+            };
+            let byte_offset = unsafe { LLVMConstInt(i32_type, u64::from(imm5), 0) };
+            // Plain i32 addition gives the guest u32 wrapping EA.
+            let guest_ea = unsafe {
+                LLVMBuildAdd(builder, base, byte_offset, c"thumb_ldrb_guest_ea".as_ptr())
+            };
+            let host_value_out =
+                unsafe { LLVMBuildAlloca(builder, i8_type, c"thumb_ldrb_host_value_out".as_ptr()) };
+            let mut arguments = [runtime, exit, guest_ea, host_value_out];
+            let status = unsafe {
+                LLVMBuildCall2(
+                    builder,
+                    load8_helper_type,
+                    load8_helper,
+                    arguments.as_mut_ptr(),
+                    arguments.len() as u32,
+                    c"thumb_ldrb_status".as_ptr(),
+                )
+            };
+            let succeeded = unsafe {
+                LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    status,
+                    LLVMConstInt(i32_type, 0, 0),
+                    c"thumb_ldrb_succeeded".as_ptr(),
+                )
+            };
+            let success = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_ldrb_success_{:08X}", instruction.guest_pc),
+                )
+            };
+            let failure = unsafe {
+                append_block(
+                    context,
+                    function,
+                    &format!("thumb_ldrb_failure_{:08X}", instruction.guest_pc),
+                )
+            };
+            unsafe { LLVMBuildCondBr(builder, succeeded, success, failure) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, failure) };
+            unsafe { LLVMBuildRet(builder, status) };
+            unsafe { LLVMPositionBuilderAtEnd(builder, success) };
+            let loaded_byte = unsafe {
+                LLVMBuildLoad2(
+                    builder,
+                    i8_type,
+                    host_value_out,
+                    c"thumb_ldrb_loaded_byte".as_ptr(),
+                )
+            };
+            let loaded_value = unsafe {
+                LLVMBuildZExt(
+                    builder,
+                    loaded_byte,
+                    i32_type,
+                    c"thumb_ldrb_zero_extended_value".as_ptr(),
+                )
+            };
+            let destination_pointer =
+                unsafe { register_pointer(builder, context, runtime_type, runtime, rd) };
+            unsafe { LLVMBuildStore(builder, loaded_value, destination_pointer) };
             let next_pc = unsafe {
                 LLVMConstInt(i32_type, u64::from(instruction.guest_pc.wrapping_add(2)), 0)
             };

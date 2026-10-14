@@ -182,6 +182,17 @@ pub fn decode_thumb(guest_pc: u32, encoding: u16) -> Result<ThumbInstruction, St
             },
         });
     }
+    if encoding & 0xF800 == 0x7800 {
+        return Ok(ThumbInstruction {
+            guest_pc,
+            encoding,
+            operation: ThumbOperation::LoadByteImmediate {
+                rd: (encoding & 0x7) as u8,
+                rb: ((encoding >> 3) & 0x7) as u8,
+                imm5: ((encoding >> 6) & 0x1F) as u8,
+            },
+        });
+    }
     if encoding & 0xF800 == 0x8000 {
         return Ok(ThumbInstruction {
             guest_pc,
@@ -575,9 +586,43 @@ mod tests {
                 imm5: 31,
             }
         );
-        for encoding in [0x7808, 0x5408, 0x5C08] {
+        for encoding in [0x5408, 0x5C08] {
             assert!(
                 decode_thumb(0x0800_0998, encoding).is_err(),
+                "encoding 0x{encoding:04X} must remain unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn decodes_thumb_ldrb_immediate_format_9_and_rejects_other_byte_forms() {
+        assert_eq!(
+            decode_thumb(0x0800_099C, 0x7808).unwrap().operation,
+            ThumbOperation::LoadByteImmediate {
+                rd: 0,
+                rb: 1,
+                imm5: 0,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_099C, 0x7FC5).unwrap().operation,
+            ThumbOperation::LoadByteImmediate {
+                rd: 5,
+                rb: 0,
+                imm5: 31,
+            }
+        );
+        assert_eq!(
+            decode_thumb(0x0800_099C, 0x7FFF).unwrap().operation,
+            ThumbOperation::LoadByteImmediate {
+                rd: 7,
+                rb: 7,
+                imm5: 31,
+            }
+        );
+        for encoding in [0x5C08, 0x5808, 0x8808] {
+            assert!(
+                decode_thumb(0x0800_099C, encoding).is_err(),
                 "encoding 0x{encoding:04X} must remain unsupported"
             );
         }

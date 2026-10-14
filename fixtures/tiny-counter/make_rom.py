@@ -394,7 +394,6 @@ def generate(mode: str = "valid") -> bytes:
         "thumb-strb-ewram-thirtyone-even-alias",
         "thumb-strb-invalid-odd",
         "thumb-strb-wraparound",
-        "thumb-ldrb-unsupported",
         "thumb-strb-register-unsupported",
     ):
         cases = {
@@ -439,12 +438,6 @@ def generate(mode: str = "valid") -> bytes:
                 0xFFFFFFE1,
                 0x02000000,
             ),
-            "thumb-ldrb-unsupported": (
-                0x7808,
-                0x000000A5,
-                0x02000000,
-                0x02000000,
-            ),
             # STRB r0,[r1,r2], Format 7 register-offset.
             "thumb-strb-register-unsupported": (
                 0x5488,
@@ -472,6 +465,93 @@ def generate(mode: str = "valid") -> bytes:
         )
         image[0xE8:0xF8] = struct.pack(
             "<4I", 0x44332211, initialized_region, value, base
+        )
+        image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
+        image[0xFC:0x100] = struct.pack("<I", 0x08000085)
+    elif mode in (
+        "thumb-ldrb-ewram-zero-even-80",
+        "thumb-ldrb-ewram-thirtyone-odd-ff",
+        "thumb-ldrb-iwram-zero-odd-7f",
+        "thumb-ldrb-iwram-thirtyone-even-zero",
+        "thumb-ldrb-ewram-thirtyone-alias-80",
+        "thumb-ldrb-invalid-odd",
+        "thumb-ldrb-wraparound",
+        "thumb-ldrb-register-unsupported",
+    ):
+        cases = {
+            # Format 9: 01111 imm5 Rb Rd. The word exposes bytes
+            # 00, 7F, 80, FF so fixtures check zero-extension at each value.
+            "thumb-ldrb-ewram-zero-even-80": (
+                0x7808,
+                0xAABBCCDD,
+                0x02000002,
+                0x02000000,
+            ),
+            "thumb-ldrb-ewram-thirtyone-odd-ff": (
+                0x7FC8,
+                0xAABBCCDD,
+                0x01FFFFE4,
+                0x02000000,
+            ),
+            "thumb-ldrb-iwram-zero-odd-7f": (
+                0x7808,
+                0xAABBCCDD,
+                0x03000001,
+                0x03000000,
+            ),
+            "thumb-ldrb-iwram-thirtyone-even-zero": (
+                0x7FC8,
+                0xAABBCCDD,
+                0x02FFFFE1,
+                0x03000000,
+            ),
+            # Rd==Rb: old r1 supplies EA; the loaded byte replaces it.
+            "thumb-ldrb-ewram-thirtyone-alias-80": (
+                0x7FC9,
+                0xAABBCCDD,
+                0x01FFFFE3,
+                0x02000000,
+            ),
+            "thumb-ldrb-invalid-odd": (
+                0x7FC8,
+                0xAABBCCDD,
+                0x03FFFFE2,
+                0x02000000,
+            ),
+            # 0xFFFFFFE1 + 31 wraps to the exact guest EA 0.
+            "thumb-ldrb-wraparound": (
+                0x7FC8,
+                0xAABBCCDD,
+                0xFFFFFFE1,
+                0x02000000,
+            ),
+            # LDRB r0,[r1,r0], Format 7 register-offset.
+            "thumb-ldrb-register-unsupported": (
+                0x5C08,
+                0xAABBCCDD,
+                0x02000000,
+                0x02000000,
+            ),
+        }
+        encoding, initial_rd, base, initialized_region = cases[mode]
+        image[0x84:0x88] = struct.pack(
+            "<2H", encoding, 0x4718
+        )  # LDRB/negative form; BX r3 returns to the ARM self-loop.
+        image[0xC0:0xE8] = struct.pack(
+            "<10I",
+            0xE59F0020,  # LDR r0,[pc,#0x20] -> source word at 0xE8.
+            0xE59F1020,  # LDR r1,[pc,#0x20] -> RAM start at 0xEC.
+            0xE5810000,  # STR source word,[r1].
+            0xE3A04080,  # MOV r4,#0x80.
+            0xE3540080,  # CMP r4,#0x80 -> Z=1,C=1; LDRB preserves flags.
+            0xE59F0014,  # LDR r0,[pc,#0x14] -> initial Rd at 0xF0.
+            0xE59F1014,  # LDR r1,[pc,#0x14] -> LDRB base at 0xF4.
+            0xE59F2018,  # LDR r2,[pc,#0x18] -> Thumb entry | 1 at 0xFC.
+            0xE28F3010,  # ADD r3,pc,#0x10 -> ARM loop at 0x080000F8.
+            0xE12FFF12,  # BX r2.
+        )
+        image[0xE8:0xF8] = struct.pack(
+            "<4I", 0xFF807F00, initialized_region, initial_rd, base
         )
         image[0xF8:0xFC] = struct.pack("<I", branch(0xF8, 0xF8))
         image[0xFC:0x100] = struct.pack("<I", 0x08000085)
@@ -574,8 +654,15 @@ def main() -> None:
             "thumb-strb-ewram-thirtyone-even-alias",
             "thumb-strb-invalid-odd",
             "thumb-strb-wraparound",
-            "thumb-ldrb-unsupported",
             "thumb-strb-register-unsupported",
+            "thumb-ldrb-ewram-zero-even-80",
+            "thumb-ldrb-ewram-thirtyone-odd-ff",
+            "thumb-ldrb-iwram-zero-odd-7f",
+            "thumb-ldrb-iwram-thirtyone-even-zero",
+            "thumb-ldrb-ewram-thirtyone-alias-80",
+            "thumb-ldrb-invalid-odd",
+            "thumb-ldrb-wraparound",
+            "thumb-ldrb-register-unsupported",
             "store-ewram",
             "store-iwram",
             "store-out-of-range",
