@@ -144,10 +144,14 @@ fn locate(sdl_dir: &Path) -> Result<Toolchain, String> {
 /// SDL's `org/libsdl/app` Java sources (the `android-project` of the SDL
 /// release the library was built from).
 fn sdl_java_dir(sdl_dir: &Path) -> Result<PathBuf, String> {
+    find_sdl_java(sdl_dir, env::var_os("SDL3_ANDROID_SOURCE").map(PathBuf::from))
+}
+
+fn find_sdl_java(sdl_dir: &Path, source: Option<PathBuf>) -> Result<PathBuf, String> {
     let rel = Path::new("android-project/app/src/main/java").join(SDL_JAVA);
     let mut candidates = Vec::new();
-    if let Some(src) = env::var_os("SDL3_ANDROID_SOURCE") {
-        candidates.push(PathBuf::from(src).join(&rel));
+    if let Some(src) = source {
+        candidates.push(src.join(&rel));
     }
     candidates.push(sdl_dir.join("java").join(SDL_JAVA));
     let mut dir = Some(sdl_dir);
@@ -398,7 +402,7 @@ mod tests {
         let sdl_build = base.join("sdl/build-android");
         fs::create_dir_all(&sdl_build).unwrap();
         // The Java sources are found next to the SDL build directory.
-        let found = sdl_java_dir(&sdl_build).unwrap();
+        let found = find_sdl_java(&sdl_build, None).unwrap();
         assert_eq!(found, java);
 
         let project = base.join("project");
