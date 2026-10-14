@@ -10,7 +10,7 @@ Esta tranche aceita somente Thumb `STRB` imediato para EWRAM/IWRAM físicas. Nã
 
 ## Requisitos
 
-- TSB-01: o decoder MUST aceitar somente `(encoding & 0xF800) == 0x7000`. Deve extrair `imm5=bits[10:6]`, `Rb=bits[5:3]` e `Rd=bits[2:0]`, todos em r0–r7. O offset byte é `imm5` (0–31), sem escala. `LDRB`, `STRB` com offset por registrador e os demais formatos permanecem rejeitados.
+- TSB-01: o decoder MUST aceitar somente `(encoding & 0xF800) == 0x7000`. Deve extrair `imm5=bits[10:6]`, `Rb=bits[5:3]` e `Rd=bits[2:0]`, todos em r0–r7. O offset byte é `imm5` (0–31), sem escala. `STRB` com offset por registrador e os demais formatos permanecem rejeitados; LDRB imediato é tratado separadamente pela [SPEC-029](SPEC-029-thumb-ldrb-immediate.md).
 - TSB-02: o endereço efetivo guest MUST ser `EA = wrapping_add(Rb, imm5)` em aritmética u32. Não há alinhamento ou normalização; o endereço do byte acessado é exatamente EA.
 - TSB-03: o acesso MUST gravar `Rd & 0xFF` em exatamente um byte. Não deve alterar bytes adjacentes, `Rb`/`Rd`, flags ou executar writeback. Se `Rd==Rb`, endereço e valor vêm do registrador guest anterior à instrução.
 - TSB-04: `gba_store8_v3` MUST receber o contexto guest versionado e endereço guest como inteiros. Deve validar ABI/contexto e aceitar somente bytes nas faixas físicas `[0x02000000,0x02040000)` ou `[0x03000000,0x03008000)`. O primeiro e o último byte de cada faixa são válidos; `0x02040000` e `0x03008000` não são. Nunca converter endereço guest em ponteiro host.
@@ -37,11 +37,11 @@ Esta tranche aceita somente Thumb `STRB` imediato para EWRAM/IWRAM físicas. Nã
 | `out==NULL` | Retorna fault sem escrita/relatório |
 | Estado CPU | Só PC+2 e ciclo abstrato +1 mudam |
 | O0/O2 | Estado guest igual, manifesto strict-AOT |
-| LDRB e STRB por registrador | Falham antes de publicar pacote parcial |
+| STRB por registrador | Falha antes de publicar pacote parcial |
 
 ## Fixtures e verificação
 
-O teste C de `gba_store8_v3` MUST cobrir as duas RAMs, truncamento para byte, sentinelas adjacentes, bytes inicial/final, endereço além das faixas, mirror/ROM/MMIO, runtime/ABI/memória/output inválidos, PC/EA e falha atômica. Fixtures strict-AOT O0/O2 MUST cobrir EWRAM/IWRAM, offsets 0/31, EA par/ímpar, alias `Rd==Rb`, wrapping u32, PC/ciclo/registradores/flags e manifesto. Casos negativos MUST incluir LDRB e store por registrador, sem pacote parcial.
+O teste C de `gba_store8_v3` MUST cobrir as duas RAMs, truncamento para byte, sentinelas adjacentes, bytes inicial/final, endereço além das faixas, mirror/ROM/MMIO, runtime/ABI/memória/output inválidos, PC/EA e falha atômica. Fixtures strict-AOT O0/O2 MUST cobrir EWRAM/IWRAM, offsets 0/31, EA par/ímpar, alias `Rd==Rb`, wrapping u32, PC/ciclo/registradores/flags e manifesto. Casos negativos MUST incluir store por registrador e demais formatos fora desta spec, sem pacote parcial. A aceitação de LDRB imediato tem critérios próprios na SPEC-029.
 
 Após os gates, repetir a compilação estática de LeafGreen e registrar somente o limite observado. A nova descoberta não prova valores de registradores, destino da escrita ou execução dinâmica do título.
 
