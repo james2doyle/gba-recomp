@@ -53,3 +53,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-049 — Preservar fatos de latches após DMA3 imediato ROM→IWRAM](SPEC-049-discovery-safe-dma3-latches.md)
 - [SPEC-050 — Branch incondicional Thumb Format 18 em AOT estrito](SPEC-050-thumb-unconditional-branch.md)
 - [SPEC-051 — ANDS Thumb Format 4 por registrador em AOT estrito](SPEC-051-thumb-and-register.md)
+- [SPEC-052 — NEGS Thumb Format 4 por registrador em AOT estrito](SPEC-052-thumb-negate-register.md)
