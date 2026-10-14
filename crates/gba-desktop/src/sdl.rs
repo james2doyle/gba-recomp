@@ -288,6 +288,29 @@ pub fn set_hint(name: &str, value: &str) {
     }
 }
 
+#[cfg(target_os = "android")]
+unsafe extern "C" {
+    fn SDL_GetPrefPath(org: *const c_char, app: *const c_char) -> *mut c_char;
+}
+
+/// Per-app writable directory (SPEC-068): on Android `SDL_GetPrefPath`
+/// returns the app's internal storage (`/data/data/<package>/files/`).
+/// SDL documents it as callable before `SDL_Init`.
+#[cfg(target_os = "android")]
+pub fn pref_path() -> Option<std::path::PathBuf> {
+    // SAFETY: valid C strings; the returned buffer is owned by us and freed
+    // with SDL_free after copying.
+    unsafe {
+        let p = SDL_GetPrefPath(c"gba-recomp".as_ptr(), c"gba-recomp".as_ptr());
+        if p.is_null() {
+            return None;
+        }
+        let path = CStr::from_ptr(p).to_string_lossy().into_owned();
+        SDL_free(p.cast());
+        Some(std::path::PathBuf::from(path))
+    }
+}
+
 /// SDL name of a scancode (e.g. "Z", "Return"); empty if unknown.
 pub fn scancode_name(scancode: usize) -> String {
     // SAFETY: plain FFI call; unknown scancodes yield "".

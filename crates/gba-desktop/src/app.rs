@@ -182,6 +182,10 @@ fn open_external_settings(settings_path: Option<&Path>) -> Result<(), String> {
 /// Launch a companion app shipped next to this executable (settings,
 /// party), falling back to PATH.
 fn open_companion(name: &str, args: &[&std::ffi::OsStr]) -> Result<(), String> {
+    // SPEC-068 TGT-68-03: Android ships no companion apps.
+    if cfg!(target_os = "android") {
+        return Err(format!("{name} is not available on Android"));
+    }
     let exe_name = if cfg!(windows) {
         format!("{name}.exe")
     } else {

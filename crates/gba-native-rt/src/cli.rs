@@ -299,7 +299,7 @@ fn run_window(
     entries: &[AotEntry],
     guards: &[AotGuard],
     rom: Vec<u8>,
-    _sha256: [u8; 32],
+    sha256: [u8; 32],
 ) -> Result<(), String> {
     let mut program = NativeProgram::new(entries, guards);
     let header_title: String = Some(&rom)
@@ -316,7 +316,12 @@ fn run_window(
         rom: o.rom.clone().unwrap_or_default(),
         rom_bytes: Some(rom),
         bios: o.bios.clone(),
-        save: o.save.clone(),
+        // Android (SPEC-068) has no command line: keep the save in the
+        // app's internal storage unless --save was given.
+        save: o.save.clone().or_else(|| {
+            gba_desktop::settings::android_pref_path()
+                .map(|d| d.join(format!("{}.sav", &hex(&sha256)[..16])))
+        }),
         backup: o.backup,
         frames: o.frames_given.then_some(o.frames),
         settings_path: o.settings.clone(),
