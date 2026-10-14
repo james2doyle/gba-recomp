@@ -313,3 +313,6 @@ impl Backup {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

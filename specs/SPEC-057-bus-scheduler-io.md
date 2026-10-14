@@ -33,6 +33,10 @@ Prefetch buffer exato do Game Pak (modelado como custo agregado, ver BUS-57-04),
 
 Mirrors de cada região; byte write em Palette/VRAM/OAM; open bus; WAITCNT alterado em execução; IF write-one-to-clear; HALT com IRQ pendente e com IME=0; DMA imediato/VBlank/HBlank, repeat, reload, count 0, decremento; timers cascade e overflow simultâneos; leitura de contador entre overflows. Diferencial com mGBA de ciclos por frame em ROMs de teste quando disponível.
 
+## Verificação
+
+Testes unitários em `crates/gba-core/src/bus/tests.rs` (35 testes, `cargo test -p gba-core`, 2026-10-14) cobrem: mirrors de EWRAM/IWRAM/Palette/VRAM (janela de 128 KiB)/OAM/ROM (0x08/0x0A/0x0C e leitura além do fim = endereço/2)/SRAM; BIOS protegida devolvendo o último opcode; open bus (BIOS acima de 0x4000, 0x01xxxxxx, 0x10+, I/O acima de 0x400, fetch Thumb replicado); duplicação de byte em Palette/VRAM BG e descarte em OAM/VRAM OBJ (modos texto e bitmap); alinhamento halfword/word; custos por região, WAITCNT alterado em execução e prefetch; IF write-one-to-clear (halfword e byte), linha IRQ, writes de byte em IE/IME/WAITCNT/DMA/timers; HALTCNT/STOP; DMA imediato/VBlank/HBlank (só linhas visíveis), repeat, reload, recarga de count, count 0 (0x4000/0x10000), 0x4000 explícito, incremento/decremento/fixo, 16/32 bits, IRQ ao fim, prioridade 0 > 3 e custo; timers com prescalers, reload, IRQ, leituras entre overflows, cascade, overflows simultâneos, parada/reinício e TM0 ignorando cascade; DISPSTAT/VCOUNT; KEYCNT OR/AND; contagem de MMIO não modelado. HALT com IME=0 e o caminho do stub IRQ são testados em `gba/tests.rs`. O diferencial de ciclos contra mGBA continua pendente. Bugs corrigidos ao escrever os testes: [KNO-007](../knowledge/KNO-007-interpreted-core.md#bugs-corrigidos-pelos-testes-unitários).
+
 ## Referências
 
 [SPEC-005](SPEC-005-runtime-timing.md), [SPEC-056](SPEC-056-armv4t-interpreter.md), [ADR-041](../adr/ADR-041-interpreter-first-core.md), GBATEK.

@@ -24,6 +24,10 @@ Sem RTC/GPIO (Ruby/Sapphire/Emerald precisarão), sem savestate (STATE-01). Os I
 
 Testes unitários de compressão (LZ77/RL/Huffman/Diff), Div/Sqrt/ArcTan2, protocolo Flash e EEPROM; LeafGreen grava e relê save (KNO-007).
 
+## Verificação
+
+Testes em `crates/gba-core/src/bios/tests.rs` (21), `backup/tests.rs` (11) e `gba/tests.rs` (5), 2026-10-14: Div/DivArm com sinais e overflow, Sqrt, ArcTan/ArcTan2 contra avaliação independente da fórmula GBATEK nos quatro quadrantes, CpuSet/CpuFastSet (cópia/fill 16/32, arredondamento a 8 words), LZ77 (WRAM em bytes com destino ímpar vs VRAM em halfwords), RL, Huffman 4/8 bits, Diff8/Diff16, BitUnPack (offset, flag de zero, 8→32), BgAffineSet/ObjAffineSet (identidade, 90°/180°, stride 2/8), RegisterRamReset por flag, SoftReset, IntrWait/VBlankIntrWait (descarte, HALT, reexecução até o flag em 0x03007FF8), SWIs simples e `UnsupportedSwi`; backup: detecção por assinatura, SRAM, Flash (modo ID 64/128 KiB, program com AND, erase de setor/chip, troca de banco), EEPROM 512 B/8 KiB por acessos de 16 bits e por DMA com inferência de tamanho; sistema: ROMs ARM montadas à mão contando frames pelo stub IRQ da BIOS e por VBlankIntrWait, e HALT com IME=0. MidiKey2Freq e a persistência atômica do host (SAVE-60-01, no `gba-run`) não têm teste aqui; a gravação de save na LeafGreen continua pendente. Bugs corrigidos: [KNO-007](../knowledge/KNO-007-interpreted-core.md#bugs-corrigidos-pelos-testes-unitários).
+
 ## Referências
 
 [SPEC-007](SPEC-007-bios-cart-state.md), [SPEC-023](SPEC-023-thumb-swi-register-ram-reset.md), GBATEK.
