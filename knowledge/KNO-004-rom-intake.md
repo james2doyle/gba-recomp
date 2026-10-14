@@ -138,6 +138,14 @@ Uma inspeção LLDB do processo recompilador, imediatamente antes do dispatch do
 
 O MCP REA respondeu nesta investigação, mas não abriu o `.gba`: `open_binary` retornou `target_unavailable`, razão `unsupported binary format`, `retryable=false`. Não há Evidence ID de análise ou decompilação REA para esta tentativa. O registro anterior de `Transport closed` permanece associado à chamada anterior.
 
+## Tentativa após SPEC-035 — Thumb LDMIA T1
+
+No commit `b5da17fb6b179653c35edcb32c4a37b1ace1fdc3`, LDMIA Thumb T1 foi implementada em strict-AOT. `cargo test --locked --workspace --jobs 10` passou com 52 testes em `gba-ir` e 65 em `gba-recomp`; o gate completo passou com fixtures O0/O2 para base ROM singleton e RAM dinâmica, harness ABI, bordas e rejeições atômicas. Consulte [evidência com hashes](evidence/gba020-thumb-ldmia-macos-arm64.json).
+
+Repetindo `target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-ldmia-20261013-O2 --opt O2 --steps 100` para a ROM de SHA-256 `2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825`, a descoberta estática passou por `0xCB01` em `0x080006A8` e parou em `0x080006AA`, raw `0xC201`, com `unsupported_thumb_instruction`. Um breakpoint no processo do compilador confirmou singletons abstratos `r0`, `r2` e `r3` na entrada. Os literais fixos permitem inferir `r2=0x03003540`, `r3=0x081E9F78` após o LDMIA e `r0=0x08000821`, lendo a word little-endian em `0x081E9F74`. Os campos de `0xC201` inferem `STMIA r2!,{r0}`; caso executada, gravaria a word em `0x03003540` e faria writeback de `r2` para `0x03003544`. A classificação e estado pertencem à descoberta estática/artefato, não comprovam que o caminho seja executado, que a escrita ocorra, nem que o bus complete a transação. A pasta de pacote não foi criada; a ROM não foi executada.
+
+REA `binary_session` nesta retomada terminou com `Transport closed`. A chamada anterior `open_binary` continua registrada como `target_unavailable` por `unsupported binary format`, `retryable=false`; não há Evidence ID de análise/decompilação para a ROM. A próxima fronteira fundamenta a [SPEC-036](../specs/SPEC-036-thumb-stmia.md), sem afirmar suporte ou execução do título.
+
 ## Reprodução
 
 Ler bytes localmente, calcular `hashlib.sha256`, extrair offsets 0xA0–0xBD e procurar padrões de SDK `FLASH1M_V[0-9]{3}` sem publicar payloads. Repetir abertura REA somente após suporte ao formato ou artefato derivado com origem explícita; renomear `.gba` para `.elf` não resolve o formato.

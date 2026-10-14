@@ -1,0 +1,175 @@
+{
+  "record_type": "strict-aot-thumb-ldmia-and-parallel-gate-evidence",
+  "date": "2026-10-13",
+  "implementation_commit": "b5da17fb6b179653c35edcb32c4a37b1ace1fdc3",
+  "spec_commit": "c1c5b8917e843dc02a2f979715d33a998867e3f1",
+  "parallelism_decision_commit_before_measurement": "1f505ceba6533010fb20a6250b2c61e6fce09a91",
+  "environment": {
+    "os": "macOS 15.3.1",
+    "architecture": "arm64",
+    "logical_cpu_count": 10,
+    "memory_bytes": 17179869184,
+    "rust": "1.99.0 (b940084d7 2026-09-28)",
+    "llvm_backend": "23.1.3",
+    "target": "aarch64-apple-darwin",
+    "llvm_prefix": "/private/tmp/gba-recomp-llvm-macos"
+  },
+  "implementation": {
+    "spec": "SPEC-035",
+    "decoder": "Thumb LDMIA T1 only; empty list and STMIA remain rejected",
+    "runtime_helper": "gba_ldmia_thumb_v3; dynamic physical EWRAM/IWRAM only; validates the complete range before committing guest registers",
+    "rom_fold": "singleton base proven by static discovery; words read from immutable source image and emitted as constants",
+    "timing": "one abstract guest cycle; not ARM7TDMI/GBA hardware timing",
+    "fallback": "strict-AOT; no interpreter or JIT fallback"
+  },
+  "verification": {
+    "rust_tests": {
+      "command": "cargo test --locked --workspace --jobs 10",
+      "result": "passed",
+      "gba_ir_tests": 52,
+      "gba_recomp_tests": 65
+    },
+    "runtime_v3_c_harness": {
+      "compiler": "LLVM clang 23.1.3",
+      "result": "passed",
+      "cases": [
+        "sparse ascending-register order",
+        "misaligned guest base aligns each word address down and preserves low bits in writeback",
+        "base register included in list keeps the loaded word",
+        "full eight-register transfer ending at EWRAM boundary",
+        "atomic rejection when a transfer crosses the region boundary",
+        "reject ROM, invalid register/list, invalid runtime/CPU ABI and null memory/output"
+      ]
+    },
+    "static_checks": {
+      "cargo_fmt_all_check": "passed",
+      "git_diff_check": "passed",
+      "shell_syntax": "passed for scripts/verify-gba020.sh and scripts/verify-gba020-lsl.sh",
+      "python_fixture_ast": "passed"
+    }
+  },
+  "ldmia_fixtures": {
+    "thumb-ldmia-rom-bx": {
+      "rom_sha256": "3f02389e2dc4782606b0ef279aec86d786ba1a3a3d5b14342b947da031a72aef",
+      "strict_aot": true,
+      "steps": 9,
+      "instructions_aot": 10,
+      "expected_and_observed_stdout_o0_o2": "{\"status\":\"budget_exhausted\",\"steps\":9,\"r0\":134217865,\"r1\":51,\"pc\":\"0x080000F4\",\"cpsr\":\"0x0000001F\",\"guest_cycle\":9,\"ewram_word0\":0,\"iwram_word0\":0}",
+      "optimizations": {
+        "O0": {
+          "game_sha256": "1f7cb2f519b76fb1c693fff4bb296688e45657ccfb50de7813995e1928f9f29f",
+          "manifest_sha256": "7a66a7732b7e572cbd7bef76b1a73093616361dea7d4ed6a1592e0433ebbbe4b"
+        },
+        "O2": {
+          "game_sha256": "815288c007d64035dc419bc776219fdc6185d3a0b6a97a2c8e44cda93e68fd4e",
+          "manifest_sha256": "07e68476a4b254eaaf374f53aec9ef9941e13a3948099ab32d0b06d8ee34f624"
+        }
+      }
+    },
+    "thumb-ldmia-iwram-bx": {
+      "rom_sha256": "f5b67b0e188106c8ecebd67180f85bca343929e97259add772449787c3a0412e",
+      "strict_aot": true,
+      "steps": 12,
+      "instructions_aot": 13,
+      "expected_and_observed_stdout_o0_o2": "{\"status\":\"budget_exhausted\",\"steps\":12,\"r0\":134217869,\"r1\":51,\"pc\":\"0x080000F8\",\"cpsr\":\"0x0000001F\",\"guest_cycle\":12,\"ewram_word0\":0,\"iwram_word0\":134217869}",
+      "optimizations": {
+        "O0": {
+          "game_sha256": "618d2baa5a200cc5c26cc8c15d2822a75137efff845c0b6ec4456f957640df2e",
+          "manifest_sha256": "ba3f60236f7dcceae0c4f3ebb1711581d9d2ade9d3897b105685fe7c5067ea2a"
+        },
+        "O2": {
+          "game_sha256": "caa4f6fa950d9ce1c122dd4a5643898e4a268f3fbcf1c4fda1abd2c5fd88dcdb",
+          "manifest_sha256": "beadda2d014c6a581f313b9109ea988491b4ce05de043337f48a0b894f25e2f5"
+        }
+      }
+    },
+    "negative_cases": {
+      "rom_load_outside_source_image": "strict-AOT rejected before package creation",
+      "empty_ldmia_list": "rejected as unpredictable before package creation",
+      "stmia": "remains unsupported before package creation"
+    }
+  },
+  "full_headless_gate": {
+    "command": "scripts/verify-gba020.sh with defaults GBA020_JOBS=7 and GBA020_LINK_THREADS=1",
+    "result": "passed",
+    "wall_seconds": 42.92,
+    "user_cpu_seconds": 19.56,
+    "system_cpu_seconds": 8.81,
+    "time_reported_maximum_resident_set_bytes": 41533440,
+    "swap_operations": 0,
+    "includes": "complete existing GBA-020 suite plus LDMIA O0/O2, runtime ABI C harness and negative package-atomicity cases",
+    "measurement_state": "recompiler binary was already built; not comparable with the cold build run"
+  },
+  "lsl_parallelism_benchmark": {
+    "script": "scripts/verify-gba020-lsl.sh",
+    "fixtures": "seven Thumb LSL modes, each emitted and executed at O0 and O2",
+    "method": "three warmed alternating runs per configuration, same host/toolchain/binary; /usr/bin/time -lp",
+    "runs": {
+      "pool_4": {
+        "workers": 4,
+        "lld_threads_per_link": 2,
+        "wall_seconds": [1.69, 1.65, 1.68],
+        "median_wall_seconds": 1.68,
+        "user_cpu_seconds": [1.74, 1.72, 1.73],
+        "system_cpu_seconds": [0.77, 0.77, 0.79],
+        "maximum_resident_set_bytes": [39354368, 39337984, 39698432],
+        "swap_operations": 0
+      },
+      "pool_5": {
+        "workers": 5,
+        "lld_threads_per_link": 2,
+        "wall_seconds": [1.77, 1.77, 1.75],
+        "median_wall_seconds": 1.77,
+        "user_cpu_seconds": [1.82, 1.80, 1.77],
+        "system_cpu_seconds": [0.83, 0.81, 0.77],
+        "maximum_resident_set_bytes": [40124416, 39895040, 39518208],
+        "swap_operations": 0
+      },
+      "pool_7": {
+        "workers": 7,
+        "lld_threads_per_link": 1,
+        "wall_seconds": [1.48, 1.47, 1.49],
+        "median_wall_seconds": 1.48,
+        "user_cpu_seconds": [1.98, 1.94, 1.97],
+        "system_cpu_seconds": [0.85, 0.84, 0.86],
+        "maximum_resident_set_bytes": [40632320, 40370176, 40484864],
+        "swap_operations": 0
+      }
+    },
+    "derived": {
+      "pool_7_vs_pool_4_wall_time_reduction_percent": 11.9,
+      "median_cpu_cores_pool_4": 1.49,
+      "median_cpu_cores_pool_7": 1.91,
+      "pool_5_was_slower_than_pool_4": true
+    },
+    "limitations": [
+      "time -lp maximum RSS is per command and does not sum simultaneous worker processes",
+      "this benchmark measures small independent fixtures, not compilation time for a single commercial ROM",
+      "CPU use outside the parallel LSL group remains serial in the current gate"
+    ]
+  },
+  "leafgreen_static_compile": {
+    "rom_sha256": "2f978f635b9593f6ca26ec42481c53a6b39f6cddd894ad5c062c1419fac58825",
+    "command": "target/debug/gba-recomp compile --rom 'roms/Pokemon - Leaf Green Version (U) (V1.1).gba' --out target/leafgreen-after-ldmia-20261013-O2 --opt O2 --steps 100",
+    "result": "rejected before package creation",
+    "reported_pc": "0x080006AA",
+    "raw_halfword": "0xC201",
+    "classification": "Thumb STMIA r2!,{r0}, inferred from encoding fields only",
+    "package_directory_created": false,
+    "rom_executed": false,
+    "rea": {
+      "prior_open_binary_result": "target_unavailable: unsupported binary format; retryable=false",
+      "current_binary_session_result": "Transport closed",
+      "analysis_or_decompilation_evidence_id": null
+    },
+    "limitations": [
+      "the compiler's static discovery frontier is not an execution trace",
+      "no runtime register values, guest path, or timing are claimed",
+      "the latest attempted operation classified from 0xC201 is not yet implemented"
+    ]
+  },
+  "reference_commits": {
+    "mgba": "143adf5aa2a60c6036810b0cd72445e13d74b0e6",
+    "gba_recomp": "de4edf59b872d887046d6a3b005e2df551b6d44c"
+  }
+}

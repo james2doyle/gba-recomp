@@ -10,9 +10,9 @@ O Mac mini M4 disponível para este projeto tem 10 CPUs lógicas. Cargo já usa 
 
 ## Decisão
 
-O gate usa quatro workers para os sete casos independentes de Thumb LSL e configura cada link final LLD com duas threads. O grupo tem no máximo oito threads LLD simultâneas. O build do binário do recompilador continua serial em relação ao gate.
+O gate usa sete workers para os sete casos independentes de Thumb LSL e configura cada link final LLD com uma thread. O grupo tem no máximo sete links simultâneos. O build do binário do recompilador continua serial em relação ao gate.
 
-`GBA020_JOBS` aceita 1, 2 ou 4 workers. Os defaults são, respectivamente, 10, 4 e 2 threads LLD por pacote. `GBA020_LINK_THREADS` pode substituir esse valor, desde que o produto de workers e threads não passe de 10. O CLI valida de 1 a 10 threads para cada link. Outros grupos do gate e ROMs comerciais permanecem seriais até medição individual de memória e throughput.
+`GBA020_JOBS` aceita 1, 2, 4, 5 ou 7 workers. Os defaults são, respectivamente, 10, 5, 2, 2 e 1 thread LLD por pacote. `GBA020_LINK_THREADS` pode substituir esse valor, desde que o produto de workers e threads não passe de 10. O CLI valida de 1 a 10 threads para cada link. Outros grupos do gate e ROMs comerciais permanecem seriais até medição individual de memória e throughput.
 
 ## Alternativas
 
@@ -22,9 +22,9 @@ O gate usa quatro workers para os sete casos independentes de Thumb LSL e config
 
 ## Consequências
 
-O pool usa paths/logs separados por fixture e não muda semântica guest ou manifesto. Em três execuções no mesmo host e com o binário já compilado, [scripts/verify-gba020-lsl.sh](../scripts/verify-gba020-lsl.sh) mediu mediana de 3,84 s com um worker, 2,51 s com dois e 1,66 s com quatro. Quatro workers reduziram o wall time mediano em 56,8% contra serial e em 33,9% contra dois workers. A razão de CPU acumulada por wall time na rodada mediana foi 0,61, 0,96 e 1,50 CPUs, respectivamente. O maior RSS reportado por `time -lp` foi cerca de 39–40 MB por comando; essa medição não soma o RSS simultâneo de todos os workers. Os vetores completos e as limitações estão em [gba020-abstract-memory-macos-arm64.json](../knowledge/evidence/gba020-abstract-memory-macos-arm64.json).
+O pool usa paths/logs separados por fixture e não muda semântica guest ou manifesto. Em três execuções alternadas no mesmo host e com o binário já compilado, [scripts/verify-gba020-lsl.sh](../scripts/verify-gba020-lsl.sh) mediu medianas de 1,68 s com quatro workers × duas threads, 1,77 s com cinco × duas e 1,48 s com sete × uma. Sete workers × uma thread reduziram o wall time em 11,9% contra quatro × duas e elevaram a razão de CPU acumulada por wall time de 1,49 para 1,91 CPUs. O maior RSS reportado por `time -lp` foi cerca de 39–41 MB por comando; essa medição não soma o RSS simultâneo de todos os workers. Os vetores completos e limitações estão em [gba020-thumb-ldmia-macos-arm64.json](../knowledge/evidence/gba020-thumb-ldmia-macos-arm64.json).
 
-O gate completo passou com o padrão de quatro workers. As medições de gate serial frio e paralelo aquecido não são uma comparação de throughput: a rodada fria incluiu 74 s para compilar o binário. Nenhuma alegação de aceleração do build de ROM LeafGreen é feita.
+O gate completo passou com o padrão de sete workers × uma thread LLD. A rodada fria incluiu 73 s para compilar o binário e não é comparável ao gate aquecido. Nenhuma alegação de aceleração da compilação de uma ROM comercial é feita.
 
 ## Critérios para revisitar
 

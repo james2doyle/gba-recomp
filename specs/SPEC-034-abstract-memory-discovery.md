@@ -1,6 +1,6 @@
 # SPEC-034 — Memória abstrata limitada para descoberta AOT
 
-Estado do documento: Accepted. Implementação strict-AOT de descoberta concluída no commit `d74148b`; evidência em [gba020-abstract-memory-macos-arm64.json](../knowledge/evidence/gba020-abstract-memory-macos-arm64.json). O progresso geral continua no [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted para AMEM-01–09. Implementação original strict-AOT concluída no commit `d74148b`; AMEM-09 será implementado com a [SPEC-036](SPEC-036-thumb-stmia.md). Evidência original em [gba020-abstract-memory-macos-arm64.json](../knowledge/evidence/gba020-abstract-memory-macos-arm64.json); progresso geral no [ROADMAP](../ROADMAP.md).
 
 ## Contexto e escopo
 
@@ -18,6 +18,7 @@ A sombra serve somente para descoberta estática. Ela não inicializa SP ou RAM,
 - AMEM-06: SWI #1, continuação de ARM BL sintetizada sem análise dos efeitos do callee, e qualquer efeito de RAM não representado MUST limpar todos os fatos de memória. Chamadas Thumb BL para código ROM analisado podem propagar fatos; cada store conhecido é invalidado conforme AMEM-04, e SWI #1 limpa os fatos. Alterações de registradores guest não podem assumir convenção de ABI host.
 - AMEM-07: um destino BX só pode ser fechado com a abstração resultante desta spec quando todo caminho analisado fornece valor finito para o operando. Qualquer caminho com slot ausente continua gerando `bx_target_unresolved`; strict-AOT não pode cair em interpretação ou JIT.
 - AMEM-08: a análise MUST convergir dentro dos limites existentes de instruções e atualizações e do limite AMEM-01. A sombra não pode usar scripts ou dados executáveis recebidos em perfis.
+- AMEM-09: a extensão da SPEC-036 MUST permitir Thumb STMIA T1 atualizar a sombra somente com base singleton e intervalo completo em uma região física suportada. Deve usar os registradores de entrada antes de writeback; palavras com valor Unknown são removidas. Base desconhecida/múltipla, wrap ou intervalo fora do subset limpa todos os fatos de memória.
 
 ## Matriz de aceite
 

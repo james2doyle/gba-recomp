@@ -1,6 +1,6 @@
 # SPEC-035 — Thumb LDMIA de registradores baixos em AOT estrito
 
-Estado do documento: Accepted. Implementação pendente; o progresso está no [ROADMAP](../ROADMAP.md).
+Estado do documento: Accepted. Implementada em `b5da17fb6b179653c35edcb32c4a37b1ace1fdc3`; resultados verificáveis em [evidência](../knowledge/evidence/gba020-thumb-ldmia-macos-arm64.json) e progresso no [ROADMAP](../ROADMAP.md).
 
 ## Problema, objetivos e escopo
 
@@ -72,5 +72,5 @@ O resultado de LeafGreen em `0x080006A8` deve ser registrado como descoberta est
 ## Referências e evidências
 
 - [SPEC-005 — timing e bus](SPEC-005-runtime-timing.md), [SPEC-016 — STR word](SPEC-016-ram-word-stores.md), [SPEC-029 — LDRB](SPEC-029-thumb-ldrb-immediate.md), [SPEC-033 — POP](SPEC-033-thumb-pop.md), [SPEC-034 — memória abstrata](SPEC-034-abstract-memory-discovery.md).
-- ARM Architecture Reference Manual DDI 0100I, Thumb A7.1.27, [cópia hospedada pela TI](https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/1023/ARM-Architecture.pdf); ARM7TDMI TRM DDI 0029G, [manual oficial de interface de memória](https://documentation-service.arm.com/static/5e8e1323fd977155116a3129).
+- ARM Architecture Reference Manual DDI 0100I, Thumb A7.1.57, [cópia hospedada pela TI](https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/1023/ARM-Architecture.pdf); ARM7TDMI TRM DDI 0029G, [manual oficial de interface de memória](https://documentation-service.arm.com/static/5e8e1323fd977155116a3129).
 - Observações dos vendors nos commits fixados estão em [KNO-001 SRC-35](../knowledge/KNO-001-evidence.md); limites do artefato e REA estão em [KNO-004](../knowledge/KNO-004-rom-intake.md).

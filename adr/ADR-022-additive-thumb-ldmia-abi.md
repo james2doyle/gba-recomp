@@ -8,7 +8,7 @@
 
 Thumb LDMIA precisa ler até oito words e gravar registradores em sequência. O runtime v3 expõe somente arrays host para EWRAM/IWRAM físicas; layouts ABI v2/v3/v4 não incluem o bus ou a ROM. Uma leitura guest não pode virar ponteiro host. LeafGreen bloqueia na instrução `0xCB01` em `0x080006A8`; discovery interno anterior ao decoder limita `r3` a `0x081E9F74`, e a ROM fixada nessa posição contém a word `0x08000821`. Isso é evidência de compilação/artefato estático, não execução do jogo.
 
-## Decisão proposta
+## Decisão
 
 Adicionar o símbolo `gba_ldmia_thumb_v3(rt,out,base_register,register_list)`, sem alterar layouts nem números de versão ABI. O helper dinâmico aceita somente EWRAM/IWRAM físicas; valida todos os endereços primeiro, lê as words para temporários e só então atualiza os registradores e writeback. Alinha cada EA para baixo e preserva os bits baixos no writeback, como comportamento de LDMIA observado em mGBA e gba-recomp fixados e consistente com os sinais word do TRM ARM7TDMI. Falhas de região permanecem faults explícitos locais, não uma implementação de Data Abort.
 
@@ -25,7 +25,7 @@ Lista vazia é rejeitada: o manual ARM a classifica como UNPREDICTABLE, embora o
 
 ## Consequências
 
-O helper compartilha as regras de atomicidade dos helpers de POP e mantém faults inspecionáveis via `GbaExitV3`. A região de RAM suportada e ROM singleton são limites deliberados, não bus geral. O modelo atual cobra um ciclo abstrato por instrução; timing e waitstates permanecem em SPEC-005. Nenhuma referência vendor será alterada ou copiada.
+O helper compartilha as regras de atomicidade dos helpers de POP e mantém faults inspecionáveis via `GbaExitV3`. A região de RAM suportada e ROM singleton são limites deliberados, não bus geral. O modelo atual cobra um ciclo abstrato por instrução; timing e waitstates permanecem em SPEC-005. Nenhuma referência vendor foi alterada ou copiada. A implementação strict-AOT e os resultados O0/O2 estão registrados em [SPEC-035](../specs/SPEC-035-thumb-ldmia.md) e [evidência](../knowledge/evidence/gba020-thumb-ldmia-macos-arm64.json).
 
 ## Critérios para revisitar
 

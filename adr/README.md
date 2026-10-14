@@ -22,3 +22,4 @@
 - [ADR-020-additive-thumb-pop-abi](ADR-020-additive-thumb-pop-abi.md)
 - [ADR-021-bounded-gba020-gate-parallelism](ADR-021-bounded-gba020-gate-parallelism.md)
 - [ADR-022-additive-thumb-ldmia-abi](ADR-022-additive-thumb-ldmia-abi.md)
+- [ADR-023-additive-thumb-stmia-abi](ADR-023-additive-thumb-stmia-abi.md)
