@@ -48,6 +48,10 @@ Requirements: Rust 1.99.0, the LLVM 23.1.3 build pinned in [`toolchain.lock.toml
 
 ```bash
 export LLVM_SYS_231_PREFIX=/path/to/LLVM-23.1.3
+# The last two crates are the companion apps (Settings… and Party). `bundle`
+# copies them from next to the gba-recomp binary, so keep them in this line:
+# without their `-p`, the package silently ships whichever copies were built
+# earlier. The bundler now warns when a companion is older than gba-recomp.
 cargo build --release -p gba-recomp -p gba-native-rt -p gba-settings -p gba-party
 
 # Recompile the free demo game into a self-contained package (ROM embedded)
@@ -64,6 +68,8 @@ Without embedding the ROM (`compile` instead of `bundle`) the package never cont
 target/release/gba-recomp compile --rom game.gba --out out/game --opt O2 --mode aot-compatible --profile-frames 3000
 out/game/game --rom game.gba --save game.sav
 ```
+
+`compile` packages the companion apps too, so it needs the same build line as above.
 
 Useful flags: `--profile-frames N`, `--profile-input FRAME:LEN:KEYS` (script inputs so the profile reaches more code), `--headless --frames N --verify-interpreter`, `--no-splash`.
 

@@ -21,10 +21,14 @@ O gate GBA-020 detecta o orçamento lógico do host (teto dez) e limita workers 
 Requer Rust 1.99.0, o LLVM 23.1.3 de `toolchain.lock.toml` e SDL3 (Homebrew no macOS). A ROM é fornecida pelo usuário e nunca entra no pacote.
 
 ```bash
-cargo build --release -p gba-recomp -p gba-native-rt
+cargo build --release -p gba-recomp -p gba-native-rt -p gba-settings -p gba-party
 target/release/gba-recomp compile --rom jogo.gba --out out/jogo --opt O2 --mode aot-compatible --profile-frames 3000
 out/jogo/game --rom jogo.gba --save out/jogo.sav
 ```
+
+Os dois `-p` finais constroem `gba-settings` e `gba-party`, que o empacotador copia de junto do
+`gba-recomp`. Sem eles o pacote leva versões anteriores desses binários; tanto `compile` quanto
+`bundle` avisam quando isso acontece.
 
 Para uso pessoal, `bundle` gera o mesmo pacote com a ROM embutida no executável (dispensa `--rom`; não redistribua):
 
