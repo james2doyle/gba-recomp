@@ -189,6 +189,14 @@ pub fn default_sdl_dir(spec: &TargetSpec) -> PathBuf {
     match Platform::of(spec) {
         Platform::MacOs => PathBuf::from("/opt/homebrew/lib"),
         Platform::Linux => {
+            // Probe the layouts in use rather than assuming one. Debian and
+            // Ubuntu use a multiarch directory; Arch, Fedora and most others
+            // install straight into /usr/lib. `pkg-config` knows best when the
+            // `.pc` file is present, so try it before guessing paths.
+            let mut candidates: Vec<PathBuf> = Vec::new();
+            if let Some(dir) = pkg_config_libdir("sdl3") {
+                candidates.push(dir);
+            }
             let multiarch = if spec.triple.starts_with("aarch64") {
                 "aarch64-linux-gnu"
             } else if spec.triple.starts_with("armv7") {
@@ -196,15 +204,35 @@ pub fn default_sdl_dir(spec: &TargetSpec) -> PathBuf {
             } else {
                 "x86_64-linux-gnu"
             };
-            let local = PathBuf::from("/usr/local/lib");
-            if local.join("libSDL3.so.0").exists() {
-                local
-            } else {
-                PathBuf::from(format!("/usr/lib/{multiarch}"))
-            }
+            candidates.push(PathBuf::from("/usr/local/lib"));
+            candidates.push(PathBuf::from(format!("/usr/lib/{multiarch}")));
+            candidates.push(PathBuf::from("/usr/lib64"));
+            candidates.push(PathBuf::from("/usr/lib"));
+            candidates
+                .into_iter()
+                .find(|dir| dir.join("libSDL3.so.0").exists())
+                // Nothing present: keep the previous default so the error
+                // message still names a conventional location.
+                .unwrap_or_else(|| PathBuf::from(format!("/usr/lib/{multiarch}")))
         }
         _ => PathBuf::from("sdl3"),
     }
+}
+
+/// `pkg-config --variable=libdir <package>`, when the tool and `.pc` file
+/// exist. Used to find SDL3 on distributions that place it somewhere other
+/// than the Debian multiarch directory.
+fn pkg_config_libdir(package: &str) -> Option<PathBuf> {
+    let output = Command::new("pkg-config")
+        .args(["--variable=libdir", package])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let dir = String::from_utf8(output.stdout).ok()?;
+    let dir = PathBuf::from(dir.trim());
+    dir.is_absolute().then_some(dir)
 }
 
 /// A tool from the pinned LLVM (clang, lld, llvm-otool…).
@@ -231,4 +259,45 @@ pub fn run(command: &mut Command, what: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Linux default used to assume Debian's multiarch directory, which
+    /// broke `bundle` on Arch and Fedora where SDL3 lives in `/usr/lib`
+    /// (EV-011-14). When SDL3 is installed on this host, the resolver MUST
+    /// return the directory that actually contains it — a conventional-looking
+    /// path is not good enough, since that is what failed before.
+    #[test]
+    fn linux_sdl_dir_contains_sdl3_when_installed() {
+        let spec = TargetSpec::host();
+        if Platform::of(&spec) != Platform::Linux {
+            return; // other platforms have their own defaults
+        }
+        let installed = pkg_config_libdir("sdl3").is_some()
+            || ["/usr/lib", "/usr/local/lib", "/usr/lib64"]
+                .iter()
+                .any(|d| PathBuf::from(d).join("libSDL3.so.0").exists());
+        if !installed {
+            return; // nothing to find; the fallback is all we can offer
+        }
+        let dir = default_sdl_dir(&spec);
+        assert!(
+            dir.join("libSDL3.so.0").exists(),
+            "SDL3 is installed but default_sdl_dir returned {dir:?}, which has no libSDL3.so.0"
+        );
+    }
+
+    /// Every candidate path the resolver tries must be absolute, so a wrong
+    /// guess can never resolve relative to the current directory.
+    #[test]
+    fn pkg_config_libdir_is_absolute_or_none() {
+        if let Some(dir) = super::pkg_config_libdir("sdl3") {
+            assert!(dir.is_absolute(), "{dir:?}");
+        }
+        // A package that cannot exist must yield None, not a bogus path.
+        assert_eq!(super::pkg_config_libdir("no-such-package-xyz"), None);
+    }
 }
