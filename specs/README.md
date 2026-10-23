@@ -70,3 +70,4 @@ O estado Draft/Review/Accepted descreve revisão documental, não progresso de i
 - [SPEC-066 — `bundle`: executável recompilado com a ROM embutida](SPEC-066-bundle-embedded-rom.md)
 - [SPEC-067 — Party em rede por WebRTC: sala, chat de texto, voz, telas e cabo link](SPEC-067-webrtc-party.md)
 - [SPEC-068 — Alvos multiplataforma, controles touch e CI de release](SPEC-068-multiplatform-targets.md)
+- [SPEC-069 — Localização do frontend e troca de idioma em tempo real](SPEC-069-localization.md)

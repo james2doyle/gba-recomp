@@ -9,3 +9,4 @@
 - [KNO-007-interpreted-core](KNO-007-interpreted-core.md)
 - [KNO-008-platform-ios](KNO-008-platform-ios.md)
 - [KNO-010-platform-web](KNO-010-platform-web.md)
+- [KNO-011-i18n](KNO-011-i18n.md)

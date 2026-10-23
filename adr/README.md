@@ -41,3 +41,4 @@
 - [ADR-039-thumb-cmp-register](ADR-039-thumb-cmp-register.md)
 - [ADR-040-interpreter-assisted-compatibility](ADR-040-interpreter-assisted-compatibility.md)
 - [ADR-041-interpreter-first-core](ADR-041-interpreter-first-core.md)
+- [ADR-042-i18n-and-bitmap-font](ADR-042-i18n-and-bitmap-font.md)
