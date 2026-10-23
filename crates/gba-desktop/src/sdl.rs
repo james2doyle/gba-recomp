@@ -84,10 +84,15 @@ const SDL_WINDOW_RESIZABLE: u64 = 0x20;
 const SDL_LOGICAL_PRESENTATION_INTEGER_SCALE: c_int = 4;
 const SDL_SCALEMODE_NEAREST: c_int = 0;
 const SDL_TEXTUREACCESS_STREAMING: c_int = 1;
+const SDL_TEXTUREACCESS_STATIC: c_int = 2;
 const SDL_PIXELFORMAT_XRGB8888: u32 = 0x1616_1804;
+/// `SDL_PIXELFORMAT_ARGB8888` (SDL_pixels.h).
+const SDL_PIXELFORMAT_ARGB8888: u32 = 0x1636_2004;
 const SDL_AUDIO_S16LE: c_int = 0x8010;
 const SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK: u32 = 0xFFFF_FFFF;
 const SDL_EVENT_QUIT: u32 = 0x100;
+/// The user changed the system language (SDL 3.2+, `SDL_events.h`).
+const SDL_EVENT_LOCALE_CHANGED: u32 = 0x101;
 const SDL_EVENT_WINDOW_FOCUS_LOST: u32 = 0x20F;
 const SDL_EVENT_KEY_DOWN: u32 = 0x300;
 const SDL_EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401;
@@ -193,10 +198,14 @@ unsafe extern "C" {
         surface: *mut SdlSurface,
     ) -> *mut SdlTexture;
     fn SDL_SetTextureAlphaModFloat(texture: *mut SdlTexture, alpha: f32) -> bool;
+    fn SDL_SetTextureColorMod(texture: *mut SdlTexture, r: u8, g: u8, b: u8) -> bool;
+    fn SDL_RenderReadPixels(renderer: *mut SdlRenderer, rect: *const c_void) -> *mut SdlSurface;
+    fn SDL_SetTextureBlendMode(texture: *mut SdlTexture, mode: u32) -> bool;
     fn SDL_GetRenderOutputSize(renderer: *mut SdlRenderer, w: *mut c_int, h: *mut c_int) -> bool;
     fn SDL_GetGamepadStringForButton(button: c_int) -> *const c_char;
     fn SDL_GetGamepadButtonFromString(name: *const c_char) -> c_int;
     fn SDL_GetScancodeName(scancode: c_int) -> *const c_char;
+    fn SDL_GetPreferredLocales(count: *mut c_int) -> *mut *mut SdlLocale;
     fn SDL_GetScancodeFromName(name: *const c_char) -> c_int;
 
     fn SDL_SetWindowFullscreen(window: *mut SdlWindow, fullscreen: bool) -> bool;
@@ -205,12 +214,18 @@ unsafe extern "C" {
     fn SDL_SetRenderVSync(renderer: *mut SdlRenderer, vsync: c_int) -> bool;
     fn SDL_SetRenderDrawBlendMode(renderer: *mut SdlRenderer, mode: u32) -> bool;
     fn SDL_RenderFillRect(renderer: *mut SdlRenderer, rect: *const FRect) -> bool;
-    fn SDL_RenderDebugText(renderer: *mut SdlRenderer, x: f32, y: f32, text: *const c_char)
-    -> bool;
 
     fn SDL_SetAudioStreamGain(stream: *mut SdlAudioStream, gain: f32) -> bool;
     fn SDL_ClearAudioStream(stream: *mut SdlAudioStream) -> bool;
     fn SDL_PauseAudioStreamDevice(stream: *mut SdlAudioStream) -> bool;
+}
+
+/// `SDL_Locale` (`SDL_locale.h`): ISO-639 language plus an optional ISO-3166
+/// country. Both point into the array returned by `SDL_GetPreferredLocales`.
+#[repr(C)]
+struct SdlLocale {
+    language: *const c_char,
+    country: *const c_char,
 }
 
 #[repr(C)]
@@ -280,6 +295,15 @@ impl Drop for Surface {
     }
 }
 
+/// Android delivers the back button as a QUIT event unless it is trapped.
+/// Trapping turns it into `SDL_SCANCODE_AC_BACK`, which the frontend uses to
+/// open the menu — the platform's only menu affordance (SPEC-069 L10N-69-06).
+fn android_back_button_hint() {
+    if cfg!(target_os = "android") {
+        set_hint("SDL_ANDROID_TRAP_BACK_BUTTON", "1");
+    }
+}
+
 /// Set an SDL hint before initialisation.
 pub fn set_hint(name: &str, value: &str) {
     if let (Ok(n), Ok(v)) = (CString::new(name), CString::new(value)) {
@@ -336,6 +360,49 @@ pub fn pad_button_from_name(name: &str) -> Option<i32> {
     (b >= 0).then_some(b)
 }
 
+/// The user's preferred locales, most preferred first, as BCP-47 tags
+/// (`pt-BR`, `en`) (SPEC-069 L10N-69-04).
+///
+/// This is the portable source of the OS language: SDL asks the platform
+/// (`Locale` on Android, `navigator.language` on the Web, `NSLocale` on
+/// Apple, the POSIX variables on Linux), so it is the only detection path
+/// that works on all supported targets. Returns an empty list when the
+/// platform supplies nothing.
+pub fn preferred_locales() -> Vec<String> {
+    let mut count: c_int = 0;
+    // SAFETY: `count` is valid for the call; the returned array is one
+    // allocation terminated by a NULL entry and freed with SDL_free below.
+    let list = unsafe { SDL_GetPreferredLocales(&mut count) };
+    if list.is_null() {
+        return Vec::new();
+    }
+    let mut tags = Vec::new();
+    for i in 0..count.max(0) as usize {
+        // SAFETY: the array holds `count` entries before the NULL terminator.
+        let entry = unsafe { *list.add(i) };
+        if entry.is_null() {
+            break;
+        }
+        // SAFETY: each pointer is a NUL-terminated string owned by the array.
+        let (language, country) = unsafe { (CStr::from_ptr((*entry).language), (*entry).country) };
+        let mut tag = language.to_string_lossy().into_owned();
+        if !country.is_null() {
+            // SAFETY: `country` is either NULL or NUL-terminated (checked).
+            let region = unsafe { CStr::from_ptr(country) };
+            if !region.is_empty() {
+                tag.push('-');
+                tag.push_str(&region.to_string_lossy());
+            }
+        }
+        if !tag.is_empty() {
+            tags.push(tag);
+        }
+    }
+    // SAFETY: `list` came from SDL_GetPreferredLocales and is freed once.
+    unsafe { SDL_free(list.cast()) };
+    tags
+}
+
 fn last_error(what: &str) -> String {
     // SAFETY: SDL_GetError always returns a valid NUL-terminated string
     // owned by SDL (possibly empty).
@@ -346,6 +413,8 @@ fn last_error(what: &str) -> String {
 /// Scancodes used by the frontend (`SDL_scancode.h`).
 pub mod scancode {
     pub const A: usize = 4;
+    /// Android back button (`SDL_SCANCODE_AC_BACK`).
+    pub const AC_BACK: usize = 282;
     pub const F1: usize = 58;
     pub const F11: usize = 68;
     pub const SPACE: usize = 44;
@@ -386,6 +455,8 @@ pub struct Context {
 pub enum Event {
     Quit,
     FocusLost,
+    /// The OS language preference changed; re-detect it (SPEC-069).
+    LocaleChanged,
     KeyDown {
         scancode: usize,
         repeat: bool,
@@ -393,8 +464,16 @@ pub enum Event {
     MouseDown {
         button: u8,
     },
-    /// Finger down/move at normalized window coordinates (0..1).
+    /// Finger pressed at normalized window coordinates (0..1).
     FingerDown {
+        finger: u64,
+        x: f32,
+        y: f32,
+    },
+    /// Finger moved while down. Separate from [`Event::FingerDown`] so press
+    /// duration and travel can be measured (long-press opens the menu,
+    /// SPEC-069 L10N-69-06).
+    FingerMotion {
         finger: u64,
         x: f32,
         y: f32,
@@ -429,6 +508,7 @@ pub enum Event {
 impl Context {
     /// Initialises video, events and gamepads (required).
     pub fn init() -> Result<Self, String> {
+        android_back_button_hint();
         // SAFETY: plain FFI call with constant flags.
         if unsafe {
             SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK)
@@ -443,6 +523,7 @@ impl Context {
 
     /// Input-only initialisation for the settings app (no window).
     pub fn init_input() -> Result<Self, String> {
+        android_back_button_hint();
         // SAFETY: plain FFI call with constant flags.
         if unsafe { SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK) } {
             Ok(Self {
@@ -542,10 +623,14 @@ impl Context {
             return None;
         }
         let word = |at: usize| u32::from_ne_bytes(ev.bytes[at..at + 4].try_into().unwrap());
+        // The event type, used both to dispatch and to tell apart events that
+        // share a payload layout (finger down vs motion).
+        let kind = word(0);
         // SDL_GamepadDeviceEvent: type u32, reserved u32, timestamp u64, which u32.
-        Some(match word(0) {
+        Some(match kind {
             SDL_EVENT_QUIT => Event::Quit,
             SDL_EVENT_WINDOW_FOCUS_LOST => Event::FocusLost,
+            SDL_EVENT_LOCALE_CHANGED => Event::LocaleChanged,
             // SDL_KeyboardEvent: scancode at 24, repeat at 37.
             SDL_EVENT_KEY_DOWN => Event::KeyDown {
                 scancode: word(24) as usize,
@@ -558,11 +643,8 @@ impl Context {
             // SDL_TouchFingerEvent: fingerID at 24, x/y floats at 32/36.
             SDL_EVENT_FINGER_DOWN | SDL_EVENT_FINGER_MOTION => {
                 let f = |at: usize| f32::from_ne_bytes(ev.bytes[at..at + 4].try_into().unwrap());
-                Event::FingerDown {
-                    finger: u64::from_ne_bytes(ev.bytes[24..32].try_into().unwrap()),
-                    x: f(32),
-                    y: f(36),
-                }
+                let finger = u64::from_ne_bytes(ev.bytes[24..32].try_into().unwrap());
+                finger_event(kind, finger, f(32), f(36))
             }
             SDL_EVENT_FINGER_UP | SDL_EVENT_FINGER_CANCELED => Event::FingerUp {
                 finger: u64::from_ne_bytes(ev.bytes[24..32].try_into().unwrap()),
@@ -629,6 +711,8 @@ pub struct Video<'a> {
     window: NonNull<SdlWindow>,
     renderer: NonNull<SdlRenderer>,
     texture: NonNull<SdlTexture>,
+    /// Glyph atlas uploaded once (SPEC-069 L10N-69-05).
+    glyphs: NonNull<SdlTexture>,
     width: i32,
     height: i32,
     _ctx: PhantomData<&'a Context>,
@@ -668,14 +752,35 @@ impl Video<'_> {
             }
             return Err(e);
         };
+        let raw = unsafe {
+            SDL_CreateTexture(
+                renderer.as_ptr(),
+                SDL_PIXELFORMAT_ARGB8888,
+                SDL_TEXTUREACCESS_STATIC,
+                crate::font::ATLAS_WIDTH as c_int,
+                crate::font::ATLAS_HEIGHT as c_int,
+            )
+        };
+        let Some(glyphs) = NonNull::new(raw) else {
+            let e = last_error("SDL_CreateTexture (glyph atlas)");
+            // SAFETY: destroying handles we own, children first.
+            unsafe {
+                SDL_DestroyTexture(texture.as_ptr());
+                SDL_DestroyRenderer(renderer.as_ptr());
+                SDL_DestroyWindow(window.as_ptr());
+            }
+            return Err(e);
+        };
         let video = Self {
             window,
             renderer,
             texture,
+            glyphs,
             width: w,
             height: h,
             _ctx: PhantomData,
         };
+        video.upload_atlas()?;
         // SAFETY: handles are live (owned by `video`).
         unsafe {
             if !SDL_SetTextureScaleMode(texture.as_ptr(), SDL_SCALEMODE_NEAREST) {
@@ -692,6 +797,41 @@ impl Video<'_> {
             }
         }
         Ok(video)
+    }
+
+    /// Uploads the generated glyph atlas once, as white-on-transparent so the
+    /// painter can tint it per colour with `SDL_SetTextureColorMod`.
+    fn upload_atlas(&self) -> Result<(), String> {
+        let (w, h) = (
+            crate::font::ATLAS_WIDTH as usize,
+            crate::font::ATLAS_HEIGHT as usize,
+        );
+        let coverage = crate::font::coverage();
+        let mut pixels = vec![0u32; w * h];
+        for (i, &a) in coverage.iter().enumerate() {
+            // ARGB8888: keep the glyph white and put antialiasing in alpha.
+            // The atlas is 1-bit, so alpha is either 0 or 255.
+            pixels[i] = (u32::from(a) << 24) | 0x00FF_FFFF;
+        }
+        // SAFETY: `glyphs` is live and `pixels` holds exactly w*h ARGB values
+        // read only during the call.
+        unsafe {
+            if !SDL_UpdateTexture(
+                self.glyphs.as_ptr(),
+                ptr::null(),
+                pixels.as_ptr().cast(),
+                w as c_int * 4,
+            ) {
+                return Err(last_error("SDL_UpdateTexture (glyph atlas)"));
+            }
+            if !SDL_SetTextureScaleMode(self.glyphs.as_ptr(), SDL_SCALEMODE_NEAREST) {
+                return Err(last_error("SDL_SetTextureScaleMode (glyph atlas)"));
+            }
+            if !SDL_SetTextureBlendMode(self.glyphs.as_ptr(), SDL_BLENDMODE_BLEND) {
+                return Err(last_error("SDL_SetTextureBlendMode (glyph atlas)"));
+            }
+        }
+        Ok(())
     }
 
     pub fn set_fullscreen(&mut self, on: bool) {
@@ -854,12 +994,52 @@ impl Video<'_> {
         self.present_inner(pixels, overlay)
     }
 
+    /// Draws an overlay over `pixels` and returns the rendered RGBA frame
+    /// without presenting, so tests can inspect what was actually drawn.
+    pub fn render_overlay(
+        &mut self,
+        pixels: &[u32],
+        overlay: impl FnOnce(&mut Painter<'_>),
+    ) -> Result<(u32, u32, Vec<u8>), String> {
+        self.draw_inner(pixels, overlay)?;
+        self.read_back()
+    }
+
+    /// Reads the current render target back as RGBA8, for tests and
+    /// screenshots. Slow; SDL documents it for exactly this purpose.
+    ///
+    /// In SDL 3 this returns a new surface (SDL 2 filled a caller buffer).
+    pub fn read_back(&self) -> Result<(u32, u32, Vec<u8>), String> {
+        // SAFETY: renderer is live; the returned surface is owned by us and
+        // destroyed before returning.
+        let raw = unsafe { SDL_RenderReadPixels(self.renderer.as_ptr(), ptr::null()) };
+        let Some(surface) = NonNull::new(raw) else {
+            return Err(last_error("SDL_RenderReadPixels"));
+        };
+        let surface = Surface { ptr: surface };
+        let (w, h, rgba) = surface.to_rgba()?;
+        Ok((w, h, rgba))
+    }
+
     /// Uploads a full XRGB8888 frame and presents it.
     pub fn present(&mut self, pixels: &[u32]) -> Result<(), String> {
         self.present_inner(pixels, |_| {})
     }
 
     fn present_inner(
+        &mut self,
+        pixels: &[u32],
+        overlay: impl FnOnce(&mut Painter<'_>),
+    ) -> Result<(), String> {
+        self.draw_inner(pixels, overlay)?;
+        // SAFETY: renderer is live.
+        unsafe { SDL_RenderPresent(self.renderer.as_ptr()) };
+        Ok(())
+    }
+
+    /// Draws frame plus overlay without presenting, so the backbuffer can
+    /// still be read back.
+    fn draw_inner(
         &mut self,
         pixels: &[u32],
         overlay: impl FnOnce(&mut Painter<'_>),
@@ -893,13 +1073,10 @@ impl Video<'_> {
         }
         let mut painter = Painter {
             renderer: self.renderer,
+            glyphs: self.glyphs,
             _video: PhantomData,
         };
         overlay(&mut painter);
-        // SAFETY: renderer is live.
-        unsafe {
-            SDL_RenderPresent(self.renderer.as_ptr());
-        }
         Ok(())
     }
 }
@@ -907,6 +1084,7 @@ impl Video<'_> {
 /// Draws overlays in guest logical coordinates (240x160).
 pub struct Painter<'v> {
     renderer: NonNull<SdlRenderer>,
+    glyphs: NonNull<SdlTexture>,
     _video: PhantomData<&'v mut ()>,
 }
 
@@ -921,19 +1099,53 @@ impl Painter<'_> {
         }
     }
 
-    /// 8x8 SDL debug font; ASCII only.
+    /// Draws `text` at (`x`, `y`), where `y` is the top of the line box
+    /// (SPEC-069 L10N-69-05). Full UTF-8; characters the font does not cover
+    /// draw [`crate::font::MISSING`].
     pub fn text(&mut self, x: f32, y: f32, text: &str, rgb: [u8; 3]) {
-        let ascii: String = text
-            .chars()
-            .map(|c| if c.is_ascii() { c } else { '?' })
-            .collect();
-        if let Ok(c) = CString::new(ascii) {
-            // SAFETY: renderer is live; C string valid for the call.
-            unsafe {
-                SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgb[0], rgb[1], rgb[2], 255);
-                SDL_RenderDebugText(self.renderer.as_ptr(), x, y, c.as_ptr());
+        let mut pen = x;
+        for ch in text.chars() {
+            let g = crate::font::glyph(ch);
+            if g.w > 0 && g.h > 0 {
+                let src = FRect {
+                    x: f32::from(g.x),
+                    y: f32::from(g.y),
+                    w: f32::from(g.w),
+                    h: f32::from(g.h),
+                };
+                let dst = FRect {
+                    x: pen,
+                    y: y + f32::from(g.oy),
+                    w: f32::from(g.w),
+                    h: f32::from(g.h),
+                };
+                // SAFETY: handles are live; both rects outlive the calls.
+                // Glyphs share one white texture, tinted per draw.
+                unsafe {
+                    SDL_SetTextureColorMod(self.glyphs.as_ptr(), rgb[0], rgb[1], rgb[2]);
+                    SDL_RenderTexture(
+                        self.renderer.as_ptr(),
+                        self.glyphs.as_ptr(),
+                        (&src as *const FRect).cast(),
+                        (&dst as *const FRect).cast(),
+                    );
+                }
             }
+            pen += f32::from(g.advance);
         }
+    }
+
+    /// Width of `text` in logical pixels, from the same advances `text` uses.
+    pub fn text_width(&self, text: &str) -> f32 {
+        crate::font::width(text)
+    }
+
+    /// Width of the widest string, for laying out a right-aligned column.
+    pub fn widest<'s>(&self, texts: impl IntoIterator<Item = &'s str>) -> f32 {
+        texts
+            .into_iter()
+            .map(|t| self.text_width(t))
+            .fold(0.0, f32::max)
     }
 }
 
@@ -941,6 +1153,7 @@ impl Drop for Video<'_> {
     fn drop(&mut self) {
         // SAFETY: destroying owned handles, children first.
         unsafe {
+            SDL_DestroyTexture(self.glyphs.as_ptr());
             SDL_DestroyTexture(self.texture.as_ptr());
             SDL_DestroyRenderer(self.renderer.as_ptr());
             SDL_DestroyWindow(self.window.as_ptr());
@@ -1064,12 +1277,17 @@ impl Connection {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    /// Translation key for this connection type; `label` resolves it.
+    pub fn label_key(self) -> &'static str {
         match self {
-            Connection::Unknown => "desconhecida",
-            Connection::Wired => "com fio (USB)",
-            Connection::Wireless => "sem fio (Bluetooth)",
+            Connection::Unknown => "connection.unknown",
+            Connection::Wired => "connection.wired",
+            Connection::Wireless => "connection.wireless",
         }
+    }
+
+    pub fn label(self) -> String {
+        gba_i18n::translate(self.label_key())
     }
 }
 
@@ -1121,5 +1339,66 @@ impl Drop for Joystick<'_> {
     fn drop(&mut self) {
         // SAFETY: closing the owned joystick.
         unsafe { SDL_CloseJoystick(self.joy.as_ptr()) };
+    }
+}
+
+/// Finger down and motion share a payload; only the event type tells them
+/// apart. Keeping it a function makes the distinction testable.
+fn finger_event(kind: u32, finger: u64, x: f32, y: f32) -> Event {
+    if kind == SDL_EVENT_FINGER_DOWN {
+        Event::FingerDown { finger, x, y }
+    } else {
+        Event::FingerMotion { finger, x, y }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finger_down_and_motion_decode_to_distinct_events() {
+        assert!(matches!(
+            finger_event(SDL_EVENT_FINGER_DOWN, 7, 0.5, 0.25),
+            Event::FingerDown { finger: 7, .. }
+        ));
+        assert!(matches!(
+            finger_event(SDL_EVENT_FINGER_MOTION, 7, 0.5, 0.25),
+            Event::FingerMotion { finger: 7, .. }
+        ));
+        // A press must never be reported as motion, or long-press timing
+        // would never start.
+        assert!(!matches!(
+            finger_event(SDL_EVENT_FINGER_DOWN, 1, 0.0, 0.0),
+            Event::FingerMotion { .. }
+        ));
+    }
+
+    /// `SDL_GetPreferredLocales` sem `SDL_Init`: a lista pode vir vazia (o
+    /// driver `dummy` e alguns ambientes não informam idioma), mas a chamada
+    /// precisa ser segura e devolver tags no formato BCP-47 quando há dados.
+    #[test]
+    fn preferred_locales_is_safe_and_well_formed() {
+        let tags = preferred_locales();
+        for tag in &tags {
+            assert!(!tag.is_empty(), "empty tag");
+            assert!(
+                tag.split('-')
+                    .all(|part| part.chars().all(|c| c.is_ascii_alphanumeric())),
+                "malformed tag {tag}"
+            );
+            assert!(
+                tag.chars().next().is_some_and(|c| c.is_ascii_alphabetic()),
+                "tag must start with a language: {tag}"
+            );
+        }
+    }
+
+    /// Chamar duas vezes não deve vazar nem corromper o estado do SDL.
+    #[test]
+    fn preferred_locales_is_repeatable() {
+        let first = preferred_locales();
+        let second = preferred_locales();
+        assert_eq!(first, second);
     }
 }

@@ -5,6 +5,9 @@ use std::net::UdpSocket;
 use std::time::Duration;
 
 use eframe::egui;
+use gba_desktop::sdl;
+use gba_desktop::settings::Settings;
+use gba_i18n::tr;
 use gba_net::{Command, DEFAULT_PORT, DEFAULT_STUN, Event, Options, Session};
 
 struct Line {
@@ -90,17 +93,17 @@ impl App {
                 Event::Status(s) => system.push(s),
                 Event::Connected => {
                     *connected = true;
-                    system.push("Conectado.".into());
+                    system.push(tr!("party.connected_log"));
                 }
                 Event::Joined { id, name } => {
                     if !self.peers.iter().any(|(i, _)| *i == id) {
                         self.peers.push((id, name.clone()));
-                        system.push(format!("{name} entrou na sala."));
+                        system.push(tr!("party.joined", name = name));
                     }
                 }
                 Event::Left { id, name } => {
                     self.peers.retain(|(i, _)| *i != id);
-                    system.push(format!("{name} saiu da sala."));
+                    system.push(tr!("party.left", name = name));
                 }
                 Event::Chat { from, text } => self.log.push(Line {
                     from: Some(from),
@@ -108,7 +111,7 @@ impl App {
                 }),
                 Event::Error(e) => {
                     self.error = Some(e.clone());
-                    system.push(format!("Erro: {e}"));
+                    system.push(tr!("party.error", error = e));
                 }
                 Event::Closed => closed = true,
             }
@@ -119,59 +122,61 @@ impl App {
         if closed {
             self.mode = Mode::Lobby;
             self.peers.clear();
-            self.system("Sessão encerrada.");
+            self.system(tr!("party.session_ended"));
         }
     }
 
     fn lobby(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Party em rede");
-        ui.label(
-            "Jogue junto: conversa por texto agora; voz, telas e cabo link nas próximas fases.",
-        );
+        ui.heading(tr!("party.title"));
+        ui.label(tr!("party.tagline"));
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label("Seu nome");
+            ui.label(tr!("party.name"));
             ui.text_edit_singleline(&mut self.name);
         });
-        ui.checkbox(
-            &mut self.use_stun,
-            "Usar STUN público (necessário pela internet)",
-        );
+        ui.checkbox(&mut self.use_stun, tr!("party.stun"));
         ui.add_space(10.0);
         ui.columns(2, |cols| {
             cols[0].group(|ui| {
-                ui.strong("Hospedar uma sala");
+                ui.strong(tr!("party.host"));
                 ui.horizontal(|ui| {
-                    ui.label("Porta");
+                    ui.label(tr!("party.port"));
                     ui.text_edit_singleline(&mut self.port);
                 });
-                ui.weak("Pela internet, libere essa porta TCP no roteador ou use uma VPN (ex.: Tailscale).");
-                if ui.button("Criar sala").clicked() {
+                ui.weak(tr!("party.port_hint"));
+                if ui.button(tr!("party.create")).clicked() {
                     match self.port.trim().parse::<u16>() {
                         Ok(port) => match Session::host(self.options(), port) {
                             Ok(session) => {
                                 self.error = None;
                                 self.log.clear();
                                 self.peers.clear();
-                                self.mode = Mode::InRoom { session, host: true, connected: false };
+                                self.mode = Mode::InRoom {
+                                    session,
+                                    host: true,
+                                    connected: false,
+                                };
                             }
                             Err(e) => self.error = Some(e),
                         },
-                        Err(_) => self.error = Some("porta inválida".into()),
+                        Err(_) => self.error = Some(tr!("party.invalid_port")),
                     }
                 }
             });
             cols[1].group(|ui| {
-                ui.strong("Entrar em uma sala");
+                ui.strong(tr!("party.join"));
                 ui.horizontal(|ui| {
-                    ui.label("Endereço");
-                    ui.add(egui::TextEdit::singleline(&mut self.address).hint_text("192.168.0.10:7373"));
+                    ui.label(tr!("party.address"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.address)
+                            .hint_text("192.168.0.10:7373"),
+                    );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Código");
+                    ui.label(tr!("party.code"));
                     ui.add(egui::TextEdit::singleline(&mut self.code).hint_text("ABCDEF"));
                 });
-                if ui.button("Entrar").clicked() {
+                if ui.button(tr!("party.connect")).clicked() {
                     let mut addr = self.address.trim().to_owned();
                     if !addr.contains(':') {
                         addr.push_str(&format!(":{DEFAULT_PORT}"));
@@ -181,7 +186,11 @@ impl App {
                             self.error = None;
                             self.log.clear();
                             self.peers.clear();
-                            self.mode = Mode::InRoom { session, host: false, connected: false };
+                            self.mode = Mode::InRoom {
+                                session,
+                                host: false,
+                                connected: false,
+                            };
                         }
                         Err(e) => self.error = Some(e),
                     }
@@ -218,29 +227,29 @@ impl App {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if let Some((code, addr)) = &invite {
-                    ui.strong(format!("Código: {code}"));
-                    ui.label(format!("Endereço: {addr}"));
-                    if ui.button("Copiar convite").clicked() {
+                    ui.strong(tr!("party.code_line", code = code));
+                    ui.label(tr!("party.address_line", address = addr));
+                    if ui.button(tr!("party.copy_invite")).clicked() {
                         ui.ctx().copy_text(format!("{addr} {code}"));
                     }
                 } else {
                     ui.strong(if connected {
-                        "Conectado"
+                        tr!("party.connected")
                     } else {
-                        "Conectando…"
+                        tr!("party.connecting")
                     });
                 }
-                if ui.button("Sair da sala").clicked() {
+                if ui.button(tr!("party.leave")).clicked() {
                     leave = true;
                 }
             });
             ui.add_space(4.0);
         });
         egui::Panel::right("peers").show(ui, |ui| {
-            ui.strong("Participantes");
-            ui.label(format!("• {} (você)", self.name));
+            ui.strong(tr!("party.participants"));
+            ui.label(format!("- {}", tr!("party.you", name = self.name)));
             for (_, n) in &self.peers {
-                ui.label(format!("• {n}"));
+                ui.label(format!("- {n}"));
             }
         });
         let mut send = None;
@@ -249,11 +258,13 @@ impl App {
             ui.horizontal(|ui| {
                 let field = ui.add(
                     egui::TextEdit::singleline(&mut self.input)
-                        .hint_text("Mensagem")
+                        .hint_text(tr!("party.message"))
                         .desired_width(ui.available_width() - 80.0),
                 );
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if (ui.button("Enviar").clicked() || enter) && !self.input.trim().is_empty() {
+                if (ui.button(tr!("party.send")).clicked() || enter)
+                    && !self.input.trim().is_empty()
+                {
                     send = Some(self.input.trim().to_owned());
                     self.input.clear();
                     field.request_focus();
@@ -305,6 +316,16 @@ impl eframe::App for App {
 }
 
 fn main() -> Result<(), String> {
+    // Same language rule as the other frontends: a saved choice wins,
+    // otherwise the OS language does (SPEC-069 L10N-69-04).
+    let path = gba_desktop::settings::default_path();
+    let loaded = path.as_deref().map(gba_desktop::settings::load);
+    let saved = loaded
+        .as_ref()
+        .map_or_else(Settings::default, |l| l.settings.clone());
+    let (lang, _) =
+        gba_desktop::settings::initial_language(path.as_deref(), &saved, &sdl::preferred_locales());
+    gba_i18n::set_lang(lang);
     let icon = gba_desktop::sdl::Surface::from_png(gba_desktop::assets::ICON_PNG)
         .and_then(|s| s.to_rgba())
         .map(|(width, height, rgba)| egui::IconData {
@@ -313,7 +334,7 @@ fn main() -> Result<(), String> {
             height,
         });
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("gba-recomp — Party")
+        .with_title(tr!("party.title"))
         .with_inner_size([760.0, 560.0]);
     if let Ok(icon) = icon {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));

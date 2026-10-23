@@ -45,9 +45,10 @@ pub fn popup(items: &[CtxItem]) -> Option<u32> {
 
 /// Install (or refresh) the application menu bar (CTX-63-02): the app menu
 /// gets `app_items` (e.g. Settings… ⌘,) and each submenu of `menus` becomes
-/// a top-level menu. Selections are collected by [`take_selected`].
+/// a top-level menu. Selections are collected by [`take_selected`]. Titles
+/// are owned because they are translated per refresh, not fixed strings.
 #[cfg(target_os = "macos")]
-pub fn install_menubar(app_items: &[(u32, &str, &str)], menus: &[CtxItem]) {
+pub fn install_menubar(app_items: &[(u32, String, &str)], menus: &[CtxItem]) {
     macos::install_menubar(app_items, menus);
 }
 
@@ -58,7 +59,7 @@ pub fn take_selected() -> Option<u32> {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn install_menubar(_app_items: &[(u32, &str, &str)], _menus: &[CtxItem]) {}
+pub fn install_menubar(_app_items: &[(u32, String, &str)], _menus: &[CtxItem]) {}
 
 #[cfg(not(target_os = "macos"))]
 pub fn take_selected() -> Option<u32> {
@@ -228,7 +229,7 @@ mod macos {
         u32::try_from(SELECTED.swap(-1, Ordering::SeqCst)).ok()
     }
 
-    pub fn install_menubar(app_items: &[(u32, &str, &str)], menus: &[CtxItem]) {
+    pub fn install_menubar(app_items: &[(u32, String, &str)], menus: &[CtxItem]) {
         // SAFETY: autorelease pool brackets the temporary Cocoa objects.
         let pool = unsafe { objc_autoreleasePoolPush() };
         let cls = target_class();
@@ -264,7 +265,7 @@ mod macos {
             if !app_menu.is_null() {
                 let mut at = 1isize;
                 let mut inserted = false;
-                for &(id, title, key) in app_items {
+                for (id, title, key) in app_items {
                     // Reuse an existing item with the same shortcut (SDL adds
                     // a disabled "Settings…" ⌘, entry) instead of duplicating.
                     // Find SDL's own entry by its shortcut (titled "Settings…"

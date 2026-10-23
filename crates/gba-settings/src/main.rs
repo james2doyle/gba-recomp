@@ -9,7 +9,8 @@ use eframe::egui;
 use gba_desktop::gpio;
 use gba_desktop::input::JoyControl;
 use gba_desktop::sdl::{self, Event};
-use gba_desktop::settings::{self, BUTTON_LABELS, Bias, Filter, Settings};
+use gba_desktop::settings::{self, BUTTON_LABEL_KEYS, Bias, Filter, Settings, button_label};
+use gba_i18n::{Lang, tr};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -46,6 +47,10 @@ struct App {
     gpio_test: bool,
     gpio_values: Vec<(usize, bool)>,
     gpio_error: Option<String>,
+    /// Mtime of the file as this window last knew it, so a change written by
+    /// the game is noticed (SPEC-069 L10N-69-03, EXT-64-02).
+    known_mtime: Option<std::time::SystemTime>,
+    last_check: Instant,
 }
 
 /// egui key → SDL scancode name (physical key positions).
@@ -103,11 +108,20 @@ fn sdl_key_name(key: egui::Key) -> Option<String> {
 impl App {
     fn new(path: PathBuf, page: Option<Tab>, sdl: Option<&'static sdl::Context>) -> Self {
         let loaded = settings::load(&path);
+        // This window is often the first frontend a user opens, so it must
+        // pick the same language `gba-desktop` would: the saved choice if
+        // there is one, otherwise the OS language (SPEC-069 L10N-69-04).
+        let (lang, _) =
+            settings::initial_language(Some(&path), &loaded.settings, &sdl::preferred_locales());
+        gba_i18n::set_lang(lang);
         let status = loaded.warning.map(|w| (w, Instant::now()));
+        let known_mtime = settings::modified(Some(&path));
+        let mut draft = loaded.settings;
+        draft.language = lang;
         Self {
             path,
-            effective: loaded.settings.clone(),
-            draft: loaded.settings,
+            effective: draft.clone(),
+            draft,
             invalid_on_disk: loaded.invalid_on_disk,
             tab: page.unwrap_or(Tab::Video),
             status,
@@ -118,7 +132,47 @@ impl App {
             gpio_test: false,
             gpio_values: Vec::new(),
             gpio_error: None,
+            known_mtime,
+            last_check: Instant::now(),
         }
+    }
+
+    /// Adopts changes written by another process (the running game, whose
+    /// in-window menu also switches language).
+    fn reload_if_changed(&mut self) {
+        if self.last_check.elapsed() < Duration::from_millis(500) {
+            return;
+        }
+        self.last_check = Instant::now();
+        let now = settings::modified(Some(&self.path));
+        if now == self.known_mtime {
+            return;
+        }
+        self.known_mtime = now;
+        self.adopt(settings::load(&self.path));
+    }
+
+    /// Merges a file read from disk into this window.
+    ///
+    /// Split from [`Self::reload_if_changed`] so the rule can be tested
+    /// without egui or a clock: unsaved edits are never discarded, but the
+    /// language always follows, because the user did not type it here.
+    fn adopt(&mut self, loaded: settings::Loaded) {
+        if loaded.warning.is_some() {
+            // Mid-write or invalid: keep what we have rather than fighting
+            // over a file that is momentarily incomplete.
+            return;
+        }
+        let dirty = self.draft != self.effective;
+        if !dirty {
+            self.draft = loaded.settings.clone();
+        } else {
+            // Keep the edits, but the language is not an edit to protect.
+            self.draft.language = loaded.settings.language;
+        }
+        self.effective = loaded.settings.clone();
+        self.invalid_on_disk = loaded.invalid_on_disk;
+        adopt_language(loaded.settings.language);
     }
 
     fn say(&mut self, msg: impl Into<String>) {
@@ -130,9 +184,12 @@ impl App {
             Ok(()) => {
                 self.invalid_on_disk = false;
                 self.effective = self.draft.clone();
-                self.say("Configurações salvas — o jogo aplica em até meio segundo");
+                // Record our own write, so the poll below does not mistake it
+                // for a change made by the game.
+                self.known_mtime = settings::modified(Some(&self.path));
+                self.say(tr!("settings.saved"));
             }
-            Err(e) => self.say(format!("Falha ao salvar: {e}")),
+            Err(e) => self.say(tr!("settings.save_failed", error = e)),
         }
     }
 
@@ -215,9 +272,10 @@ impl App {
         }
         lists[c.button] = vec![name.clone()];
         self.capture = None;
-        self.say(format!(
-            "{} → {name} (clique em Aplicar para salvar)",
-            BUTTON_LABELS[c.button]
+        self.say(tr!(
+            "settings.bound",
+            button = button_label(c.button),
+            name = name
         ));
     }
 
@@ -235,7 +293,7 @@ impl App {
             {
                 if key == egui::Key::Escape {
                     self.capture = None;
-                    self.say("Captura cancelada; o binding anterior foi mantido");
+                    self.say(tr!("settings.capture_cancelled"));
                     return;
                 }
                 if c.device == Device::Keyboard
@@ -249,12 +307,35 @@ impl App {
     }
 
     fn video_tab(&mut self, ui: &mut egui::Ui) {
+        // Language first: it is the one setting that changes this window's
+        // own text, so it must be findable without reading the rest
+        // (SPEC-069 L10N-69-03).
+        ui.horizontal(|ui| {
+            ui.label(tr!("settings.language"));
+            let mut chosen = self.draft.language;
+            egui::ComboBox::from_id_salt("language")
+                .selected_text(chosen.display_name())
+                .show_ui(ui, |ui| {
+                    for lang in Lang::all() {
+                        ui.selectable_value(&mut chosen, *lang, lang.display_name());
+                    }
+                });
+            if chosen != self.draft.language {
+                self.draft.language = chosen;
+                // Live: the game reloads settings.toml and picks this up.
+                gba_i18n::set_lang(chosen);
+                self.apply();
+            }
+        });
+        ui.weak(tr!("settings.language_hint"));
+        ui.separator();
+
         let v = &mut self.draft.video;
         egui::Grid::new("video")
             .num_columns(2)
             .spacing([24.0, 10.0])
             .show(ui, |ui| {
-                ui.label("Escala da janela");
+                ui.label(tr!("settings.video.scale"));
                 ui.add(
                     egui::Slider::new(
                         &mut v.scale,
@@ -263,27 +344,41 @@ impl App {
                     .suffix("×"),
                 );
                 ui.end_row();
-                ui.label("Tela cheia");
+                ui.label(tr!("settings.video.fullscreen"));
                 ui.checkbox(&mut v.fullscreen, "");
                 ui.end_row();
-                ui.label("Filtro");
+                ui.label(tr!("settings.video.filter"));
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut v.filter, Filter::Nearest, "Nítido (nearest)");
-                    ui.selectable_value(&mut v.filter, Filter::Linear, "Suave (linear)");
+                    ui.selectable_value(
+                        &mut v.filter,
+                        Filter::Nearest,
+                        tr!("settings.video.filter_nearest"),
+                    );
+                    ui.selectable_value(
+                        &mut v.filter,
+                        Filter::Linear,
+                        tr!("settings.video.filter_linear"),
+                    );
                 });
                 ui.end_row();
-                ui.label("Escala inteira");
-                ui.checkbox(&mut v.integer_scale, "evita pixels de tamanhos diferentes");
+                ui.label(tr!("settings.video.integer_scale"));
+                ui.checkbox(
+                    &mut v.integer_scale,
+                    tr!("settings.video.integer_scale_hint"),
+                );
                 ui.end_row();
-                ui.label("VSync");
+                ui.label(tr!("settings.video.vsync"));
                 ui.checkbox(&mut v.vsync, "");
                 ui.end_row();
-                ui.label("Correção de cor do LCD");
-                ui.checkbox(&mut v.color_correction, "simula a tela do GBA");
+                ui.label(tr!("settings.video.color_correction"));
+                ui.checkbox(
+                    &mut v.color_correction,
+                    tr!("settings.video.color_correction_hint"),
+                );
                 ui.end_row();
             });
         ui.add_space(8.0);
-        ui.weak("Estas opções só mudam a apresentação; o jogo roda igual (SET-63-02).");
+        ui.weak(tr!("settings.video.note"));
     }
 
     fn audio_tab(&mut self, ui: &mut egui::Ui) {
@@ -292,13 +387,13 @@ impl App {
             .num_columns(2)
             .spacing([24.0, 10.0])
             .show(ui, |ui| {
-                ui.label("Volume");
+                ui.label(tr!("settings.audio.volume"));
                 ui.add(egui::Slider::new(&mut a.volume, 0..=100).suffix("%"));
                 ui.end_row();
-                ui.label("Mudo");
+                ui.label(tr!("settings.audio.mute"));
                 ui.checkbox(&mut a.mute, "");
                 ui.end_row();
-                ui.label("Latência máxima");
+                ui.label(tr!("settings.audio.latency"));
                 ui.add(
                     egui::Slider::new(
                         &mut a.latency_ms,
@@ -312,34 +407,34 @@ impl App {
     }
 
     fn controls_tab(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Dispositivos conectados");
+        ui.heading(tr!("settings.controls.devices"));
         if self.sdl.is_none() {
-            ui.colored_label(
-                egui::Color32::YELLOW,
-                "SDL indisponível: só o teclado pode ser configurado.",
-            );
+            ui.colored_label(egui::Color32::YELLOW, tr!("settings.controls.no_sdl"));
         }
         if self.pads.is_empty() && self.joys.is_empty() {
-            ui.weak("Nenhum controle detectado. Conecte por USB ou pareie por Bluetooth; a lista atualiza sozinha.");
+            ui.weak(tr!("settings.controls.none"));
         }
         for p in &self.pads {
-            ui.label(format!(
-                "🎮 {} — gamepad, {}",
-                p.name(),
-                p.connection().label()
+            ui.label(tr!(
+                "settings.controls.pad_line",
+                name = p.name(),
+                connection = p.connection().label()
             ));
         }
         for j in &self.joys {
             let (b, a, h) = j.counts();
-            ui.label(format!(
-                "🕹 {} — joystick genérico ({b} botões, {a} eixos, {h} hats), {}",
-                j.name(),
-                j.connection().label()
+            ui.label(tr!(
+                "settings.controls.joystick_line",
+                name = j.name(),
+                buttons = b,
+                axes = a,
+                hats = h,
+                connection = j.connection().label()
             ));
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.label("Zona morta do analógico");
+            ui.label(tr!("settings.controls.deadzone"));
             ui.add(
                 egui::Slider::new(&mut self.draft.input.deadzone, 0.0..=settings::DEADZONE_MAX)
                     .fixed_decimals(2),
@@ -347,14 +442,14 @@ impl App {
         });
         ui.horizontal(|ui| {
             use gba_desktop::settings::TouchMode;
-            ui.label("Controles na tela (touch)");
+            ui.label(tr!("settings.controls.touch"));
             let t = &mut self.draft.input.touch_controls;
-            ui.selectable_value(t, TouchMode::Auto, "Automático");
-            ui.selectable_value(t, TouchMode::On, "Sempre");
-            ui.selectable_value(t, TouchMode::Off, "Nunca");
+            ui.selectable_value(t, TouchMode::Auto, tr!("settings.controls.touch_auto"));
+            ui.selectable_value(t, TouchMode::On, tr!("settings.controls.touch_always"));
+            ui.selectable_value(t, TouchMode::Off, tr!("settings.controls.touch_never"));
         });
         ui.add_space(8.0);
-        ui.heading("Botões do GBA");
+        ui.heading(tr!("settings.controls.buttons"));
         let capture = self.capture;
         let mut start: Option<Capture> = None;
         let mut clear: Option<Capture> = None;
@@ -366,13 +461,13 @@ impl App {
                     .num_columns(4)
                     .spacing([16.0, 6.0])
                     .show(ui, |ui| {
-                        ui.strong("Botão");
-                        ui.strong("Teclado");
-                        ui.strong("Gamepad");
-                        ui.strong("Joystick genérico");
+                        ui.strong(tr!("settings.controls.col_button"));
+                        ui.strong(tr!("settings.controls.col_keyboard"));
+                        ui.strong(tr!("settings.controls.col_gamepad"));
+                        ui.strong(tr!("settings.controls.col_joystick"));
                         ui.end_row();
-                        for (i, label) in BUTTON_LABELS.iter().enumerate() {
-                            ui.label(*label);
+                        for i in 0..BUTTON_LABEL_KEYS.len() {
+                            ui.label(button_label(i));
                             for (device, list) in [
                                 (Device::Keyboard, &self.draft.input.keyboard[i]),
                                 (Device::Gamepad, &self.draft.input.gamepad[i]),
@@ -382,9 +477,11 @@ impl App {
                                 ui.horizontal(|ui| {
                                     if capture == Some(this) {
                                         let hint = match device {
-                                            Device::Keyboard => "pressione uma tecla…",
-                                            Device::Gamepad => "pressione um botão…",
-                                            Device::Joystick => "mova/pressione o joystick…",
+                                            Device::Keyboard => tr!("settings.controls.press_key"),
+                                            Device::Gamepad => tr!("settings.controls.press_pad"),
+                                            Device::Joystick => {
+                                                tr!("settings.controls.press_joystick")
+                                            }
                                         };
                                         ui.colored_label(egui::Color32::LIGHT_BLUE, hint);
                                     } else {
@@ -395,7 +492,7 @@ impl App {
                                         };
                                         if ui
                                             .button(text)
-                                            .on_hover_text("Clique para definir")
+                                            .on_hover_text(tr!("settings.controls.click_to_bind"))
                                             .clicked()
                                         {
                                             start = Some(this);
@@ -403,7 +500,7 @@ impl App {
                                         if !list.is_empty()
                                             && ui
                                                 .small_button("✕")
-                                                .on_hover_text("Remover")
+                                                .on_hover_text(tr!("settings.controls.remove"))
                                                 .clicked()
                                         {
                                             clear = Some(this);
@@ -417,7 +514,7 @@ impl App {
             });
         if let Some(c) = start {
             self.capture = Some(c);
-            self.say("Aguardando entrada… (Esc cancela)");
+            self.say(tr!("settings.capture_waiting"));
         }
         if let Some(c) = clear {
             let lists = match c.device {
@@ -428,64 +525,69 @@ impl App {
             lists[c.button].clear();
         }
         ui.add_space(6.0);
-        if ui.button("Restaurar controles padrão").clicked() {
+        if ui.button(tr!("settings.controls.restore")).clicked() {
             self.draft.input = settings::Input::default();
         }
     }
 
     fn gpio_tab(&mut self, ui: &mut egui::Ui) {
         if !gpio::available() {
-            ui.label("GPIO só está disponível no Linux (Raspberry Pi e similares), pela interface /dev/gpiochipN.");
-            ui.weak("As configurações abaixo são salvas e valem quando o jogo roda no Linux.");
+            ui.label(tr!("settings.gpio.unavailable"));
+            ui.weak(tr!("settings.gpio.unavailable_hint"));
         }
         let g = &mut self.draft.gpio;
         egui::Grid::new("gpio")
             .num_columns(2)
             .spacing([24.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Usar botões em GPIO");
+                ui.label(tr!("settings.gpio.use"));
                 ui.checkbox(&mut g.enabled, "");
                 ui.end_row();
-                ui.label("Chip");
+                ui.label(tr!("settings.gpio.chip"));
                 ui.text_edit_singleline(&mut g.chip);
                 ui.end_row();
-                ui.label("Botão ligado ao GND (ativo em 0)");
+                ui.label(tr!("settings.gpio.active_low"));
                 ui.checkbox(&mut g.active_low, "");
                 ui.end_row();
-                ui.label("Resistor interno");
+                ui.label(tr!("settings.gpio.bias"));
+                let bias_label = |b: Bias| match b {
+                    Bias::PullUp => tr!("settings.gpio.pull_up"),
+                    Bias::PullDown => tr!("settings.gpio.pull_down"),
+                    Bias::Disabled => tr!("settings.gpio.disabled"),
+                };
                 egui::ComboBox::from_id_salt("bias")
-                    .selected_text(match g.bias {
-                        Bias::PullUp => "pull-up",
-                        Bias::PullDown => "pull-down",
-                        Bias::Disabled => "desligado",
-                    })
+                    .selected_text(bias_label(g.bias))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut g.bias, Bias::PullUp, "pull-up");
-                        ui.selectable_value(&mut g.bias, Bias::PullDown, "pull-down");
-                        ui.selectable_value(&mut g.bias, Bias::Disabled, "desligado");
+                        for b in [Bias::PullUp, Bias::PullDown, Bias::Disabled] {
+                            ui.selectable_value(&mut g.bias, b, bias_label(b));
+                        }
                     });
                 ui.end_row();
-                ui.label("Debounce");
+                ui.label(tr!("settings.gpio.debounce"));
                 ui.add(egui::Slider::new(&mut g.debounce_ms, 0..=100).suffix(" ms"));
                 ui.end_row();
             });
         ui.add_space(8.0);
-        ui.heading("Linha (offset no chip) de cada botão");
-        ui.weak("No Raspberry Pi o offset é o número BCM (ex.: GPIO17 = 17).");
+        ui.heading(tr!("settings.gpio.lines"));
+        ui.weak(tr!("settings.gpio.lines_hint"));
         egui::Grid::new("lines")
             .striped(true)
             .num_columns(3)
             .show(ui, |ui| {
-                for (i, label) in BUTTON_LABELS.iter().enumerate() {
-                    ui.label(*label);
+                for i in 0..BUTTON_LABEL_KEYS.len() {
+                    ui.label(button_label(i));
                     let mut on = g.lines[i].is_some();
-                    if ui.checkbox(&mut on, "ligado").changed() {
+                    if ui.checkbox(&mut on, tr!("settings.gpio.on")).changed() {
                         g.lines[i] = if on { Some(0) } else { None };
                     }
                     if let Some(line) = g.lines[i].as_mut() {
                         ui.add(egui::DragValue::new(line).range(0..=1023));
                         if let Some((_, v)) = self.gpio_values.iter().find(|(b, _)| *b == i) {
-                            ui.label(if *v { "● pressionado" } else { "○ solto" });
+                            ui.label(if *v {
+                                tr!("settings.gpio.pressed")
+                            } else {
+                                tr!("settings.gpio.released")
+                            });
                         }
                     } else {
                         ui.label("");
@@ -495,10 +597,7 @@ impl App {
             });
         ui.add_space(6.0);
         if gpio::available() {
-            ui.checkbox(
-                &mut self.gpio_test,
-                "Testar pinos ao vivo (feche o jogo antes: o chip é exclusivo)",
-            );
+            ui.checkbox(&mut self.gpio_test, tr!("settings.gpio.live_test"));
             if let Some(e) = &self.gpio_error {
                 ui.colored_label(egui::Color32::LIGHT_RED, e);
             }
@@ -533,9 +632,20 @@ impl App {
     }
 }
 
+/// Follow a language chosen elsewhere (the game's in-window menu), so the two
+/// windows never disagree (SPEC-069 L10N-69-03). Returns whether it changed.
+fn adopt_language(lang: Lang) -> bool {
+    if gba_i18n::lang() == lang {
+        return false;
+    }
+    gba_i18n::set_lang(lang);
+    true
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll_devices();
+        self.reload_if_changed();
         self.keyboard_capture(ui);
         self.sample_gpio();
         // Keep polling controllers and GPIO even without UI input.
@@ -544,10 +654,10 @@ impl eframe::App for App {
         egui::Panel::top("tabs").show(ui, |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.tab, Tab::Video, "🖥  Vídeo");
-                ui.selectable_value(&mut self.tab, Tab::Audio, "🔊  Áudio");
-                ui.selectable_value(&mut self.tab, Tab::Controls, "🎮  Controles");
-                ui.selectable_value(&mut self.tab, Tab::Gpio, "📌  GPIO");
+                ui.selectable_value(&mut self.tab, Tab::Video, tr!("settings.tab.video"));
+                ui.selectable_value(&mut self.tab, Tab::Audio, tr!("settings.tab.audio"));
+                ui.selectable_value(&mut self.tab, Tab::Controls, tr!("settings.tab.controls"));
+                ui.selectable_value(&mut self.tab, Tab::Gpio, tr!("settings.tab.gpio"));
             });
             ui.add_space(4.0);
         });
@@ -556,20 +666,20 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 let dirty = self.draft != self.effective;
                 if ui
-                    .add_enabled(dirty, egui::Button::new("Aplicar"))
+                    .add_enabled(dirty, egui::Button::new(tr!("settings.apply")))
                     .clicked()
                 {
                     self.apply();
                 }
                 if ui
-                    .add_enabled(dirty, egui::Button::new("Cancelar"))
+                    .add_enabled(dirty, egui::Button::new(tr!("settings.cancel")))
                     .clicked()
                 {
                     self.draft = self.effective.clone();
                     self.capture = None;
-                    self.say("Alterações descartadas");
+                    self.say(tr!("settings.discarded"));
                 }
-                if ui.button("Restaurar padrões desta aba").clicked() {
+                if ui.button(tr!("settings.restore_tab")).clicked() {
                     let d = Settings::default();
                     match self.tab {
                         Tab::Video => self.draft.video = d.video,
@@ -579,7 +689,7 @@ impl eframe::App for App {
                     }
                 }
                 if dirty {
-                    ui.colored_label(egui::Color32::YELLOW, "alterações não salvas");
+                    ui.colored_label(egui::Color32::YELLOW, tr!("settings.unsaved"));
                 }
             });
             if let Some((msg, at)) = &self.status
@@ -644,6 +754,13 @@ fn main() -> Result<(), String> {
             None
         }
     };
+    // Pick the language before the window exists: the title bar is drawn by
+    // the OS from a string we pass once, so it must already be translated
+    // (SPEC-069 L10N-69-03).
+    let startup = settings::load(&path);
+    let (lang, _) =
+        settings::initial_language(Some(&path), &startup.settings, &sdl::preferred_locales());
+    gba_i18n::set_lang(lang);
     // Window/Dock icon from the embedded logo (decoded by SDL, no extra crate).
     let icon = gba_desktop::sdl::Surface::from_png(gba_desktop::assets::ICON_PNG)
         .and_then(|s| s.to_rgba())
@@ -653,7 +770,7 @@ fn main() -> Result<(), String> {
             height,
         });
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("gba-recomp — Configurações")
+        .with_title(tr!("settings.title"))
         .with_inner_size([720.0, 620.0]);
     match icon {
         Ok(icon) => viewport = viewport.with_icon(std::sync::Arc::new(icon)),
@@ -674,6 +791,122 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// The locale is process-global and tests run in parallel, so any test
+    /// that sets or reads it must hold this (SPEC-069).
+    static LOCALE: Mutex<()> = Mutex::new(());
+
+    struct Locale(#[allow(dead_code)] MutexGuard<'static, ()>);
+
+    impl Drop for Locale {
+        fn drop(&mut self) {
+            gba_i18n::set_lang(Lang::default());
+        }
+    }
+
+    fn locale() -> Locale {
+        let guard = LOCALE.lock().unwrap_or_else(|e| e.into_inner());
+        gba_i18n::set_lang(Lang::default());
+        Locale(guard)
+    }
+
+    /// The game's in-window menu writes `language`; an open settings window
+    /// must follow it rather than showing stale text (SPEC-069 L10N-69-03).
+    #[test]
+    fn a_language_written_by_the_game_is_adopted() {
+        let _locale = locale();
+        let dir = std::env::temp_dir().join(format!("gba-set-lang-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        std::fs::write(&path, "version = 1\nlanguage = \"pt-BR\"\n").unwrap();
+
+        let mut app = App::new(path.clone(), Some(Tab::Video), None);
+        assert_eq!(gba_i18n::lang(), Lang::PtBr);
+
+        // The game switches to English and saves.
+        std::fs::write(&path, "version = 1\nlanguage = \"en-US\"\n").unwrap();
+        app.adopt(settings::load(&path));
+        assert_eq!(gba_i18n::lang(), Lang::EnUs, "window follows the game");
+        assert_eq!(app.draft.language, Lang::EnUs);
+        assert_eq!(app.effective.language, Lang::EnUs);
+
+        gba_i18n::set_lang(Lang::PtBr);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Unsaved edits must survive an external write, but the language is not
+    /// an edit the user made in this window, so it still follows.
+    #[test]
+    fn external_change_keeps_unsaved_edits() {
+        let _locale = locale();
+        let dir = std::env::temp_dir().join(format!("gba-set-dirty-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        std::fs::write(&path, "version = 1\n[video]\nscale = 3\n").unwrap();
+
+        let mut app = App::new(path.clone(), Some(Tab::Video), None);
+        app.draft.video.scale = 7; // an edit the user has not applied
+
+        std::fs::write(
+            &path,
+            "version = 1\nlanguage = \"en-US\"\n[video]\nscale = 2\n",
+        )
+        .unwrap();
+        app.adopt(settings::load(&path));
+
+        assert_eq!(app.draft.video.scale, 7, "unsaved edit kept");
+        assert_eq!(app.effective.video.scale, 2, "disk state still tracked");
+        assert_eq!(app.draft.language, Lang::EnUs, "language follows anyway");
+
+        gba_i18n::set_lang(Lang::PtBr);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The real `App` end to end, but on a clock we control: the poll must
+    /// notice an external write and switch the window's language.
+    #[test]
+    fn polling_adopts_an_external_change() {
+        let _locale = locale();
+        let dir = std::env::temp_dir().join(format!("gba-set-poll-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        std::fs::write(&path, "version = 1\nlanguage = \"pt-BR\"\n").unwrap();
+
+        let mut app = App::new(path.clone(), Some(Tab::Video), None);
+        assert_eq!(gba_i18n::lang(), Lang::PtBr);
+
+        // Before the interval elapses nothing is read, even if the file moved.
+        std::fs::write(&path, "version = 1\nlanguage = \"en-US\"\n").unwrap();
+        app.reload_if_changed();
+        assert_eq!(
+            gba_i18n::lang(),
+            Lang::PtBr,
+            "throttled by the poll interval"
+        );
+
+        // Once it elapses, the change is adopted.
+        app.last_check = Instant::now() - Duration::from_secs(1);
+        app.reload_if_changed();
+        assert_eq!(gba_i18n::lang(), Lang::EnUs);
+        assert_eq!(app.draft.language, Lang::EnUs);
+
+        // Our own write must not look like a foreign change: after `apply`,
+        // what the window believes about the file must be what is on disk.
+        app.apply();
+        assert_eq!(
+            app.known_mtime,
+            settings::modified(Some(&path)),
+            "apply records its own write"
+        );
+        app.last_check = Instant::now() - Duration::from_secs(1);
+        app.reload_if_changed();
+        assert_eq!(gba_i18n::lang(), Lang::EnUs, "no self-triggered churn");
+        assert_eq!(app.draft, app.effective, "no spurious edit appeared");
+
+        gba_i18n::set_lang(Lang::PtBr);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn egui_keys_map_to_sdl_scancode_names() {

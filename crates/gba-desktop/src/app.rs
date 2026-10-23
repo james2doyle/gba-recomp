@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 
 use gba_core::{BackupKind, Gba, GbaConfig, NativeExec, SCREEN_HEIGHT, SCREEN_WIDTH};
 
+use gba_i18n::tr;
+
 use crate::ctxmenu::{self, CtxItem, action, submenu};
 use crate::gpio::GpioInput;
 use crate::input::{Bindings, JoyControl, JoyState, PadState};
@@ -168,6 +170,8 @@ const A_MENU: u32 = 63;
 const A_QUIT: u32 = 64;
 const A_EXTERNAL: u32 = 65;
 const A_PARTY: u32 = 66;
+/// 70.. = one action per language, in `Lang::all()` order.
+const A_LANGUAGE: u32 = 70;
 
 /// Launch `gba-settings` (EXT-64-02): next to this executable, then PATH.
 fn open_external_settings(settings_path: Option<&Path>) -> Result<(), String> {
@@ -203,11 +207,70 @@ fn open_companion(name: &str, args: &[&std::ffi::OsStr]) -> Result<(), String> {
         .map_err(|e| format!("cannot start {} ({e})", program.display()))
 }
 
-/// macOS menu bar (CTX-63-02): app menu entries and top-level menus.
-const APP_MENU: [(u32, &str, &str); 2] = [
-    (A_EXTERNAL, "Configurações…", ","),
-    (A_PARTY, "Party em rede…", "p"),
-];
+/// Adopts the language from a settings file that another process wrote, and
+/// reports whether it changed (SPEC-069 L10N-69-03).
+///
+/// The menu's draft and effective settings move with it, or the next `Apply`
+/// would silently revert a language the user did not touch.
+fn adopt_language(loaded: &Settings, menu: &mut Menu) -> bool {
+    if loaded.language == gba_i18n::lang() {
+        return false;
+    }
+    gba_i18n::set_lang(loaded.language);
+    menu.set_language(loaded.language);
+    // Rare host event, and otherwise invisible when no menu is open: say so,
+    // like the audio/GPIO diagnostics next to it.
+    eprintln!("gba-desktop: language changed to {}", loaded.language.tag());
+    true
+}
+
+/// macOS menu bar (CTX-63-02): app menu entries and top-level menus. Built
+/// per refresh rather than declared as a constant because the bar is rebuilt
+/// whenever settings change, and a language change is a settings change
+/// (SPEC-069 L10N-69-03).
+fn app_menu_items() -> Vec<(u32, String, &'static str)> {
+    vec![
+        (A_EXTERNAL, tr!("app.settings"), ","),
+        (A_PARTY, tr!("app.party"), "p"),
+    ]
+}
+
+/// Menu navigation for a keyboard key, including the Android back button,
+/// which is the only way to reach the menu on a touch device
+/// (SPEC-069 L10N-69-06).
+fn nav_for_key(sc: usize) -> Option<Nav> {
+    match sc {
+        scancode::UP => Some(Nav::Up),
+        scancode::DOWN => Some(Nav::Down),
+        scancode::LEFT => Some(Nav::Left),
+        scancode::RIGHT => Some(Nav::Right),
+        scancode::RETURN | scancode::SPACE | scancode::Z => Some(Nav::Confirm),
+        scancode::ESCAPE | scancode::BACKSPACE | scancode::X | scancode::AC_BACK => Some(Nav::Back),
+        _ => None,
+    }
+}
+
+/// Whether a key press may be recorded as a game binding during a keyboard
+/// remap. Esc and the Android back button only cancel (SPEC-063 MENU-63-02,
+/// SPEC-069) — capturing the back button would make the menu unreachable.
+fn captures_key(sc: usize) -> bool {
+    !matches!(sc, scancode::ESCAPE | scancode::AC_BACK)
+}
+
+/// Whether a key opens the menu when it is closed: Esc/F1 on desktop, the
+/// Android back button on touch devices.
+fn opens_menu(sc: usize) -> bool {
+    matches!(sc, scancode::ESCAPE | scancode::F1 | scancode::AC_BACK)
+}
+
+/// Pause toggles between two verbs depending on state.
+fn pause_label(paused: bool) -> String {
+    if paused {
+        tr!("ctx.resume")
+    } else {
+        tr!("ctx.pause")
+    }
+}
 
 fn menubar_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
     let mut items: Vec<CtxItem> = context_items(s, paused)
@@ -215,12 +278,12 @@ fn menubar_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
         .filter(|i| matches!(i, CtxItem::Submenu { .. }))
         .collect();
     items.push(submenu(
-        "Sistema",
+        tr!("ctx.system"),
         vec![
-            action(A_PAUSE, if paused { "Continuar" } else { "Pausar" }, false),
-            action(A_RESET, "Reiniciar jogo", false),
-            action(A_SAVE, "Salvar agora", false),
-            action(A_MENU, "Menu na janela…", false),
+            action(A_PAUSE, pause_label(paused), false),
+            action(A_RESET, tr!("ctx.reset"), false),
+            action(A_SAVE, tr!("ctx.save_now"), false),
+            action(A_MENU, tr!("ctx.in_window_menu"), false),
         ],
     ));
     items
@@ -231,32 +294,32 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
     let a = &s.audio;
     vec![
         submenu(
-            "Vídeo",
+            tr!("ctx.video"),
             vec![
                 submenu(
-                    "Escala da janela",
+                    tr!("ctx.scale"),
                     (1..=8u8)
                         .map(|n| action(A_SCALE + u32::from(n) - 1, format!("{n}×"), v.scale == n))
                         .collect(),
                 ),
-                action(A_FULLSCREEN, "Tela cheia", v.fullscreen),
+                action(A_FULLSCREEN, tr!("ctx.fullscreen"), v.fullscreen),
                 ctxmenu::CtxItem::Separator,
                 action(
                     A_LINEAR,
-                    "Filtro suave (linear)",
+                    tr!("ctx.filter_linear"),
                     v.filter == Filter::Linear,
                 ),
-                action(A_INTEGER, "Escala inteira", v.integer_scale),
-                action(A_VSYNC, "VSync", v.vsync),
-                action(A_COLOR, "Correção de cor do LCD", v.color_correction),
+                action(A_INTEGER, tr!("ctx.integer_scale"), v.integer_scale),
+                action(A_VSYNC, tr!("menu.video.vsync"), v.vsync),
+                action(A_COLOR, tr!("ctx.color_correction"), v.color_correction),
             ],
         ),
         submenu(
-            "Som",
+            tr!("ctx.sound"),
             vec![
-                action(A_MUTE, "Mudo", a.mute),
+                action(A_MUTE, tr!("ctx.mute"), a.mute),
                 submenu(
-                    "Volume",
+                    tr!("ctx.volume"),
                     [0u8, 25, 50, 75, 100]
                         .iter()
                         .enumerate()
@@ -266,7 +329,7 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
                         .collect(),
                 ),
                 submenu(
-                    "Latência",
+                    tr!("ctx.latency"),
                     LATENCIES
                         .iter()
                         .enumerate()
@@ -278,11 +341,11 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
             ],
         ),
         submenu(
-            "Controles",
+            tr!("ctx.controls"),
             vec![
-                action(A_REMAP, "Remapear botões…", false),
+                action(A_REMAP, tr!("ctx.remap"), false),
                 submenu(
-                    "Zona morta do analógico",
+                    tr!("ctx.deadzone"),
                     DEADZONES
                         .iter()
                         .enumerate()
@@ -295,18 +358,32 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
                         })
                         .collect(),
                 ),
-                action(A_INPUT_DEFAULTS, "Restaurar controles padrão", false),
+                action(A_INPUT_DEFAULTS, tr!("ctx.restore_defaults"), false),
             ],
         ),
         ctxmenu::CtxItem::Separator,
-        action(A_PAUSE, if paused { "Continuar" } else { "Pausar" }, false),
-        action(A_RESET, "Reiniciar jogo", false),
-        action(A_SAVE, "Salvar agora", false),
-        action(A_EXTERNAL, "Configurações…", false),
-        action(A_PARTY, "Party em rede…", false),
-        action(A_MENU, "Menu na janela…", false),
+        submenu(
+            tr!("ctx.language"),
+            gba_i18n::Lang::all()
+                .iter()
+                .enumerate()
+                .map(|(i, lang)| {
+                    action(
+                        A_LANGUAGE + i as u32,
+                        lang.display_name(),
+                        *lang == s.language,
+                    )
+                })
+                .collect(),
+        ),
+        action(A_PAUSE, pause_label(paused), false),
+        action(A_RESET, tr!("ctx.reset"), false),
+        action(A_SAVE, tr!("ctx.save_now"), false),
+        action(A_EXTERNAL, tr!("ctx.external"), false),
+        action(A_PARTY, tr!("ctx.party"), false),
+        action(A_MENU, tr!("ctx.in_window_menu"), false),
         ctxmenu::CtxItem::Separator,
-        action(A_QUIT, "Sair", false),
+        action(A_QUIT, tr!("menu.quit"), false),
     ]
 }
 
@@ -350,6 +427,15 @@ fn context_effect(id: u32, s: &Settings) -> Effect {
         A_QUIT => return Effect::Quit,
         A_EXTERNAL => return Effect::OpenExternal,
         A_PARTY => return Effect::OpenParty,
+        // One action per language, in `Lang::all()` order. Selecting one in
+        // the native menu is an explicit choice: it applies at once and the
+        // caller persists the returned settings.
+        A_LANGUAGE.. => {
+            if let Some(lang) = gba_i18n::Lang::all().get((id - A_LANGUAGE) as usize) {
+                n.language = *lang;
+                gba_i18n::set_lang(*lang);
+            }
+        }
         _ => return Effect::None,
     }
     Effect::Settings(n)
@@ -413,13 +499,20 @@ pub fn run_app(
             invalid_on_disk: false,
         });
     let mut settings_invalid_on_disk = loaded.invalid_on_disk;
+    // A saved `language` line is an explicit choice and wins over the OS;
+    // without one the OS language decides, including later changes to it
+    // (SPEC-069 L10N-69-04).
+    let (initial_lang, mut language_chosen) = settings::initial_language(
+        settings_path.as_deref(),
+        &loaded.settings,
+        &sdl::preferred_locales(),
+    );
+    gba_i18n::set_lang(initial_lang);
     let mut current = loaded.settings;
+    current.language = initial_lang;
     let mut status: Option<(String, Instant)> = loaded.warning.map(|w| {
         eprintln!("gba-desktop: {w}");
-        (
-            "Configuracoes invalidas: usando padroes".to_owned(),
-            Instant::now(),
-        )
+        (tr!("status.settings_invalid"), Instant::now())
     });
 
     // Declaration order matters: owners drop before `ctx` (SDL_Quit).
@@ -438,6 +531,9 @@ pub fn run_app(
     let mut gpio: Option<GpioInput> = None;
     // Touch screens (SPEC-068 TOUCH-68-01): active fingers in logical coords.
     let mut fingers: std::collections::HashMap<u64, (f32, f32)> = Default::default();
+    // Long press on empty screen area opens the menu on touch devices, where
+    // there is no Esc/F1/right click (SPEC-069 L10N-69-06).
+    let mut long_press = touch::LongPress::new();
     let has_touchscreen = ctx.has_touchscreen();
     let mut touch_seen = false;
 
@@ -496,10 +592,7 @@ pub fn run_app(
         &mut gpio,
     );
 
-    let mtime = |path: Option<&Path>| {
-        path.and_then(|p| fs::metadata(p).ok())
-            .and_then(|m| m.modified().ok())
-    };
+    let mtime = settings::modified;
     let mut known_mtime = mtime(settings_path.as_deref());
     let mut last_settings_check = Instant::now();
     let persist_settings = |s: &Settings,
@@ -515,7 +608,7 @@ pub fn run_app(
             }
             Err(e) => {
                 eprintln!("gba-desktop: {e}");
-                Some("Nao foi possivel salvar as configuracoes".into())
+                Some(tr!("status.settings_unwritable"))
             }
         }
     };
@@ -573,6 +666,20 @@ pub fn run_app(
             match ev {
                 Event::Quit => break 'main,
                 Event::FocusLost => {}
+                // The system language changed. Only follow it when the user
+                // has not chosen a language explicitly, so a saved preference
+                // is never overridden (SPEC-069 L10N-69-04).
+                Event::LocaleChanged => {
+                    if !language_chosen {
+                        let tags = sdl::preferred_locales();
+                        if let Some(detected) = gba_i18n::detect_from(&tags) {
+                            gba_i18n::set_lang(detected);
+                            current.language = detected;
+                            menu.draft.language = detected;
+                            menu.set_language(detected);
+                        }
+                    }
+                }
                 Event::GamepadAdded(id) => {
                     if !pads.iter().any(|p| p.id() == id) {
                         match ctx.open_gamepad(id) {
@@ -596,7 +703,7 @@ pub fn run_app(
                     scancode: sc,
                     repeat,
                 } => {
-                    if menu.open && menu.remap.is_some_and(|r| !r.pad) && sc != scancode::ESCAPE {
+                    if menu.open && menu.remap.is_some_and(|r| !r.pad) && captures_key(sc) {
                         // Ignore auto-repeat of the key that started the remap.
                         if !repeat && let Some(s) = menu.bind(sdl::scancode_name(sc), false) {
                             effect = Effect::Settings(s);
@@ -610,16 +717,8 @@ pub fn run_app(
                         continue;
                     }
                     if menu.open {
-                        nav.extend(match sc {
-                            scancode::UP => Some(Nav::Up),
-                            scancode::DOWN => Some(Nav::Down),
-                            scancode::LEFT => Some(Nav::Left),
-                            scancode::RIGHT => Some(Nav::Right),
-                            scancode::RETURN | scancode::SPACE | scancode::Z => Some(Nav::Confirm),
-                            scancode::ESCAPE | scancode::BACKSPACE | scancode::X => Some(Nav::Back),
-                            _ => None,
-                        });
-                    } else if (sc == scancode::ESCAPE || sc == scancode::F1) && !repeat {
+                        nav.extend(nav_for_key(sc));
+                    } else if opens_menu(sc) && !repeat {
                         effect = Effect::OpenMenu(Page::Main);
                     }
                 }
@@ -667,14 +766,30 @@ pub fn run_app(
                     match video.window_to_logical(x, y) {
                         Some(p) => {
                             fingers.insert(finger, p);
+                            // Only the menu being closed arms the gesture; while
+                            // it is open a tap belongs to navigation.
+                            if !menu.open {
+                                long_press.press(finger, p.0, p.1, Instant::now());
+                            }
                         }
                         None => {
                             fingers.remove(&finger);
+                            long_press.release(finger);
                         }
+                    }
+                }
+                // Motion only updates the position; it never starts a press.
+                Event::FingerMotion { finger, x, y } => {
+                    if let Some(p) = video.window_to_logical(x, y) {
+                        if let Some(slot) = fingers.get_mut(&finger) {
+                            *slot = p;
+                        }
+                        long_press.moved(finger, p.0, p.1);
                     }
                 }
                 Event::FingerUp { finger } => {
                     fingers.remove(&finger);
+                    long_press.release(finger);
                 }
                 Event::MouseDown { .. } | Event::Other => {}
             }
@@ -685,7 +800,7 @@ pub fn run_app(
             deadline = Instant::now();
         }
         if menubar_state.as_ref() != Some(&(current.clone(), paused)) {
-            ctxmenu::install_menubar(&APP_MENU, &menubar_items(&current, paused));
+            ctxmenu::install_menubar(&app_menu_items(), &menubar_items(&current, paused));
             menubar_state = Some((current.clone(), paused));
         }
         for n in nav {
@@ -699,6 +814,11 @@ pub fn run_app(
                 Command::Apply(s) => effect = Effect::Settings(s),
             }
         }
+        // A long press on free screen area opens the menu. Polled once per
+        // frame so the threshold is independent of event batching.
+        if !menu.open && long_press.poll(Instant::now()) {
+            effect = Effect::OpenMenu(Page::Main);
+        }
         match effect {
             Effect::None => {}
             Effect::Settings(s) => {
@@ -710,31 +830,37 @@ pub fn run_app(
                     &mut presentation,
                     &mut gpio,
                 );
+                // Saving settings records an explicit language preference.
+                language_chosen = true;
                 let failure = persist_settings(&s, &mut settings_invalid_on_disk, &mut known_mtime);
                 status = Some((
-                    failure.unwrap_or_else(|| "Configuracoes salvas".into()),
+                    failure.unwrap_or_else(|| tr!("settings.saved")),
                     Instant::now(),
                 ));
                 current = s;
             }
-            Effect::OpenMenu(page) => menu.open_at(page, &current),
+            Effect::OpenMenu(page) => {
+                // Any route that opens the menu consumes a pending gesture.
+                long_press.cancel();
+                menu.open_at(page, &current);
+            }
             Effect::TogglePause => paused = !paused,
             Effect::OpenParty => {
                 let msg = match open_companion("gba-party", &[]) {
-                    Ok(()) => "Party aberta".to_owned(),
+                    Ok(()) => tr!("status.party_opened"),
                     Err(e) => {
                         eprintln!("gba-desktop: {e}");
-                        "gba-party nao encontrado".to_owned()
+                        tr!("status.party_missing")
                     }
                 };
                 status = Some((msg, Instant::now()));
             }
             Effect::OpenExternal => {
                 let msg = match open_external_settings(settings_path.as_deref()) {
-                    Ok(()) => "Janela de configuracoes aberta".to_owned(),
+                    Ok(()) => tr!("status.settings_opened"),
                     Err(e) => {
                         eprintln!("gba-desktop: {e}");
-                        "gba-settings nao encontrado".to_owned()
+                        tr!("status.settings_missing")
                     }
                 };
                 status = Some((msg, Instant::now()));
@@ -744,19 +870,19 @@ pub fn run_app(
                 let dirty = gba.bus.backup.dirty;
                 gba = new_gba(Some(&backup));
                 gba.bus.backup.dirty = dirty;
-                status = Some(("Jogo reiniciado".into(), Instant::now()));
+                status = Some((tr!("status.game_reset"), Instant::now()));
             }
             Effect::SaveNow => {
                 let msg = match persist_save(&mut gba, o.save.as_deref()) {
                     Ok(true) => {
                         report.saves += 1;
-                        "Save gravado".to_owned()
+                        tr!("status.save_written")
                     }
-                    Ok(false) if o.save.is_none() => "Sem arquivo de save (--save)".to_owned(),
-                    Ok(false) => "Nada novo para gravar".to_owned(),
+                    Ok(false) if o.save.is_none() => tr!("status.save_no_file"),
+                    Ok(false) => tr!("status.save_unchanged"),
                     Err(e) => {
                         eprintln!("gba-desktop: {e}");
-                        "Falha ao gravar o save".to_owned()
+                        tr!("status.save_failed")
                     }
                 };
                 status = Some((msg, Instant::now()));
@@ -774,6 +900,12 @@ pub fn run_app(
                     let loaded = settings::load(path);
                     match loaded.warning {
                         None => {
+                            // A language chosen in the settings window must
+                            // take effect here too, not only on the next
+                            // launch (SPEC-069 L10N-69-03).
+                            if adopt_language(&loaded.settings, &mut menu) {
+                                language_chosen = true;
+                            }
                             apply(
                                 &loaded.settings,
                                 &mut video,
@@ -786,7 +918,7 @@ pub fn run_app(
                             if !menu.open {
                                 menu = Menu::new(current.clone());
                             }
-                            status = Some(("Configuracoes recarregadas".into(), Instant::now()));
+                            status = Some((tr!("status.settings_reloaded"), Instant::now()));
                         }
                         Some(w) => eprintln!("gba-desktop: {w}"),
                     }
@@ -807,18 +939,26 @@ pub fn run_app(
             let (title, cursor, open) = (menu.title(), menu.cursor, menu.open);
             let remap_hint = menu.remap.map(|r| {
                 if r.pad {
-                    "Pressione um botao (Guide cancela)"
+                    tr!("menu.controls.press_pad")
                 } else {
-                    "Pressione uma tecla (Esc cancela)"
+                    tr!("menu.controls.press_key")
                 }
             });
             let msg = status.as_ref().map(|(m, _)| m.clone());
             video.present_with(&pixels, |p| {
                 if open {
-                    draw_menu(p, title, &rows, cursor, remap_hint, msg.as_deref());
+                    draw_menu(
+                        p,
+                        &title,
+                        &rows,
+                        cursor,
+                        remap_hint.as_deref(),
+                        msg.as_deref(),
+                        has_touchscreen || touch_seen,
+                    );
                 } else {
                     p.fill(0.0, 0.0, 240.0, 14.0, [0, 0, 0, 180]);
-                    p.text(4.0, 3.0, "PAUSADO - botao direito: menu", [255, 255, 255]);
+                    p.text(4.0, 3.0, &tr!("banner.paused"), [255, 255, 255]);
                 }
             })?;
             report.presented += 1;
@@ -994,28 +1134,48 @@ fn draw_menu(
     cursor: usize,
     remap_hint: Option<&str>,
     status: Option<&str>,
+    touch_only: bool,
 ) {
     p.fill(0.0, 0.0, 240.0, 160.0, [0, 0, 24, 200]);
     p.text(6.0, 4.0, title, [255, 220, 120]);
-    const VISIBLE: usize = 15;
+    // PixAntiqua is 12 px tall, so the old 15 rows at 9 px no longer fit the
+    // 16..150 area: 11 rows of 12 px fill it exactly (SPEC-069 L10N-69-05).
+    const ROW: f32 = crate::font::LINE_HEIGHT;
+    const VISIBLE: usize = 11;
     let start = cursor.saturating_sub(VISIBLE - 1);
     for (i, row) in rows.iter().enumerate().skip(start).take(VISIBLE) {
-        let y = 16.0 + (i - start) as f32 * 9.0;
+        let y = 16.0 + (i - start) as f32 * ROW;
         if i == cursor {
-            p.fill(2.0, y - 1.0, 236.0, 9.0, [80, 80, 160, 255]);
+            p.fill(2.0, y, 236.0, ROW, [80, 80, 160, 255]);
         }
         p.text(8.0, y, &row.label, [255, 255, 255]);
         if !row.value.is_empty() {
-            let x = 236.0 - 8.0 * row.value.len().min(14) as f32;
-            let value: String = row.value.chars().take(14).collect();
-            p.text(x.max(120.0), y, &value, [170, 220, 255]);
+            // Right-align by measured width, not by character count: the
+            // menu font is proportional (SPEC-069 L10N-69-05).
+            let mut value = String::new();
+            let mut width = 0.0;
+            for ch in row.value.chars() {
+                let advance = f32::from(crate::font::glyph(ch).advance);
+                if width + advance > 108.0 {
+                    break;
+                }
+                value.push(ch);
+                width += advance;
+            }
+            p.text((236.0 - width).max(120.0), y, &value, [170, 220, 255]);
         }
     }
-    let footer = remap_hint
-        .or(status)
-        .unwrap_or("Setas/Enter/Esc  ou  D-pad/A/B");
-    p.fill(0.0, 150.0, 240.0, 10.0, [0, 0, 0, 220]);
-    p.text(4.0, 151.0, footer, [200, 200, 200]);
+    // Touch devices have no Esc or right click: the footer tells them how the
+    // menu is reached instead of naming keys they do not have
+    // (SPEC-069 L10N-69-06).
+    let default_footer = if touch_only {
+        tr!("menu.hint_touch")
+    } else {
+        tr!("menu.hint")
+    };
+    let footer = remap_hint.or(status).unwrap_or(&default_footer);
+    p.fill(0.0, 148.0, 240.0, 12.0, [0, 0, 0, 220]);
+    p.text(4.0, 148.5, footer, [200, 200, 200]);
 }
 
 /// Semi-transparent on-screen gamepad; pressed controls are highlighted.
@@ -1039,7 +1199,206 @@ fn draw_touch(p: &mut sdl::Painter<'_>, pressed: u16) {
             touch::Shape::Rect { x, y, w, h } => (x, y, w, h),
         };
         p.fill(x, y, w, h, [255, 255, 255, alpha(on)]);
-        let tx = x + (w - 8.0 * b.label.len() as f32) / 2.0;
-        p.text(tx, y + (h - 8.0) / 2.0, b.label, [20, 20, 40]);
+        let tw = p.text_width(b.label);
+        p.text(
+            x + (w - tw) / 2.0,
+            y + (h - crate::font::LINE_HEIGHT) / 2.0,
+            b.label,
+            [20, 20, 40],
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The menu must fit the guest screen with the current font. This guards
+    /// the 15-rows-at-9px layout that stopped fitting at 12 px.
+    #[test]
+    fn menu_rows_fit_the_guest_screen() {
+        let _locale = crate::locale_guard::lock();
+        const VISIBLE: f32 = 11.0;
+        let top = 16.0;
+        let footer_top = 148.0;
+        let bottom = top + VISIBLE * crate::font::LINE_HEIGHT;
+        assert!(
+            bottom <= footer_top,
+            "menu rows end at {bottom}, over the footer at {footer_top}"
+        );
+        assert_eq!(crate::font::LINE_HEIGHT, 12.0);
+        // Every row of every page, in every language, must fit between the
+        // 8 px left margin and the right-aligned value column.
+        for lang in gba_i18n::Lang::all() {
+            gba_i18n::set_lang(*lang);
+            for page in [Page::Main, Page::Video, Page::Audio, Page::Controls] {
+                let mut m = crate::menu::Menu::new(Settings::default());
+                m.open_at(page, &Settings::default());
+                for row in m.rows() {
+                    let w = crate::font::width(&row.label);
+                    assert!(
+                        w < 240.0 - 8.0,
+                        "{} row {:?} is {w} px wide ({})",
+                        lang.tag(),
+                        row.label,
+                        page as u8
+                    );
+                }
+            }
+        }
+    }
+
+    /// Collects every label in the native menu tree.
+    fn titles(items: &[CtxItem]) -> Vec<String> {
+        let mut out = Vec::new();
+        for item in items {
+            match item {
+                CtxItem::Action { title, .. } => out.push(title.clone()),
+                CtxItem::Submenu { title, items } => {
+                    out.push((*title).to_owned());
+                    out.extend(titles(items));
+                }
+                CtxItem::Separator => {}
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn context_menu_is_translated() {
+        let _locale = crate::locale_guard::lock();
+        let s = Settings::default();
+        for (lang, wants) in [
+            (
+                gba_i18n::Lang::PtBr,
+                ["Vídeo", "Som", "Controles", "Tela cheia", "Mudo", "Sair"],
+            ),
+            (
+                gba_i18n::Lang::EnUs,
+                ["Video", "Sound", "Controls", "Fullscreen", "Mute", "Quit"],
+            ),
+        ] {
+            gba_i18n::set_lang(lang);
+            let all = titles(&context_items(&s, false));
+            // "Sistema"/"System" is a menu-bar entry, not a right-click one.
+            for want in wants {
+                assert!(all.iter().any(|t| t == want), "missing {want} in {all:?}");
+            }
+        }
+        // Accented text is fine here: NSMenu renders full Unicode.
+        gba_i18n::set_lang(gba_i18n::Lang::PtBr);
+        let all = titles(&context_items(&s, false));
+        assert!(all.iter().any(|t| t == "Correção de cor do LCD"));
+    }
+
+    #[test]
+    fn pause_verb_follows_the_state() {
+        let _locale = crate::locale_guard::lock();
+        let s = Settings::default();
+        let paused = titles(&context_items(&s, true));
+        assert!(paused.iter().any(|t| t == "Continuar"));
+        assert!(
+            titles(&context_items(&s, false))
+                .iter()
+                .any(|t| t == "Pausar")
+        );
+        gba_i18n::set_lang(gba_i18n::Lang::EnUs);
+        assert!(
+            titles(&context_items(&s, true))
+                .iter()
+                .any(|t| t == "Resume")
+        );
+        assert!(
+            titles(&context_items(&s, false))
+                .iter()
+                .any(|t| t == "Pause")
+        );
+    }
+
+    #[test]
+    fn menubar_has_a_system_menu() {
+        let _locale = crate::locale_guard::lock();
+        let all = titles(&menubar_items(&Settings::default(), false));
+        assert!(all.iter().any(|t| t == "Sistema"));
+        // "..." is three ASCII dots on purpose: PixAntiqua has no U+2026.
+        assert!(all.iter().any(|t| t == "Menu na janela..."));
+        gba_i18n::set_lang(gba_i18n::Lang::EnUs);
+        let all = titles(&menubar_items(&Settings::default(), false));
+        assert!(all.iter().any(|t| t == "System"));
+        assert!(all.iter().any(|t| t == "In-window menu..."));
+    }
+
+    /// Selecting a language in the native menu must change the language and
+    /// return settings for the caller to persist, like the in-window picker.
+    #[test]
+    fn native_menu_language_selection_applies_and_persists() {
+        let _locale = crate::locale_guard::lock();
+        let s = Settings::default();
+        // The language submenu lists every language, in `Lang::all()` order.
+        let all = titles(&context_items(&s, false));
+        assert!(all.iter().any(|t| t == "Idioma"));
+        assert!(all.iter().any(|t| t == "English (US)"));
+        let id = A_LANGUAGE + 1;
+        match context_effect(id, &s) {
+            Effect::Settings(n) => assert_eq!(n.language, gba_i18n::Lang::EnUs),
+            _ => panic!("selecting a language must return the settings to persist"),
+        }
+        assert_eq!(gba_i18n::lang(), gba_i18n::Lang::EnUs, "applied at once");
+    }
+
+    /// The settings window writes `language = "en-US"`; the running game must
+    /// switch without a restart, and keep the change when the menu is applied
+    /// (SPEC-069 L10N-69-03).
+    #[test]
+    fn a_language_written_by_the_settings_window_is_adopted() {
+        let _locale = crate::locale_guard::lock();
+        let mut m = crate::menu::Menu::new(Settings::default());
+        m.open_at(Page::Main, &Settings::default());
+        let mut loaded = Settings::default();
+        assert_eq!(
+            gba_i18n::lang(),
+            gba_i18n::Lang::PtBr,
+            "starts in the default"
+        );
+
+        loaded.language = gba_i18n::Lang::EnUs;
+        assert!(adopt_language(&loaded, &mut m), "the change is reported");
+        assert_eq!(gba_i18n::lang(), gba_i18n::Lang::EnUs);
+        assert_eq!(m.draft.language, gba_i18n::Lang::EnUs, "draft follows");
+        assert_eq!(m.effective_language(), gba_i18n::Lang::EnUs);
+
+        // The same file again must be a no-op, not a repeated "changed".
+        assert!(!adopt_language(&loaded, &mut m));
+    }
+
+    #[test]
+    fn android_back_opens_the_menu_and_navigates_back() {
+        assert!(opens_menu(scancode::AC_BACK));
+        assert_eq!(nav_for_key(scancode::AC_BACK), Some(Nav::Back));
+        // Desktop routes keep working.
+        assert!(opens_menu(scancode::ESCAPE) && opens_menu(scancode::F1));
+        assert!(
+            !opens_menu(scancode::Z),
+            "a play key must not open the menu"
+        );
+    }
+
+    #[test]
+    fn menu_navigation_covers_both_devices() {
+        assert_eq!(nav_for_key(scancode::UP), Some(Nav::Up));
+        assert_eq!(nav_for_key(scancode::RETURN), Some(Nav::Confirm));
+        assert_eq!(nav_for_key(scancode::ESCAPE), Some(Nav::Back));
+        assert_eq!(nav_for_key(9999), None);
+    }
+
+    /// The Android back button must never be captured as a game binding; it
+    /// behaves like Esc during remap (cancel). Capturing it would leave the
+    /// menu unreachable on a touch device.
+    #[test]
+    fn back_button_is_not_remappable() {
+        assert!(!captures_key(scancode::AC_BACK));
+        assert!(!captures_key(scancode::ESCAPE));
+        assert!(captures_key(scancode::Z), "ordinary keys are capturable");
+        assert!(captures_key(scancode::RETURN));
     }
 }

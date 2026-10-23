@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 gba-net = { path = "../gba-net" }
 gba-desktop = { path = "../gba-desktop" }
+gba-i18n = { path = "../gba-i18n" }
 eframe = { version = "=0.36.2", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
 
 [lints]

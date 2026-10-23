@@ -1,7 +1,12 @@
 //! In-window settings menu (SPEC-063 MENU-63-01/02). Pure model: the app
-//! feeds navigation and draws `rows()`. Labels are ASCII (SDL debug font).
+//! feeds navigation and draws `rows()`. Labels come from `gba-i18n`, so the
+//! menu follows the selected language live (SPEC-069 L10N-69-03).
 
-use crate::settings::{BUTTON_LABELS, DEADZONE_MAX, Filter, LATENCY_RANGE, SCALE_RANGE, Settings};
+use gba_i18n::{Lang, tr};
+
+use crate::settings::{
+    BUTTON_LABEL_KEYS, DEADZONE_MAX, Filter, LATENCY_RANGE, SCALE_RANGE, Settings, button_label,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -42,6 +47,7 @@ pub struct Remap {
     pub pad: bool,
 }
 
+#[derive(Debug)]
 pub struct Row {
     pub label: String,
     pub value: String,
@@ -57,19 +63,38 @@ pub struct Menu {
     pub status: Option<String>,
 }
 
-const MAIN: [&str; 8] = [
-    "Continuar",
-    "Video",
-    "Audio",
-    "Controles",
-    "Janela de configuracoes...",
-    "Reiniciar jogo",
-    "Salvar agora",
-    "Sair",
-];
+/// Rows of the main page, in display order. Named so inserting a row cannot
+/// silently shift the `activate` arms.
+mod main_row {
+    pub const RESUME: usize = 0;
+    pub const VIDEO: usize = 1;
+    pub const AUDIO: usize = 2;
+    pub const CONTROLS: usize = 3;
+    pub const EXTERNAL: usize = 4;
+    pub const RESET: usize = 5;
+    pub const SAVE: usize = 6;
+    pub const QUIT: usize = 7;
+    pub const LANGUAGE: usize = 8;
+}
 
 fn yes(b: bool) -> String {
-    if b { "Sim".into() } else { "Nao".into() }
+    if b { tr!("yes") } else { tr!("no") }
+}
+
+/// Language label shown on the main page: the language's own name, so a user
+/// who cannot read the current one can still find their language.
+fn language_name(lang: Lang) -> String {
+    lang.display_name().to_owned()
+}
+
+/// The language `delta` steps away in the picker, wrapping both ways.
+fn next_language(current: Lang, delta: i32) -> Lang {
+    let all = Lang::all();
+    let n = all.len() as i32;
+    let at = all.iter().position(|l| *l == current).unwrap_or(0) as i32;
+    // Rem_euclid keeps Right on the last entry going to the first and Left on
+    // the first going to the last, for any number of languages.
+    all[((at + delta).rem_euclid(n)) as usize]
 }
 
 impl Menu {
@@ -94,86 +119,123 @@ impl Menu {
         self.remap = None;
     }
 
+    /// Adopts a language chosen outside the menu (settings window, or the OS
+    /// language changing), so the menu and the draft stay consistent
+    /// (SPEC-069 L10N-69-04).
+    pub fn set_language(&mut self, lang: Lang) {
+        self.draft.language = lang;
+        self.effective.language = lang;
+    }
+
+    /// The language the menu will fall back to when reopened, for tests that
+    /// check it followed an external change.
+    #[cfg(test)]
+    pub fn effective_language(&self) -> Lang {
+        self.effective.language
+    }
+
     pub fn close(&mut self) {
         self.open = false;
         self.remap = None;
         self.draft = self.effective.clone();
     }
 
-    pub fn title(&self) -> &'static str {
+    pub fn title(&self) -> String {
         match self.page {
-            Page::Main => "Menu",
-            Page::Video => "Video",
-            Page::Audio => "Audio",
-            Page::Controls => "Controles",
+            Page::Main => tr!("menu.title"),
+            Page::Video => tr!("menu.page.video"),
+            Page::Audio => tr!("menu.page.audio"),
+            Page::Controls => tr!("menu.page.controls"),
         }
     }
 
     pub fn rows(&self) -> Vec<Row> {
-        let row = |l: &str, v: String| Row {
-            label: l.into(),
-            value: v,
-        };
+        let row = |l: String, v: String| Row { label: l, value: v };
         let d = &self.draft;
         let mut rows = match self.page {
-            Page::Main => MAIN.iter().map(|l| row(l, String::new())).collect(),
+            Page::Main => vec![
+                row(tr!("menu.resume"), String::new()),
+                row(tr!("menu.page.video"), String::new()),
+                row(tr!("menu.page.audio"), String::new()),
+                row(tr!("menu.page.controls"), String::new()),
+                row(tr!("menu.external"), String::new()),
+                row(tr!("menu.reset"), String::new()),
+                row(tr!("menu.save_now"), String::new()),
+                row(tr!("menu.quit"), String::new()),
+                // Last, and available on every platform: the settings window
+                // does not exist on Android or the Web (SPEC-069 L10N-69-03).
+                row(tr!("menu.language"), language_name(d.language)),
+            ],
             Page::Video => vec![
-                row("Escala", format!("{}x", d.video.scale)),
-                row("Tela cheia", yes(d.video.fullscreen)),
+                row(tr!("menu.video.scale"), format!("{}x", d.video.scale)),
+                row(tr!("menu.video.fullscreen"), yes(d.video.fullscreen)),
                 row(
-                    "Filtro",
+                    tr!("menu.video.filter"),
                     if d.video.filter == Filter::Linear {
-                        "Suave".into()
+                        tr!("menu.video.filter_linear")
                     } else {
-                        "Nitido".into()
+                        tr!("menu.video.filter_nearest")
                     },
                 ),
-                row("Escala inteira", yes(d.video.integer_scale)),
-                row("VSync", yes(d.video.vsync)),
-                row("Correcao de cor", yes(d.video.color_correction)),
+                row(tr!("menu.video.integer_scale"), yes(d.video.integer_scale)),
+                row(tr!("menu.video.vsync"), yes(d.video.vsync)),
+                row(
+                    tr!("menu.video.color_correction"),
+                    yes(d.video.color_correction),
+                ),
             ],
             Page::Audio => vec![
-                row("Volume", format!("{}%", d.audio.volume)),
-                row("Mudo", yes(d.audio.mute)),
-                row("Latencia", format!("{} ms", d.audio.latency_ms)),
+                row(tr!("menu.audio.volume"), format!("{}%", d.audio.volume)),
+                row(tr!("menu.audio.mute"), yes(d.audio.mute)),
+                row(
+                    tr!("menu.audio.latency"),
+                    format!("{} ms", d.audio.latency_ms),
+                ),
             ],
             Page::Controls => {
                 let mut v = Vec::new();
-                for (i, label) in BUTTON_LABELS.iter().enumerate() {
+                for i in 0..BUTTON_LABEL_KEYS.len() {
+                    // Two-level translation: the button's own name, then the
+                    // row template, so English gets "Right keyboard" and
+                    // Portuguese "Direita teclado".
+                    let label = button_label(i);
                     let waiting = |pad| self.remap == Some(Remap { button: i, pad });
                     v.push(row(
-                        &format!("{label} teclado"),
+                        tr!("menu.controls.keyboard", button = label),
                         if waiting(false) {
-                            "<tecla...>".into()
+                            tr!("menu.controls.waiting_key")
                         } else {
                             d.input.keyboard[i].join(", ")
                         },
                     ));
                     v.push(row(
-                        &format!("{label} controle"),
+                        tr!("menu.controls.gamepad", button = label),
                         if waiting(true) {
-                            "<botao...>".into()
+                            tr!("menu.controls.waiting_pad")
                         } else {
                             d.input.gamepad[i].join(", ")
                         },
                     ));
                 }
-                v.push(row("Zona morta", format!("{:.2}", d.input.deadzone)));
                 v.push(row(
-                    "Controles na tela",
+                    tr!("menu.controls.deadzone"),
+                    format!("{:.2}", d.input.deadzone),
+                ));
+                v.push(row(
+                    tr!("menu.controls.touch"),
                     match d.input.touch_controls {
-                        crate::settings::TouchMode::Auto => "Auto".into(),
-                        crate::settings::TouchMode::On => "Sim".into(),
-                        crate::settings::TouchMode::Off => "Nao".into(),
+                        crate::settings::TouchMode::Auto => tr!("auto"),
+                        crate::settings::TouchMode::On => tr!("yes"),
+                        crate::settings::TouchMode::Off => tr!("no"),
                     },
                 ));
-                v.push(row("Restaurar padroes", String::new()));
+                v.push(row(tr!("menu.controls.restore"), String::new()));
                 v
             }
         };
         if self.page != Page::Main {
-            rows.push(row("Aplicar", String::new()));
-            rows.push(row("Cancelar", String::new()));
+            rows.push(row(tr!("menu.apply"), String::new()));
+            rows.push(row(tr!("menu.cancel"), String::new()));
         }
         rows
     }
@@ -210,6 +272,21 @@ impl Menu {
         }
     }
 
+    /// Steps the language and applies it at once, so the menu re-renders in
+    /// the new language immediately (SPEC-069 L10N-69-03).
+    ///
+    /// Returns `Apply` so the choice is persisted: on Android and the Web
+    /// this row is the only language picker, and a pick that vanished on exit
+    /// would be worse than no picker at all.
+    fn cycle_language(&mut self, delta: i32) -> Command {
+        let next = next_language(self.draft.language, delta);
+        self.draft.language = next;
+        self.effective.language = next;
+        gba_i18n::set_lang(next);
+        self.status = Some(language_name(next));
+        Command::Apply(self.draft.clone())
+    }
+
     fn go(&mut self, page: Page) {
         let back_cursor = match self.page {
             Page::Video => 1,
@@ -234,7 +311,7 @@ impl Menu {
             }
             if self.cursor == count - 2 {
                 self.effective = self.draft.clone();
-                self.status = Some("Configuracoes aplicadas".into());
+                self.status = Some(tr!("menu.status.applied"));
                 self.go(Page::Main);
                 return Command::Apply(self.draft.clone());
             }
@@ -245,32 +322,39 @@ impl Menu {
         let d = &mut self.draft;
         match self.page {
             Page::Main => {
+                // The language row cycles with Left/Right as well as Confirm,
+                // like the other enumerations (SPEC-069 L10N-69-03).
+                if self.cursor == main_row::LANGUAGE {
+                    return self.cycle_language(delta);
+                }
                 if !confirm {
                     return Command::None;
                 }
                 match self.cursor {
-                    0 => {
+                    main_row::RESUME => {
                         self.close();
                         Command::Resume
                     }
-                    1 => {
+                    main_row::VIDEO => {
                         self.go(Page::Video);
                         Command::None
                     }
-                    2 => {
+                    main_row::AUDIO => {
                         self.go(Page::Audio);
                         Command::None
                     }
-                    3 => {
+                    main_row::CONTROLS => {
                         self.go(Page::Controls);
                         Command::None
                     }
-                    4 => Command::OpenExternal,
-                    5 => {
+                    main_row::EXTERNAL => Command::OpenExternal,
+                    main_row::RESET => {
                         self.close();
                         Command::Reset
                     }
-                    6 => Command::SaveNow,
+                    main_row::SAVE => Command::SaveNow,
+                    main_row::QUIT => Command::Quit,
+                    // Unreachable: every index is handled above.
                     _ => Command::Quit,
                 }
             }
@@ -318,7 +402,7 @@ impl Menu {
                 Command::None
             }
             Page::Controls => {
-                let buttons = BUTTON_LABELS.len() * 2;
+                let buttons = BUTTON_LABEL_KEYS.len() * 2;
                 if self.cursor < buttons {
                     if confirm {
                         self.remap = Some(Remap {
@@ -371,7 +455,7 @@ impl Menu {
             self.remap = None;
         }
         self.effective = self.draft.clone();
-        self.status = Some("Controle salvo".into());
+        self.status = Some(tr!("menu.status.bound"));
         Some(self.draft.clone())
     }
 }
@@ -473,6 +557,127 @@ mod tests {
         assert_eq!(m.draft.input.keyboard[0], vec!["X".to_owned()]);
         // X was B's key: moved, not duplicated.
         assert!(m.draft.input.keyboard[1].is_empty());
+    }
+
+    #[test]
+    fn labels_are_translated_and_accented() {
+        let _locale = crate::locale_guard::lock();
+        let mut m = Menu::new(Settings::default());
+        m.open_at(Page::Main, &Settings::default());
+        let rows = m.rows();
+        assert_eq!(rows[0].label, "Continuar");
+        assert_eq!(rows[1].label, "Vídeo", "accented, now that the font has it");
+        assert_eq!(m.title(), "Menu");
+        // The video page renders accented values too.
+        m.open_at(Page::Video, &Settings::default());
+        let rows = m.rows();
+        assert_eq!(rows[0].label, "Escala");
+        assert_eq!(rows[2].value, "Nítido");
+        assert_eq!(rows[1].value, "Não");
+        assert_eq!(m.title(), "Vídeo");
+    }
+
+    #[test]
+    fn every_page_has_a_translated_title() {
+        let _locale = crate::locale_guard::lock();
+        for (lang, wants) in [
+            (Lang::PtBr, ["Menu", "Vídeo", "Áudio", "Controles"]),
+            (Lang::EnUs, ["Menu", "Video", "Audio", "Controls"]),
+        ] {
+            gba_i18n::set_lang(lang);
+            for (page, want) in [Page::Main, Page::Video, Page::Audio, Page::Controls]
+                .into_iter()
+                .zip(wants)
+            {
+                let mut m = Menu::new(Settings::default());
+                m.open_at(page, &Settings::default());
+                assert_eq!(m.title(), want, "{page:?} in {}", lang.tag());
+                assert!(!m.rows().is_empty(), "{page:?} has no rows");
+            }
+        }
+    }
+
+    /// The language row is the only picker on Android and the Web, where the
+    /// settings window does not exist, so it must be reachable.
+    #[test]
+    fn main_page_exposes_a_language_picker() {
+        let _locale = crate::locale_guard::lock();
+        let mut m = Menu::new(Settings::default());
+        m.open_at(Page::Main, &Settings::default());
+        let rows = m.rows();
+        let at = rows
+            .iter()
+            .position(|r| r.label == "Idioma")
+            .expect("main page must offer a language row");
+        assert_eq!(rows[at].value, Lang::PtBr.display_name());
+        // Cycling wraps without changing the draft's other fields.
+        let before = m.draft.clone();
+        m.cursor = at;
+        // Changing language must persist, or the pick is lost on exit.
+        match m.handle(Nav::Right) {
+            Command::Apply(s) => assert_eq!(s.language, next_language(Lang::PtBr, 1)),
+            other => panic!("language must apply, got {other:?}"),
+        }
+        assert_eq!(m.draft.language, next_language(Lang::PtBr, 1));
+        assert_eq!(m.draft.video, before.video, "other settings untouched");
+        assert_eq!(gba_i18n::lang(), m.draft.language, "applied immediately");
+    }
+
+    #[test]
+    fn language_cycling_wraps_both_ways() {
+        let _locale = crate::locale_guard::lock();
+        // Two languages: each direction reaches the other, and continues.
+        assert_eq!(next_language(Lang::PtBr, 1), Lang::EnUs);
+        assert_eq!(next_language(Lang::EnUs, 1), Lang::PtBr);
+        assert_eq!(next_language(Lang::PtBr, -1), Lang::EnUs);
+        assert_eq!(next_language(Lang::EnUs, -1), Lang::PtBr);
+        // The wrap arithmetic must work for any count, so check it directly.
+        for n in 1..5i32 {
+            for at in 0..n {
+                assert_eq!((at + 1).rem_euclid(n), (at + 1) % n);
+                assert_eq!((at - 1).rem_euclid(n), if at == 0 { n - 1 } else { at - 1 });
+            }
+        }
+    }
+
+    /// A picker that changes the saved language but not the drawn text would
+    /// look broken to the user; this is the whole point of SPEC-069.
+    #[test]
+    fn switching_to_english_retranslates_every_row() {
+        let _locale = crate::locale_guard::lock();
+        let mut m = Menu::new(Settings::default());
+        m.open_at(Page::Main, &Settings::default());
+        let at = m
+            .rows()
+            .iter()
+            .position(|r| r.label == "Idioma")
+            .expect("language row");
+        m.cursor = at;
+        match m.handle(Nav::Right) {
+            Command::Apply(s) => assert_eq!(s.language, Lang::EnUs),
+            other => panic!("{other:?}"),
+        }
+        let rows = m.rows();
+        // The label itself is retranslated, and so is every other row.
+        assert_eq!(rows[at].label, "Language");
+        assert_eq!(rows[at].value, "English (US)");
+        assert_eq!(rows[0].label, "Resume");
+        assert_eq!(rows[1].label, "Video", "no accent left over from pt-BR");
+
+        // And the controls page, where the button names are themselves
+        // translated before being interpolated.
+        m.open_at(Page::Controls, &Settings::default());
+        let rows = m.rows();
+        assert!(rows.iter().any(|r| r.label == "Right keyboard"), "{rows:?}");
+        assert!(rows.iter().any(|r| r.label == "Select gamepad"), "{rows:?}");
+
+        // Back to Portuguese: same rows, Portuguese again.
+        gba_i18n::set_lang(Lang::PtBr);
+        let rows = m.rows();
+        assert!(
+            rows.iter().any(|r| r.label == "Direita teclado"),
+            "{rows:?}"
+        );
     }
 
     #[test]

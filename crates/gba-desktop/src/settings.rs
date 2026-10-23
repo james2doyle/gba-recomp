@@ -6,6 +6,8 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use gba_i18n::Lang;
+
 pub const VERSION: u32 = 1;
 
 /// GBA buttons in KEYINPUT bit order.
@@ -13,10 +15,30 @@ pub const BUTTONS: [&str; 10] = [
     "a", "b", "select", "start", "right", "left", "up", "down", "r", "l",
 ];
 
-/// Display names for the in-window menu (ASCII: the SDL debug font).
-pub const BUTTON_LABELS: [&str; 10] = [
-    "A", "B", "Select", "Start", "Direita", "Esquerda", "Cima", "Baixo", "R", "L",
+/// Translation keys for the display names, in `BUTTONS` order. The labels are
+/// translated rather than constant because they are shown inside menu rows
+/// that are themselves localized ("Direita teclado" / "Right keyboard") and
+/// they are also passed as the `button` argument of those rows
+/// (SPEC-069 L10N-69-03).
+pub const BUTTON_LABEL_KEYS: [&str; 10] = [
+    "button.a",
+    "button.b",
+    "button.select",
+    "button.start",
+    "button.right",
+    "button.left",
+    "button.up",
+    "button.down",
+    "button.r",
+    "button.l",
 ];
+
+/// Display name of button `i` in the current language.
+pub fn button_label(i: usize) -> String {
+    BUTTON_LABEL_KEYS
+        .get(i)
+        .map_or_else(String::new, |k| gba_i18n::translate(k))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Filter {
@@ -129,6 +151,8 @@ pub struct Settings {
     pub audio: Audio,
     pub input: Input,
     pub gpio: Gpio,
+    /// Interface language (SPEC-069 L10N-69-01). Host-only.
+    pub language: Lang,
 }
 
 fn strings(list: &[&str]) -> Vec<String> {
@@ -198,6 +222,7 @@ impl Default for Settings {
             },
             input: Input::default(),
             gpio: Gpio::default(),
+            language: Lang::default(),
         }
     }
 }
@@ -372,6 +397,17 @@ impl Settings {
         };
         match (section, key) {
             ("", "version") => *version = Some(int(&value, 0, 1_000)? as u32),
+            // Ausente = padrão `pt-BR`, então arquivos antigos seguem válidos
+            // sem trocar a `version` (L10N-69-02).
+            ("", "language") => match value {
+                Value::Str(s) => {
+                    self.language = Lang::from_tag(&s).ok_or_else(|| {
+                        let known: Vec<&str> = Lang::all().iter().map(|l| l.tag()).collect();
+                        format!("`language` must be one of {known:?}, got `{s}`")
+                    })?
+                }
+                _ => return Err("`language` must be a string tag".into()),
+            },
             ("video", "scale") => {
                 self.video.scale = int(&value, SCALE_RANGE.0.into(), SCALE_RANGE.1.into())? as u8
             }
@@ -488,7 +524,8 @@ impl Settings {
             o,
             "# gba-recomp host settings (SPEC-063). Presentation only: never changes the game."
         );
-        let _ = writeln!(o, "version = {VERSION}\n");
+        let _ = writeln!(o, "version = {VERSION}");
+        let _ = writeln!(o, "language = \"{}\"\n", self.language.tag());
         let _ = writeln!(o, "[video]");
         let _ = writeln!(o, "scale = {}", v.scale);
         let _ = writeln!(o, "fullscreen = {}", v.fullscreen);
@@ -547,6 +584,34 @@ pub struct Loaded {
     pub warning: Option<String>,
     /// The file on disk is invalid and must be backed up before saving.
     pub invalid_on_disk: bool,
+}
+
+/// The language a frontend must start in, and whether it came from an
+/// explicit choice rather than from the system (SPEC-069 L10N-69-04).
+///
+/// One rule for all three frontends: a `language` line in `settings.toml` is
+/// an explicit choice and wins over the OS, forever; without it the OS
+/// language decides, and keeps deciding when it later changes. `system` is
+/// the tag list from `sdl::preferred_locales()`.
+pub fn initial_language(path: Option<&Path>, loaded: &Settings, system: &[String]) -> (Lang, bool) {
+    let explicit = path
+        .and_then(|p| fs::read_to_string(p).ok())
+        .is_some_and(|text| text.lines().any(|l| l.trim_start().starts_with("language")));
+    if explicit {
+        (loaded.language, true)
+    } else {
+        (gba_i18n::detect_from(system).unwrap_or_default(), false)
+    }
+}
+
+/// Modification time of the settings file, or `None` when it does not exist.
+///
+/// Both frontends poll this to notice a change written by the other one; a
+/// single helper keeps "did the file change" meaning the same thing on both
+/// sides (SPEC-069 L10N-69-03, EXT-64-02).
+pub fn modified(path: Option<&Path>) -> Option<std::time::SystemTime> {
+    path.and_then(|p| fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
 }
 
 pub fn load(path: &Path) -> Loaded {
@@ -663,6 +728,78 @@ mod tests {
             "missing version"
         );
         assert!(Settings::parse("version = 2").is_err());
+    }
+
+    #[test]
+    fn language_defaults_to_pt_br_without_a_version_bump() {
+        // Arquivo anterior à localização: sem `language`, versão 1 (L10N-69-02).
+        let s = Settings::parse("version = 1\n[audio]\nmute = true\n").unwrap();
+        assert_eq!(s.language, Lang::PtBr);
+    }
+
+    #[test]
+    fn language_round_trips() {
+        let s = Settings::default();
+        assert_eq!(s.language, Lang::PtBr);
+        let text = s.serialize();
+        assert!(text.contains("language = \"pt-BR\""), "{text}");
+        assert_eq!(Settings::parse(&text).unwrap().language, Lang::PtBr);
+    }
+
+    #[test]
+    fn unknown_language_is_rejected_with_a_clear_message() {
+        let e = Settings::parse("version = 1\nlanguage = \"ja-JP\"\n").unwrap_err();
+        assert!(e.contains("language"), "{e}");
+        assert!(e.contains("pt-BR"), "should list what is available: {e}");
+        // Uma tag não-string também é erro de formato.
+        assert!(Settings::parse("version = 1\nlanguage = 3\n").is_err());
+    }
+
+    #[test]
+    fn language_accepts_posix_forms_on_read() {
+        // Um arquivo editado à mão com `pt_BR` continua sendo aceito.
+        let s = Settings::parse("version = 1\nlanguage = \"pt_BR\"\n").unwrap();
+        assert_eq!(s.language, Lang::PtBr);
+        let s = Settings::parse("version = 1\nlanguage = \"en_US\"\n").unwrap();
+        assert_eq!(s.language, Lang::EnUs);
+    }
+
+    #[test]
+    fn english_round_trips_through_the_file() {
+        let s = Settings::parse("version = 1\nlanguage = \"en-US\"\n").unwrap();
+        assert_eq!(s.language, Lang::EnUs);
+        let text = s.serialize();
+        assert!(text.contains("language = \"en-US\""), "{text}");
+        assert_eq!(Settings::parse(&text).unwrap().language, Lang::EnUs);
+    }
+
+    /// The rule all three frontends share (SPEC-069 L10N-69-04): a `language`
+    /// line is an explicit choice and outranks the OS, forever.
+    #[test]
+    fn explicit_language_beats_the_system() {
+        let dir = std::env::temp_dir().join(format!("gba-lang-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let saved = dir.join("explicit.toml");
+        std::fs::write(&saved, "version = 1\nlanguage = \"pt-BR\"\n").unwrap();
+        let (lang, chosen) =
+            initial_language(Some(&saved), &Settings::default(), &["en-US".to_owned()]);
+        assert_eq!(lang, Lang::PtBr, "the saved choice wins over the OS");
+        assert!(chosen);
+
+        let fresh = dir.join("fresh.toml");
+        std::fs::write(&fresh, "version = 1\n").unwrap();
+        let (lang, chosen) =
+            initial_language(Some(&fresh), &Settings::default(), &["en-US".to_owned()]);
+        assert_eq!(lang, Lang::EnUs, "no choice means follow the OS");
+        assert!(!chosen, "following the OS is not an explicit choice");
+
+        // With no file at all, the system decides — including the POSIX
+        // fallback inside `detect_from` — and that is not an explicit choice.
+        let system = ["ja-JP".to_owned()];
+        let (lang, chosen) = initial_language(None, &Settings::default(), &system);
+        assert_eq!(lang, gba_i18n::detect_from(&system).unwrap_or_default());
+        assert!(!chosen);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
