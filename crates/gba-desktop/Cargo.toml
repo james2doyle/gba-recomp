@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 gba-core = { path = "../gba-core" }
+gba-i18n = { path = "../gba-i18n" }
 
 [lints]
 workspace = true
