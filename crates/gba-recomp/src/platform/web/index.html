@@ -29,8 +29,12 @@
   #stage:fullscreen { width: 100vw; height: 100vh; border-radius: 0; display: flex;
     align-items: center; justify-content: center; }
   /* SDL sets inline sizes on the canvas; CSS scaling keeps it 3:2. */
+  /* touch-action/user-select keep the browser's own long-press callout and
+     text selection from competing with the hold-to-open-menu gesture
+     (SPEC-069 L10N-69-06). */
   #canvas { display: block; width: 100% !important; height: 100% !important;
-    object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+    object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; outline: none;
+    touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   #stage:fullscreen #canvas { width: min(100vw, 150vh) !important; height: min(100vh, 66.667vw) !important; }
   #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 16px; background: #000; cursor: pointer; text-align: center; padding: 16px; }
