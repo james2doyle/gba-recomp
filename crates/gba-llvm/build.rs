@@ -115,6 +115,19 @@ fn emit_system_library(flag: &str) {
         return;
     }
     if !path.is_file() {
+        // LLVM's release hardcodes paths from its own build machine (e.g.
+        // Ubuntu's /usr/lib/x86_64-linux-gnu/libzstd.a). On a distro that
+        // ships only the shared library, link that instead — the other
+        // system libs (-lrt, -lz, -lxml2) are already dynamic.
+        if let Some(stem) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.strip_prefix("lib"))
+        {
+            println!("cargo:rustc-link-lib=dylib={stem}");
+            println!("cargo:warning=LLVM wants {flag}; linking shared lib{stem} instead");
+            return;
+        }
         panic!("LLVM system library is missing or unsupported: {flag}");
     }
     let parent = path
