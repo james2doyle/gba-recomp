@@ -1,0 +1,12 @@
+[package]
+name = "gba-i18n"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rust-i18n = "=4.2.4"
+
+[lints]
+workspace = true

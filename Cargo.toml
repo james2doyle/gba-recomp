@@ -11,6 +11,7 @@ members = [
     "crates/gba-runtime-abi",
     "crates/gba-llvm",
     "crates/gba-recomp",
+    "crates/gba-i18n",
 ]
 resolver = "3"
 
