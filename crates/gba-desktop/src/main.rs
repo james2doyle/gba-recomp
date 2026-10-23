@@ -8,10 +8,16 @@ use gba_core::BackupKind;
 use gba_desktop::{AppOptions, run_app};
 
 fn usage() -> String {
-    "usage: gba-desktop --rom <rom.gba> [--save <file.sav>] [--bios <bios.bin>] [--backup KIND] \
-     [--settings <settings.toml>] [--frames N]\n\
-     Esc/F1 or right click: menu  F11: fullscreen  Tab (hold): fast-forward"
-        .to_owned()
+    gba_i18n::tr!("cli.usage")
+}
+
+/// Picks the CLI language from the environment before SDL is initialised,
+/// where `$LANG` is all there is (SPEC-069 L10N-69-04).
+fn detect_cli_language() {
+    let tags = gba_i18n::posix_locale_vars();
+    if let Some(lang) = gba_i18n::detect_from(&tags) {
+        gba_i18n::set_lang(lang);
+    }
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, String> {
@@ -38,17 +44,22 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
             "--no-splash" => o.splash = false,
             "--backup" => {
                 let v = value()?;
-                o.backup = Some(BackupKind::parse(&v).ok_or(format!("unknown backup `{v}`"))?);
+                o.backup = Some(BackupKind::parse(&v).ok_or(gba_i18n::tr!(
+                    "cli.unknown_backup",
+                    name = v
+                ))?);
             }
             "--frames" => {
-                o.frames = Some(
-                    value()?
-                        .parse()
-                        .map_err(|_| "--frames must be an integer")?,
-                )
+                o.frames = Some(value()?.parse().map_err(|_| gba_i18n::tr!("cli.frames_integer"))?)
             }
             "-h" | "--help" => return Err(usage()),
-            _ => return Err(format!("unknown argument `{flag}`\n{}", usage())),
+            _ => {
+                return Err(format!(
+                    "{}\n{}",
+                    gba_i18n::tr!("cli.unknown_argument", flag = flag),
+                    usage()
+                ));
+            }
         }
     }
     o.rom = rom.ok_or_else(usage)?;
@@ -56,6 +67,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
 }
 
 fn main() -> ExitCode {
+    detect_cli_language();
     let result = parse_args(env::args().skip(1)).and_then(|o| run_app(&o, None));
     match result {
         Ok(r) => {
