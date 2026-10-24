@@ -8,4 +8,5 @@
 - [KNO-006-vendor-gba-recomp](KNO-006-vendor-gba-recomp.md)
 - [KNO-007-interpreted-core](KNO-007-interpreted-core.md)
 - [KNO-008-platform-ios](KNO-008-platform-ios.md)
+- [KNO-009-platform-android](KNO-009-platform-android.md)
 - [KNO-010-platform-web](KNO-010-platform-web.md)

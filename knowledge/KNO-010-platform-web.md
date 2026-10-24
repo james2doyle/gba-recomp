@@ -50,7 +50,9 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory dist/Rkanoid-web
 
 `emcc` é procurado em `EMCC`, no `PATH` e em `$EMSDK/upstream/emscripten`; sem ele o `bundle` falha antes de perfilar, sem pacote parcial. Sem ROM embutida (`compile` sem `--embed-rom`) o alvo Web também é recusado antes do trabalho.
 
-CI (`.github/workflows/web.yml`, ainda não executado): Ubuntu 24.04, LLVM 23.1.3, emsdk 6.0.12, build do host e do runtime wasm, `bundle` de cada `games/*.gba`, artefato zip, anexo na release em tags `v*` e deploy no GitHub Pages em `main` e tags (requer Pages configurado com "GitHub Actions" como fonte).
+CI (`.github/workflows/web.yml`, ainda não executado na época da redação): Ubuntu 24.04, LLVM 23.1.3, emsdk 6.0.12, build do host e do runtime wasm, `bundle` de cada `games/*.gba`, artefato zip, anexo na release em tags `v*` e deploy no GitHub Pages em `main` e tags (requer Pages configurado com "GitHub Actions" como fonte).
+
+> **Correção (2026-10-24).** O workflow executou em 2026-10-14. No push para `main` (`38638625448`) passou inteiro; na tag `v0.1.0` (`38636936921`) o job `build` passou e o `pages` falhou, e `rkanoid-v3.00-web.zip` foi anexado à Release (`release` = sucesso). O "ainda não executado" acima descrevia só o intervalo entre a redação e a primeira execução.
 
 ## Questões abertas
 
@@ -61,4 +63,4 @@ CI (`.github/workflows/web.yml`, ainda não executado): Ubuntu 24.04, LLVM 23.1.
 
 ## Promoção para specs e decisões
 
-Atende parcialmente TGT-68-02 (Web): emissão, link e execução no navegador observados localmente; publicação pelo CI pendente da primeira execução.
+Atende TGT-68-02 (Web): emissão, link e execução no navegador observados localmente; publicação pelo CI executada em 2026-10-14 (o anexo à Release passou na tag; o deploy do Pages falhou nela e passou no push para `main`).
