@@ -424,7 +424,9 @@ pub unsafe extern "C" fn gba_native_main(
     match cli::run(&args, entries, guards, embedded, expected) {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("gba-native: {e}");
+            // On Android there is no console: without this the package exits
+            // with status 1 and no explanation anywhere (KNO-009).
+            gba_desktop::diag::warn(&format!("gba-native: {e}"));
             1
         }
     }

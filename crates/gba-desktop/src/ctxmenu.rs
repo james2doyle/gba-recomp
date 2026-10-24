@@ -366,7 +366,7 @@ mod macos {
                 }
                 // SAFETY: as above.
                 let t = unsafe { std::ffi::CStr::from_ptr(utf8) }.to_string_lossy();
-                eprintln!("menubar[{i}] {t}: {names:?}");
+                crate::diag::warn(&format!("menubar[{i}] {t}: {names:?}"));
             }
         }
         // SAFETY: pops the pool pushed above.

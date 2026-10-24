@@ -8,6 +8,7 @@
 pub mod app;
 pub mod assets;
 pub mod ctxmenu;
+pub mod diag;
 pub mod gpio;
 pub mod input;
 pub mod menu;

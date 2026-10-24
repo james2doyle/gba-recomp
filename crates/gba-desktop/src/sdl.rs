@@ -311,6 +311,34 @@ pub fn pref_path() -> Option<std::path::PathBuf> {
     }
 }
 
+/// Android has no console: `stderr` from the runtime goes nowhere, so a
+/// package that fails on device is silently broken (KNO-009). Forward a
+/// diagnostic to logcat under the `gba-recomp` tag, which is where
+/// `SDL_Log` itself writes.
+///
+/// `ANDROID_LOG_INFO` is 4 and the priority is a C `int`; the message is
+/// passed as `%s` so a `%` inside a diagnostic can never be read as a format
+/// directive. `__android_log_print` truncates long messages to just under
+/// 4 KiB per call, which is far more than the frontend emits.
+#[cfg(target_os = "android")]
+pub fn log_to_system(message: &str) {
+    const ANDROID_LOG_INFO: c_int = 4;
+    unsafe extern "C" {
+        fn __android_log_print(prio: c_int, tag: *const c_char, fmt: *const c_char, ...) -> c_int;
+    }
+    // SAFETY: static C strings plus one NUL-terminated copy of `message`.
+    if let Ok(text) = CString::new(message) {
+        unsafe {
+            __android_log_print(
+                ANDROID_LOG_INFO,
+                c"gba-recomp".as_ptr(),
+                c"%s".as_ptr(),
+                text.as_ptr(),
+            );
+        }
+    }
+}
+
 /// SDL name of a scancode (e.g. "Z", "Return"); empty if unknown.
 pub fn scancode_name(scancode: usize) -> String {
     // SAFETY: plain FFI call; unknown scancodes yield "".

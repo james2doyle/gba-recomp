@@ -415,7 +415,7 @@ pub fn run_app(
     let mut settings_invalid_on_disk = loaded.invalid_on_disk;
     let mut current = loaded.settings;
     let mut status: Option<(String, Instant)> = loaded.warning.map(|w| {
-        eprintln!("gba-desktop: {w}");
+        crate::diag::warn_prefixed(&format!("{w}"));
         (
             "Configuracoes invalidas: usando padroes".to_owned(),
             Instant::now(),
@@ -429,7 +429,7 @@ pub fn run_app(
     let mut audio = match ctx.open_audio(AUDIO_HZ) {
         Ok(a) => Some(a),
         Err(e) => {
-            eprintln!("gba-desktop: audio disabled ({e}); continuing without sound");
+            crate::diag::warn_prefixed(&format!("audio disabled ({e}); continuing without sound"));
             None
         }
     };
@@ -472,12 +472,12 @@ pub fn run_app(
             *gpio = None;
             match GpioInput::open(&s.gpio) {
                 Ok(g) => *gpio = g,
-                Err(e) => eprintln!("gba-desktop: GPIO disabled ({e})"),
+                Err(e) => crate::diag::warn_prefixed(&format!("GPIO disabled ({e})")),
             }
         }
         let (b, warnings) = resolve(&s.input);
         for w in warnings {
-            eprintln!("gba-desktop: {w}");
+            crate::diag::warn_prefixed(&format!("{w}"));
         }
         *bindings = b;
         applied = Some(s.clone());
@@ -485,7 +485,7 @@ pub fn run_app(
     // Branding (FR-63-03): window/Dock icon and a 2.4 s logo splash.
     match sdl::Surface::from_png(crate::assets::ICON_PNG) {
         Ok(icon) => video.set_icon(&icon),
-        Err(e) => eprintln!("gba-desktop: icon unavailable ({e})"),
+        Err(e) => crate::diag::warn_prefixed(&format!("icon unavailable ({e})")),
     }
     apply(
         &current,
@@ -514,7 +514,7 @@ pub fn run_app(
                 None
             }
             Err(e) => {
-                eprintln!("gba-desktop: {e}");
+                crate::diag::warn_prefixed(&format!("{e}"));
                 Some("Nao foi possivel salvar as configuracoes".into())
             }
         }
@@ -543,7 +543,7 @@ pub fn run_app(
                     return Ok(AppReport::default());
                 }
             }
-            Err(e) => eprintln!("gba-desktop: splash unavailable ({e})"),
+            Err(e) => crate::diag::warn_prefixed(&format!("splash unavailable ({e})")),
         }
     }
 
@@ -577,7 +577,7 @@ pub fn run_app(
                     if !pads.iter().any(|p| p.id() == id) {
                         match ctx.open_gamepad(id) {
                             Ok(p) => pads.push(p),
-                            Err(e) => eprintln!("gba-desktop: {e}"),
+                            Err(e) => crate::diag::warn_prefixed(&format!("{e}")),
                         }
                     }
                 }
@@ -586,7 +586,7 @@ pub fn run_app(
                     if !ctx.is_gamepad(id) && !joys.iter().any(|j| j.id() == id) {
                         match ctx.open_joystick(id) {
                             Ok(j) => joys.push(j),
-                            Err(e) => eprintln!("gba-desktop: {e}"),
+                            Err(e) => crate::diag::warn_prefixed(&format!("{e}")),
                         }
                     }
                 }
@@ -723,7 +723,7 @@ pub fn run_app(
                 let msg = match open_companion("gba-party", &[]) {
                     Ok(()) => "Party aberta".to_owned(),
                     Err(e) => {
-                        eprintln!("gba-desktop: {e}");
+                        crate::diag::warn_prefixed(&format!("{e}"));
                         "gba-party nao encontrado".to_owned()
                     }
                 };
@@ -733,7 +733,7 @@ pub fn run_app(
                 let msg = match open_external_settings(settings_path.as_deref()) {
                     Ok(()) => "Janela de configuracoes aberta".to_owned(),
                     Err(e) => {
-                        eprintln!("gba-desktop: {e}");
+                        crate::diag::warn_prefixed(&format!("{e}"));
                         "gba-settings nao encontrado".to_owned()
                     }
                 };
@@ -755,7 +755,7 @@ pub fn run_app(
                     Ok(false) if o.save.is_none() => "Sem arquivo de save (--save)".to_owned(),
                     Ok(false) => "Nada novo para gravar".to_owned(),
                     Err(e) => {
-                        eprintln!("gba-desktop: {e}");
+                        crate::diag::warn_prefixed(&format!("{e}"));
                         "Falha ao gravar o save".to_owned()
                     }
                 };
@@ -788,7 +788,7 @@ pub fn run_app(
                             }
                             status = Some(("Configuracoes recarregadas".into(), Instant::now()));
                         }
-                        Some(w) => eprintln!("gba-desktop: {w}"),
+                        Some(w) => crate::diag::warn_prefixed(&format!("{w}")),
                     }
                 }
             }
@@ -904,7 +904,7 @@ pub fn run_app(
             if queued > max_queued {
                 report.audio_overruns += 1; // drop this frame's samples
             } else if let Err(e) = a.put(&samples) {
-                eprintln!("gba-desktop: audio disabled ({e})");
+                crate::diag::warn_prefixed(&format!("audio disabled ({e})"));
                 audio = None;
             }
         }
@@ -938,7 +938,7 @@ pub fn run_app(
             match persist_save(&mut gba, o.save.as_deref()) {
                 Ok(true) => report.saves += 1,
                 Ok(false) => {}
-                Err(e) => eprintln!("gba-desktop: {e}"),
+                Err(e) => crate::diag::warn_prefixed(&format!("{e}")),
             }
         }
 
