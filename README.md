@@ -81,7 +81,7 @@ Arrows = D-pad, **Z** = A, **X** = B, **Enter** = Start, **Backspace** = Select,
 | Linux ARM64 – Raspberry Pi 4/5, Orange Pi | `aarch64-unknown-linux-gnu` | ✅ CI: demo verified against the interpreter |
 | Windows x86-64 | `x86_64-pc-windows-msvc` | ✅ CI: demo verified against the interpreter |
 | iOS / iPadOS | `aarch64-apple-ios` | 🟡 CI builds an unsigned `.ipa` and a simulator app; not run yet |
-| Android | `aarch64-linux-android` | 🟡 CI builds a debug-signed APK; not run on a device yet |
+| Android | `aarch64-linux-android` | 🟡 CI builds a debug-signed APK; played on an arm64 device; performance and lifecycle unmeasured |
 | Web | `wasm32-unknown-emscripten` | ✅ [playable online](https://recomp-paradise.github.io/gba-recomp/) |
 
 Touch screens get an optional on-screen gamepad. See [SPEC-068](specs/SPEC-068-multiplatform-targets.md) for the target contract.
