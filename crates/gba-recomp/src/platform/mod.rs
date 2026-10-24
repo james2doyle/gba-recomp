@@ -150,23 +150,30 @@ pub fn default_runtime(spec: &TargetSpec) -> Result<PathBuf, String> {
     }
     let exe = env::current_exe().map_err(|e| e.to_string())?;
     let dir = exe.parent().ok_or("gba-recomp has no parent directory")?;
-    let mut candidates = vec![
-        dir.join("..")
-            .join("..")
-            .join(&spec.triple)
-            .join("release")
-            .join(name),
-    ];
-    if *spec == TargetSpec::host() {
-        candidates.insert(0, dir.join(name));
-        candidates.push(dir.join("..").join(name));
-    }
+    let candidates = runtime_candidates(dir, spec, name);
     candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| {
         format!(
             "runtime library {name} for {} not found; build it with `cargo build --release -p gba-native-rt --target {}` or pass --runtime-lib",
             spec.triple, spec.triple
         )
     })
+}
+
+/// Where [`default_runtime`] looks for the library, in order.
+///
+/// `dir` is the directory holding the `gba-recomp` binary: `target/release`
+/// for a normal build. Cargo puts a cross-compiled staticlib in
+/// `target/<triple>/release`, which is *one* level above that binary, not
+/// two: walking up twice looked in `<repo>/<triple>/release` and so always
+/// missed. Every workflow and `scripts/ci/package.sh` pass `--runtime-lib`
+/// explicitly, which is what kept the mistake hidden.
+fn runtime_candidates(dir: &Path, spec: &TargetSpec, name: &str) -> Vec<PathBuf> {
+    let mut candidates = vec![dir.join("..").join(&spec.triple).join("release").join(name)];
+    if *spec == TargetSpec::host() {
+        candidates.insert(0, dir.join(name));
+        candidates.push(dir.join("..").join(name));
+    }
+    candidates
 }
 
 /// Default SDL3 location for `spec`: `SDL3_LIB_DIR` or the usual install
@@ -263,6 +270,8 @@ pub fn run(command: &mut Command, what: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     /// The Linux default used to assume Debian's multiarch directory, which
@@ -288,6 +297,58 @@ mod tests {
             dir.join("libSDL3.so.0").exists(),
             "SDL3 is installed but default_sdl_dir returned {dir:?}, which has no libSDL3.so.0"
         );
+    }
+
+    /// A cross-compiled runtime lives in `target/<triple>/release`, one level
+    /// above `target/release/gba-recomp`. The resolver used to walk up twice,
+    /// so `bundle --target aarch64-linux-android` without `--runtime-lib`
+    /// reported the library as missing even when it had been built. Every
+    /// workflow passes `--runtime-lib`, which is why CI never noticed.
+    #[test]
+    fn cross_runtime_is_found_one_level_above_the_binary() {
+        let base = env::temp_dir().join(format!("gba-rt-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let triple = "aarch64-linux-android";
+        let spec = TargetSpec::for_triple(triple).unwrap();
+        let lib = base
+            .join("target")
+            .join(triple)
+            .join("release")
+            .join("libgba_native_rt.a");
+        fs::create_dir_all(lib.parent().unwrap()).unwrap();
+        fs::write(&lib, b"stub").unwrap();
+        // `dir` is where the binary lives, as in a real `target/release`.
+        let dir = base.join("target").join("release");
+        fs::create_dir_all(&dir).unwrap();
+
+        let candidates = runtime_candidates(&dir, &spec, "libgba_native_rt.a");
+        let found = candidates
+            .iter()
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| panic!("no candidate exists; tried {candidates:?}"));
+        assert_eq!(
+            fs::canonicalize(found).unwrap(),
+            fs::canonicalize(&lib).unwrap(),
+            "resolved to {found:?} instead of {lib:?}"
+        );
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// The host target keeps its own lookup order: next to the binary first,
+    /// because `cargo build` copies the staticlib there.
+    #[test]
+    fn host_runtime_is_found_next_to_the_binary() {
+        let base = env::temp_dir().join(format!("gba-rt-host-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let dir = base.join("target").join("release");
+        fs::create_dir_all(&dir).unwrap();
+        let name = Platform::of(&TargetSpec::host()).runtime_lib_name();
+        fs::write(dir.join(name), b"stub").unwrap();
+
+        let candidates = runtime_candidates(&dir, &TargetSpec::host(), name);
+        assert_eq!(candidates.first(), Some(&dir.join(name)));
+        assert!(candidates[0].is_file());
+        fs::remove_dir_all(&base).unwrap();
     }
 
     /// Every candidate path the resolver tries must be absolute, so a wrong
