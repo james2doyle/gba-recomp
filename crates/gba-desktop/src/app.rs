@@ -322,6 +322,19 @@ enum Effect {
     Quit,
 }
 
+/// Whether a key press may be recorded as a game binding during a keyboard
+/// remap. Esc and the Android back button only cancel — capturing the back
+/// button would make the menu unreachable on a phone.
+fn captures_key(sc: usize) -> bool {
+    !matches!(sc, scancode::ESCAPE | scancode::AC_BACK)
+}
+
+/// Whether a key opens the menu when it is closed: Esc/F1 on desktop, the
+/// Android back button on touch devices.
+fn opens_menu(sc: usize) -> bool {
+    matches!(sc, scancode::ESCAPE | scancode::F1 | scancode::AC_BACK)
+}
+
 fn context_effect(id: u32, s: &Settings) -> Effect {
     let mut n = s.clone();
     match id {
@@ -438,6 +451,9 @@ pub fn run_app(
     let mut gpio: Option<GpioInput> = None;
     // Touch screens (SPEC-068 TOUCH-68-01): active fingers in logical coords.
     let mut fingers: std::collections::HashMap<u64, (f32, f32)> = Default::default();
+    // A long press on free screen area opens the menu: on a phone there is
+    // no Esc, no right click and no menu bar.
+    let mut long_press = touch::LongPress::new();
     let has_touchscreen = ctx.has_touchscreen();
     let mut touch_seen = false;
 
@@ -596,7 +612,7 @@ pub fn run_app(
                     scancode: sc,
                     repeat,
                 } => {
-                    if menu.open && menu.remap.is_some_and(|r| !r.pad) && sc != scancode::ESCAPE {
+                    if menu.open && menu.remap.is_some_and(|r| !r.pad) && captures_key(sc) {
                         // Ignore auto-repeat of the key that started the remap.
                         if !repeat && let Some(s) = menu.bind(sdl::scancode_name(sc), false) {
                             effect = Effect::Settings(s);
@@ -616,10 +632,13 @@ pub fn run_app(
                             scancode::LEFT => Some(Nav::Left),
                             scancode::RIGHT => Some(Nav::Right),
                             scancode::RETURN | scancode::SPACE | scancode::Z => Some(Nav::Confirm),
-                            scancode::ESCAPE | scancode::BACKSPACE | scancode::X => Some(Nav::Back),
+                            scancode::ESCAPE
+                            | scancode::BACKSPACE
+                            | scancode::X
+                            | scancode::AC_BACK => Some(Nav::Back),
                             _ => None,
                         });
-                    } else if (sc == scancode::ESCAPE || sc == scancode::F1) && !repeat {
+                    } else if opens_menu(sc) && !repeat {
                         effect = Effect::OpenMenu(Page::Main);
                     }
                 }
@@ -667,17 +686,38 @@ pub fn run_app(
                     match video.window_to_logical(x, y) {
                         Some(p) => {
                             fingers.insert(finger, p);
+                            // Only a closed menu arms the gesture; while it is
+                            // open a tap belongs to navigation.
+                            if !menu.open {
+                                long_press.press(finger, p.0, p.1, Instant::now());
+                            }
                         }
                         None => {
                             fingers.remove(&finger);
+                            long_press.release(finger);
                         }
+                    }
+                }
+                // Motion only updates the position; it never starts a press.
+                Event::FingerMotion { finger, x, y } => {
+                    if let Some(p) = video.window_to_logical(x, y) {
+                        if let Some(slot) = fingers.get_mut(&finger) {
+                            *slot = p;
+                        }
+                        long_press.moved(finger, p.0, p.1);
                     }
                 }
                 Event::FingerUp { finger } => {
                     fingers.remove(&finger);
+                    long_press.release(finger);
                 }
                 Event::MouseDown { .. } | Event::Other => {}
             }
+        }
+        // A long press on free screen area opens the menu. Polled once per
+        // frame so the threshold does not depend on event batching.
+        if !menu.open && long_press.poll(Instant::now()) {
+            effect = Effect::OpenMenu(Page::Main);
         }
         // Menu bar selections (macOS) and refresh of its check marks.
         if let Some(id) = ctxmenu::take_selected() {
@@ -717,7 +757,11 @@ pub fn run_app(
                 ));
                 current = s;
             }
-            Effect::OpenMenu(page) => menu.open_at(page, &current),
+            Effect::OpenMenu(page) => {
+                // Any route that opens the menu consumes a pending gesture.
+                long_press.cancel();
+                menu.open_at(page, &current);
+            }
             Effect::TogglePause => paused = !paused,
             Effect::OpenParty => {
                 let msg = match open_companion("gba-party", &[]) {
@@ -1041,5 +1085,33 @@ fn draw_touch(p: &mut sdl::Painter<'_>, pressed: u16) {
         p.fill(x, y, w, h, [255, 255, 255, alpha(on)]);
         let tx = x + (w - 8.0 * b.label.len() as f32) / 2.0;
         p.text(tx, y + (h - 8.0) / 2.0, b.label, [20, 20, 40]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// On Android the back button is the only way to reach the menu: SDL
+    /// delivers it as `SDL_SCANCODE_AC_BACK` once the trap hint is installed.
+    #[test]
+    fn android_back_opens_the_menu() {
+        assert!(opens_menu(scancode::AC_BACK));
+        // Desktop routes keep working.
+        assert!(opens_menu(scancode::ESCAPE) && opens_menu(scancode::F1));
+        assert!(
+            !opens_menu(scancode::Z),
+            "a play key must not open the menu"
+        );
+    }
+
+    /// Capturing the back button as a game binding would leave the menu
+    /// unreachable on a phone, so it behaves like Esc during a remap.
+    #[test]
+    fn back_button_is_not_remappable() {
+        assert!(!captures_key(scancode::AC_BACK));
+        assert!(!captures_key(scancode::ESCAPE));
+        assert!(captures_key(scancode::Z), "ordinary keys are capturable");
+        assert!(captures_key(scancode::RETURN));
     }
 }

@@ -280,6 +280,15 @@ impl Drop for Surface {
     }
 }
 
+/// Android delivers the back button as a QUIT event unless it is trapped.
+/// Trapping turns it into [`scancode::AC_BACK`], which the frontend uses to
+/// open the menu — on a phone that is the only way to reach it.
+pub fn android_back_button_hint() {
+    if cfg!(target_os = "android") {
+        set_hint("SDL_ANDROID_TRAP_BACK_BUTTON", "1");
+    }
+}
+
 /// Set an SDL hint before initialisation.
 pub fn set_hint(name: &str, value: &str) {
     if let (Ok(n), Ok(v)) = (CString::new(name), CString::new(value)) {
@@ -375,6 +384,10 @@ fn last_error(what: &str) -> String {
 pub mod scancode {
     pub const A: usize = 4;
     pub const F1: usize = 58;
+    /// Android back button. Only delivered once
+    /// `SDL_ANDROID_TRAP_BACK_BUTTON` is set; otherwise SDL turns it into a
+    /// QUIT event and the app closes.
+    pub const AC_BACK: usize = 282;
     pub const F11: usize = 68;
     pub const SPACE: usize = 44;
     pub const S: usize = 22;
@@ -427,6 +440,14 @@ pub enum Event {
         x: f32,
         y: f32,
     },
+    /// Finger moved while down. Separate from [`Event::FingerDown`] so press
+    /// duration and travel can be measured (a long press opens the menu; a
+    /// drag cancels it).
+    FingerMotion {
+        finger: u64,
+        x: f32,
+        y: f32,
+    },
     FingerUp {
         finger: u64,
     },
@@ -457,6 +478,9 @@ pub enum Event {
 impl Context {
     /// Initialises video, events and gamepads (required).
     pub fn init() -> Result<Self, String> {
+        // Before SDL_Init: on Android the hint has to be in place or the
+        // back button arrives as QUIT and closes the app.
+        android_back_button_hint();
         // SAFETY: plain FFI call with constant flags.
         if unsafe {
             SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK)
@@ -584,9 +608,19 @@ impl Context {
                 button: ev.bytes[24],
             },
             // SDL_TouchFingerEvent: fingerID at 24, x/y floats at 32/36.
-            SDL_EVENT_FINGER_DOWN | SDL_EVENT_FINGER_MOTION => {
+            // Down and motion are kept apart: the menu opens on a long press,
+            // which has to be cancellable when the finger travels.
+            SDL_EVENT_FINGER_DOWN => {
                 let f = |at: usize| f32::from_ne_bytes(ev.bytes[at..at + 4].try_into().unwrap());
                 Event::FingerDown {
+                    finger: u64::from_ne_bytes(ev.bytes[24..32].try_into().unwrap()),
+                    x: f(32),
+                    y: f(36),
+                }
+            }
+            SDL_EVENT_FINGER_MOTION => {
+                let f = |at: usize| f32::from_ne_bytes(ev.bytes[at..at + 4].try_into().unwrap());
+                Event::FingerMotion {
                     finger: u64::from_ne_bytes(ev.bytes[24..32].try_into().unwrap()),
                     x: f(32),
                     y: f(36),
