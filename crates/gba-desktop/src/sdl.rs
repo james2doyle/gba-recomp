@@ -205,6 +205,7 @@ unsafe extern "C" {
     fn SDL_SetRenderVSync(renderer: *mut SdlRenderer, vsync: c_int) -> bool;
     fn SDL_SetRenderDrawBlendMode(renderer: *mut SdlRenderer, mode: u32) -> bool;
     fn SDL_RenderFillRect(renderer: *mut SdlRenderer, rect: *const FRect) -> bool;
+    fn SDL_RenderRect(renderer: *mut SdlRenderer, rect: *const FRect) -> bool;
     fn SDL_RenderDebugText(renderer: *mut SdlRenderer, x: f32, y: f32, text: *const c_char)
     -> bool;
 
@@ -980,6 +981,19 @@ impl Painter<'_> {
             SDL_SetRenderDrawBlendMode(self.renderer.as_ptr(), SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgba[0], rgba[1], rgba[2], rgba[3]);
             SDL_RenderFillRect(self.renderer.as_ptr(), &rect);
+        }
+    }
+
+    /// One-pixel rectangle outline; the fill of the same area is [`fill`].
+    ///
+    /// [`fill`]: Painter::fill
+    pub fn outline(&mut self, x: f32, y: f32, w: f32, h: f32, rgba: [u8; 4]) {
+        let rect = FRect { x, y, w, h };
+        // SAFETY: renderer is live; `rect` outlives the call.
+        unsafe {
+            SDL_SetRenderDrawBlendMode(self.renderer.as_ptr(), SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgba[0], rgba[1], rgba[2], rgba[3]);
+            SDL_RenderRect(self.renderer.as_ptr(), &rect);
         }
     }
 

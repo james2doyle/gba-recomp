@@ -20,7 +20,7 @@ Fonte única de andamento. Data: 2026-10-14. `DONE` exige evidência; `BACKLOG` 
 | GBA-080 | P0 | Pacotes Linux x86-64/macOS arm64 | BACKLOG | GBA-070 | SPEC-010/011; máquina sem LLVM |
 | GBA-090 | P1 | Qualificar cenário LeafGreen BPGE revisão 1 | BACKLOG | GBA-080 | KNO-004, perfil draft; boot/input/save e cobertura medida |
 | GBA-095 | P1 | Windows x86-64/Linux arm64 | DONE | GBA-080 | SPEC-068: adaptadores Linux (x86-64, ARM64, ARMv7) e Windows MSVC; CI verifica o bundle do Rkanoid contra o interpretador em Linux x86-64/ARM64, macOS arm64/x86-64 e Windows; release v0.1.0 |
-| GBA-100 | P2 | Mobile/Web, link e cartuchos especiais | IN_PROGRESS | GBA-090 | SPEC-068: Web jogável no GitHub Pages (KNO-010); iOS `.ipa`/simulador gerados no CI mas ainda não executados; Android APK gerado no CI e executado em aparelho arm64 em 2026-10-24 (KNO-008/009); cabo link e cartuchos especiais pendentes |
+| GBA-100 | P2 | Mobile/Web, link e cartuchos especiais | IN_PROGRESS | GBA-090 | SPEC-068: Web jogável no GitHub Pages (KNO-010); iOS `.ipa`/simulador gerados no CI mas ainda não executados; Android APK gerado no CI e executado em aparelho arm64 em 2026-10-24, com menu aberto e navegado por toque no aparelho (KNO-008/009); cabo link e cartuchos especiais pendentes |
 
 ## Gates
 

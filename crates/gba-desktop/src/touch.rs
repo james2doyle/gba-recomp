@@ -4,6 +4,8 @@
 
 use gba_core::keys;
 
+use crate::menu::Nav;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Shape {
     /// Circle: centre and radius.
@@ -217,6 +219,97 @@ pub fn mask(points: impl IntoIterator<Item = (f32, f32)>) -> u16 {
     m
 }
 
+/// Navigation a touch on the virtual gamepad means while the menu is open
+/// (SPEC-068 TOUCH-68-02). `None` means the touch is not a menu control.
+///
+/// The D-pad is 8-way for gameplay but the menu only moves along the list, so
+/// a diagonal prefers the vertical direction: rows are what a finger is
+/// aiming at.
+pub fn menu_key(x: f32, y: f32) -> Option<Nav> {
+    let bit = |key: u16| BUTTONS.iter().any(|b| b.key == key && hit(b.shape, x, y));
+    if bit(keys::A) {
+        return Some(Nav::Confirm);
+    }
+    if bit(keys::B) {
+        return Some(Nav::Back);
+    }
+    if bit(keys::START) {
+        return Some(Nav::Last);
+    }
+    if bit(keys::SELECT) {
+        return Some(Nav::First);
+    }
+    let d = dpad(x, y);
+    if d & keys::UP != 0 {
+        Some(Nav::Up)
+    } else if d & keys::DOWN != 0 {
+        Some(Nav::Down)
+    } else if d & keys::LEFT != 0 {
+        Some(Nav::Left)
+    } else if d & keys::RIGHT != 0 {
+        Some(Nav::Right)
+    } else {
+        None
+    }
+}
+
+/// Edge detection for touch navigation: one [`Nav`] per press, never a repeat.
+///
+/// Holding a direction to scroll would be convenient on a 25-row page, but a
+/// finger resting on a 30 px control while reading the list would then walk
+/// straight through "Sair". A press is what emits, and the same control has
+/// to be released and touched again to emit twice.
+#[derive(Default)]
+pub struct NavPad {
+    /// Finger owning the current press, and the control it selected.
+    held: Option<(u64, Nav)>,
+}
+
+impl NavPad {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A finger went down at (x, y). Returns the navigation it selects, if any.
+    pub fn press(&mut self, finger: u64, x: f32, y: f32) -> Option<Nav> {
+        self.held = None;
+        let nav = menu_key(x, y)?;
+        self.held = Some((finger, nav));
+        Some(nav)
+    }
+
+    /// A finger went up; the control it held stops being active.
+    pub fn release(&mut self, finger: u64) {
+        if self.held.is_some_and(|(held, _)| held == finger) {
+            self.held = None;
+        }
+    }
+
+    /// Drops any active press (the menu closed under the finger).
+    pub fn cancel(&mut self) {
+        self.held = None;
+    }
+
+    /// KEYINPUT bits of the held control, so the pad can highlight it.
+    pub fn pressed(&self) -> u16 {
+        self.held.map_or(0, |(_, nav)| nav_key(nav))
+    }
+}
+
+/// The gamepad control that a navigation step stands for (for highlighting).
+pub fn nav_key(nav: Nav) -> u16 {
+    match nav {
+        Nav::Up => keys::UP,
+        Nav::Down => keys::DOWN,
+        Nav::Left => keys::LEFT,
+        Nav::Right => keys::RIGHT,
+        Nav::Confirm => keys::A,
+        Nav::Back => keys::B,
+        Nav::First => keys::SELECT,
+        Nav::Last => keys::START,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,5 +443,81 @@ mod tests {
             mask([(cx + 20.0, cy), (218.0, 108.0)]),
             keys::RIGHT | keys::A
         );
+    }
+
+    #[test]
+    fn the_pad_navigates_the_menu() {
+        let (cx, cy, _) = DPAD;
+        assert_eq!(menu_key(cx, cy - 20.0), Some(Nav::Up));
+        assert_eq!(menu_key(cx, cy + 20.0), Some(Nav::Down));
+        assert_eq!(menu_key(cx - 20.0, cy), Some(Nav::Left));
+        assert_eq!(menu_key(cx + 20.0, cy), Some(Nav::Right));
+        assert_eq!(menu_key(218.0, 108.0), Some(Nav::Confirm));
+        assert_eq!(menu_key(190.0, 128.0), Some(Nav::Back));
+        assert_eq!(menu_key(95.0, 150.0), Some(Nav::First));
+        assert_eq!(menu_key(130.0, 150.0), Some(Nav::Last));
+        // Shoulders and free screen are not navigation.
+        assert_eq!(menu_key(10.0, 5.0), None);
+        assert_eq!(menu_key(230.0, 5.0), None);
+        assert_eq!(menu_key(120.0, 80.0), None);
+        assert_eq!(menu_key(cx, cy), None, "dead centre");
+    }
+
+    /// A diagonal on the 8-way D-pad moves the selection, not a slider: the
+    /// menu only moves vertically along rows.
+    #[test]
+    fn a_diagonal_press_still_moves_the_cursor() {
+        let (cx, cy, _) = DPAD;
+        assert_eq!(menu_key(cx - 15.0, cy + 15.0), Some(Nav::Down));
+        assert_eq!(menu_key(cx + 15.0, cy - 15.0), Some(Nav::Up));
+    }
+
+    /// One step per touch: holding a direction must not walk the list.
+    #[test]
+    fn holding_a_control_navigates_once() {
+        let (cx, cy, _) = DPAD;
+        let mut pad = NavPad::new();
+        assert_eq!(pad.press(1, cx, cy + 20.0), Some(Nav::Down));
+        assert_eq!(pad.pressed(), keys::DOWN, "drawn as pressed");
+        // Still down, still no further navigation: `press` is the only source.
+        assert_eq!(pad.pressed(), keys::DOWN);
+    }
+
+    #[test]
+    fn releasing_allows_the_next_step() {
+        let (cx, cy, _) = DPAD;
+        let mut pad = NavPad::new();
+        pad.press(1, cx, cy + 20.0);
+        pad.release(1);
+        assert_eq!(pad.pressed(), 0);
+        assert_eq!(pad.press(2, cx, cy + 20.0), Some(Nav::Down));
+    }
+
+    #[test]
+    fn a_press_on_free_screen_is_not_navigation() {
+        let mut pad = NavPad::new();
+        assert_eq!(pad.press(1, OPEN.0, OPEN.1), None);
+        assert_eq!(pad.pressed(), 0);
+        // A later real press still works.
+        assert_eq!(pad.press(1, 218.0, 108.0), Some(Nav::Confirm));
+    }
+
+    #[test]
+    fn cancel_drops_the_held_control() {
+        let mut pad = NavPad::new();
+        pad.press(1, 218.0, 108.0);
+        pad.cancel();
+        assert_eq!(pad.pressed(), 0);
+    }
+
+    #[test]
+    fn a_second_finger_does_not_steal_the_press() {
+        let (cx, cy, _) = DPAD;
+        let mut pad = NavPad::new();
+        pad.press(1, cx, cy + 20.0);
+        assert_eq!(pad.press(2, 218.0, 108.0), Some(Nav::Confirm));
+        // Releasing the first finger leaves the second one's control lit.
+        pad.release(1);
+        assert_eq!(pad.pressed(), keys::A);
     }
 }

@@ -108,6 +108,16 @@ fechar o app em vez de abrir o menu, o pacote foi linkado sem
 `SDL_ANDROID_TRAP_BACK_BUTTON` — é um `hint` que precisa estar ativo antes do
 `SDL_Init`.
 
+Com o menu aberto, o próprio gamepad virtual vira o controle: direcional para
+cima/baixo/esquerda/direita, `A` confirma, `B` volta, `Start` salta para a
+última linha e `Select` para a primeira. O gamepad fica visível atrás do menu,
+só como contorno, e o controle tocado acende. A navegação é **um passo por
+toque**: segurar o direcional não percorre a lista, o que evita atravessar
+"Reiniciar jogo" ou "Sair" sem querer.
+
+Isso vale enquanto `input.touch_controls` não for `off`: desligar o gamepad
+também desliga a navegação por toque do menu, e sobra só o botão voltar.
+
 O arquivo de configurações e o save ficam em `SDL_GetPrefPath`
 (`/data/data/<package>/files/`), que não é legível por `adb shell` num APK de
 release — para inspecionar, use um build `debuggable` ou leia o aviso no logcat.

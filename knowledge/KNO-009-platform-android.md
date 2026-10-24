@@ -60,8 +60,13 @@ Executado localmente num Linux x86-64 com o APK recompilado a partir deste commi
 | EV-009-13 | `python3` procurando os bytes da ROM em `libmain.so` | ROM inteira (183.248 bytes) contígua no offset 377.952 |
 | EV-009-14 | `adb logcat -s gba-recomp` após abrir o jogo | `I gba-recomp: gba-desktop: …/settings.toml is invalid (line 3: unknown key \`language\` in [])` |
 | EV-009-15 | No aparelho: `input keyevent KEYCODE_BACK`; `input swipe X Y X Y 900` em área livre; o mesmo sobre o direcional; e um arrasto | Botão voltar abre o menu; pressão longa abre; segurar o direcional por 1 s **não** abre; arrasto **não** abre |
+| EV-009-16 | No aparelho, com o menu aberto: toques nas hastes do direcional, em `A`, em `B`, em `Start` e em `Select` (`input tap` convertendo a coordenada lógica ×8 + origem 640/132) | Direcional move o cursor; `A` entra na página; `B` fecha o menu e retoma o jogo; `Start` vai para "Sair"; `Select` volta a "Continuar"; `◀` em Volume levou 100% → 90%. Antes desta mudança o menu abria e não navegava |
+| EV-009-17 | `input motionevent DOWN x y`, 3 s parado, `UP`, com o cursor em "Continuar" | O cursor andou **uma** linha: navegação por borda de pressão, sem repetição automática |
 
 EV-009-14 é a primeira prova de que os diagnósticos do runtime chegam ao logcat: antes desta mudança o `stderr` do pacote não aparecia em lugar nenhum.
+
+> **Correção (2026-10-24, durante EV-009-16).** `sdl.rs` declarava `SDL_TOUCH_DEVICE_DIRECT = 1`, mas `SDL_TouchDeviceType` começa em `-1` (`SDL_TOUCH_DEVICE_INVALID`), então `DIRECT` é `0` e `1` é `INDIRECT_ABSOLUTE` (trackpad). `has_touchscreen()` portanto devolvia `false` no aparelho, e com `input.touch_controls = auto` o gamepad virtual só aparecia **depois** do primeiro evento de dedo — ficava invisível e clicável ao mesmo tempo. Só foi visível porque a captura de tela do menu, feita antes de qualquer toque, mostrava o menu sem o gamepad de fundo. Corrigido; a constante agora é `0` com o motivo em comentário.
+
 
 O aparelho citado acima rodou o pacote Android de uma árvore com trabalho de i18n; o `settings.toml` gravado por aquele build tem uma chave `language` que a árvore de `main` ainda não conhece. O aviso é o comportamento correto ("using defaults, the file was kept"), não uma falha deste alvo.
 
@@ -72,6 +77,8 @@ Emulador: **não é caminho** neste host. `emulator` 37.2.12 recusa uma imagem a
 - Somente `arm64-v8a`; sem armeabi-v7a, x86_64 ou App Bundle (`.aab`).
 - Assinatura com a chave de debug (APK instalável para testes, não publicável em loja); sem empacotamento para loja.
 - Controles touch: `crates/gba-desktop/src/touch.rs` e `draw_touch` em `app.rs` desenham o gamepad virtual (TOUCH-68-01). O menu na janela é alcançável por pressão longa (500 ms, tolerância de 12 px, ignorada sobre os controles) e pelo botão voltar do Android, que exige `SDL_ANDROID_TRAP_BACK_BUTTON` antes do `SDL_Init` — sem ele a SDL entrega o botão como QUIT e o app fecha. Verificado em aparelho (EV-009-15). Sem party nem app de configurações (TGT-68-03).
+- Com o menu aberto o gamepad virtual **navega** o menu (TOUCH-68-02, ADR-043): direcional, `A`, `B`, `Start` (última linha) e `Select` (primeira). É por borda de pressão, sem repetição automática, para que encostar num controle não percorra a lista até "Sair". Verificado em aparelho (EV-009-16/17).
+- Com `input.touch_controls = off` não há gamepad desenhado, logo **não há navegação por toque** no menu: ele continua abrindo (pressão longa e botão voltar) e o botão voltar continua voltando, mas as setas e o `A` não têm alvo. Escolher `off` num aparelho sem teclado nem controle deixa o menu quase inutilizável; é uma consequência aceita da decisão de reusar o gamepad em vez de desenhar uma faixa própria (alternativa 4 de ADR-043).
 - `bundle` para alvo cruzado **não** exige mais o runtime do host: a checagem de modo usa `--target`/`--runtime-lib` (corrigido em `cabe9f7`, registrado em [KNO-008](KNO-008-platform-ios.md)). O workflow compila `gba-native-rt` para o host apenas porque também roda o bundle nativo.
 - `default_runtime` procurava o runtime cruzado dois níveis acima do binário e nunca o encontrava; `bundle --target …` sem `--runtime-lib` falhava com "runtime library … not found" mesmo com a biblioteca construída. Corrigido em `e69647c`, com teste.
 

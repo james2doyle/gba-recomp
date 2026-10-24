@@ -19,6 +19,10 @@ pub enum Nav {
     Right,
     Confirm,
     Back,
+    /// Jump to the first row (touch `Select`, SPEC-068 TOUCH-68-02).
+    First,
+    /// Jump to the last row (touch `Start`).
+    Last,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -194,6 +198,14 @@ impl Menu {
             }
             Nav::Down => {
                 self.cursor = (self.cursor + 1) % count;
+                Command::None
+            }
+            Nav::First => {
+                self.cursor = 0;
+                Command::None
+            }
+            Nav::Last => {
+                self.cursor = count.saturating_sub(1);
                 Command::None
             }
             Nav::Back => {
@@ -486,5 +498,36 @@ mod tests {
         m.open_at(Page::Main, &Settings::default());
         m.cursor = 7;
         assert_eq!(m.handle(Nav::Confirm), Command::Quit);
+    }
+
+    /// Touch `Select`/`Start` jump to the ends of the list (TOUCH-68-02).
+    #[test]
+    fn first_and_last_jump_to_the_ends() {
+        let mut m = Menu::new(Settings::default());
+        m.open_at(Page::Controls, &Settings::default());
+        let count = m.rows().len();
+        m.handle(Nav::Last);
+        assert_eq!(m.cursor, count - 1, "Start lands on the last row");
+        assert_eq!(m.handle(Nav::Last), Command::None, "jump is not a confirm");
+        m.handle(Nav::First);
+        assert_eq!(m.cursor, 0, "Select lands on the first row");
+        assert_eq!(m.handle(Nav::First), Command::None);
+        // The jump still wraps like the arrows do: from the last row, Down
+        // goes back to the top.
+        m.handle(Nav::Last);
+        m.handle(Nav::Down);
+        assert_eq!(m.cursor, 0);
+    }
+
+    /// A jump while a remap is pending is ignored, like any other navigation.
+    #[test]
+    fn first_and_last_do_not_steal_a_remap() {
+        let mut m = Menu::new(Settings::default());
+        m.open_at(Page::Controls, &Settings::default());
+        m.handle(Nav::Confirm);
+        assert!(m.remap.is_some());
+        m.handle(Nav::Last);
+        assert_eq!(m.cursor, 0);
+        assert!(m.remap.is_some(), "still waiting for a key");
     }
 }

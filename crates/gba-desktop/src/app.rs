@@ -454,6 +454,8 @@ pub fn run_app(
     // A long press on free screen area opens the menu: on a phone there is
     // no Esc, no right click and no menu bar.
     let mut long_press = touch::LongPress::new();
+    // Touch navigation for the open menu (SPEC-068 TOUCH-68-02).
+    let mut nav_pad = touch::NavPad::new();
     let has_touchscreen = ctx.has_touchscreen();
     let mut touch_seen = false;
 
@@ -686,15 +688,19 @@ pub fn run_app(
                     match video.window_to_logical(x, y) {
                         Some(p) => {
                             fingers.insert(finger, p);
-                            // Only a closed menu arms the gesture; while it is
-                            // open a tap belongs to navigation.
-                            if !menu.open {
+                            if menu.open {
+                                // The open menu is driven by the same pad the
+                                // game uses (TOUCH-68-02): no on-screen pad,
+                                // no way past the first row on a phone.
+                                nav.extend(nav_pad.press(finger, p.0, p.1));
+                            } else {
                                 long_press.press(finger, p.0, p.1, Instant::now());
                             }
                         }
                         None => {
                             fingers.remove(&finger);
                             long_press.release(finger);
+                            nav_pad.release(finger);
                         }
                     }
                 }
@@ -710,6 +716,7 @@ pub fn run_app(
                 Event::FingerUp { finger } => {
                     fingers.remove(&finger);
                     long_press.release(finger);
+                    nav_pad.release(finger);
                 }
                 Event::MouseDown { .. } | Event::Other => {}
             }
@@ -760,6 +767,7 @@ pub fn run_app(
             Effect::OpenMenu(page) => {
                 // Any route that opens the menu consumes a pending gesture.
                 long_press.cancel();
+                nav_pad.cancel();
                 menu.open_at(page, &current);
             }
             Effect::TogglePause => paused = !paused,
@@ -838,6 +846,11 @@ pub fn run_app(
             }
         }
 
+        let show_touch = match current.input.touch_controls {
+            TouchMode::On => true,
+            TouchMode::Off => false,
+            TouchMode::Auto => has_touchscreen || touch_seen,
+        };
         let suspended = menu.open || paused;
         if suspended != was_suspended
             && let Some(a) = audio.as_mut()
@@ -857,9 +870,21 @@ pub fn run_app(
                 }
             });
             let msg = status.as_ref().map(|(m, _)| m.clone());
+            // With the menu open the pad is the menu's own navigation
+            // (TOUCH-68-02), so it stays visible as a guide behind the rows.
+            let ghost = open && show_touch;
+            let held = nav_pad.pressed();
             video.present_with(&pixels, |p| {
                 if open {
-                    draw_menu(p, title, &rows, cursor, remap_hint, msg.as_deref());
+                    draw_menu(
+                        p,
+                        title,
+                        &rows,
+                        cursor,
+                        remap_hint,
+                        msg.as_deref(),
+                        ghost.then_some(held),
+                    );
                 } else {
                     p.fill(0.0, 0.0, 240.0, 14.0, [0, 0, 0, 180]);
                     p.text(4.0, 3.0, "PAUSADO - botao direito: menu", [255, 255, 255]);
@@ -1038,9 +1063,18 @@ fn draw_menu(
     cursor: usize,
     remap_hint: Option<&str>,
     status: Option<&str>,
+    nav_pad: Option<u16>,
 ) {
     p.fill(0.0, 0.0, 240.0, 160.0, [0, 0, 24, 200]);
-    p.text(6.0, 4.0, title, [255, 220, 120]);
+    // Behind the rows, not on top of them: the pad only says where the
+    // navigation targets are.
+    if let Some(pressed) = nav_pad {
+        draw_touch_ghost(p, pressed);
+    }
+    // Centred: on a touch screen the pad is drawn behind the menu, and its
+    // shoulder buttons occupy the left and right ends of this band.
+    let title_x = (240.0 - 8.0 * title.len() as f32) / 2.0;
+    p.text(title_x, 4.0, title, [255, 220, 120]);
     const VISIBLE: usize = 15;
     let start = cursor.saturating_sub(VISIBLE - 1);
     for (i, row) in rows.iter().enumerate().skip(start).take(VISIBLE) {
@@ -1085,6 +1119,55 @@ fn draw_touch(p: &mut sdl::Painter<'_>, pressed: u16) {
         p.fill(x, y, w, h, [255, 255, 255, alpha(on)]);
         let tx = x + (w - 8.0 * b.label.len() as f32) / 2.0;
         p.text(tx, y + (h - 8.0) / 2.0, b.label, [20, 20, 40]);
+    }
+}
+
+/// The pad behind the open menu: same geometry, outlined instead of filled.
+///
+/// The menu reads it as navigation (SPEC-068 TOUCH-68-02), so the targets have
+/// to be visible. A filled pad would paint over the rows — the Controls page
+/// prints values on the right, exactly where A and B sit — so the ghost is an
+/// outline plus a translucent tint that only marks the hit area. Labels stay,
+/// dim, because "A confirms, B goes back" is not guessable from a blank
+/// circle; the pressed control solidifies to confirm the tap landed.
+fn draw_touch_ghost(p: &mut sdl::Painter<'_>, pressed: u16) {
+    use gba_core::keys;
+    let ghost = |on: bool| {
+        if on {
+            [255, 255, 255, 90]
+        } else {
+            [255, 255, 255, 0]
+        }
+    };
+    let edge = |on: bool| {
+        if on {
+            [255, 255, 255, 240]
+        } else {
+            [130, 200, 255, 190]
+        }
+    };
+    let (cx, cy, r) = touch::DPAD;
+    let arm = r * 0.55;
+    for (key, x, y) in [
+        (keys::UP, cx - arm / 2.0, cy - r),
+        (keys::DOWN, cx - arm / 2.0, cy + r - arm),
+        (keys::LEFT, cx - r, cy - arm / 2.0),
+        (keys::RIGHT, cx + r - arm, cy - arm / 2.0),
+    ] {
+        let on = pressed & key != 0;
+        p.fill(x, y, arm, arm, ghost(on));
+        p.outline(x, y, arm, arm, edge(on));
+    }
+    for b in &touch::BUTTONS {
+        let (x, y, w, h) = match b.shape {
+            touch::Shape::Circle { x, y, r } => (x - r, y - r, r * 2.0, r * 2.0),
+            touch::Shape::Rect { x, y, w, h } => (x, y, w, h),
+        };
+        let on = pressed & b.key != 0;
+        p.fill(x, y, w, h, ghost(on));
+        p.outline(x, y, w, h, edge(on));
+        let tx = x + (w - 8.0 * b.label.len() as f32) / 2.0;
+        p.text(tx, y + (h - 8.0) / 2.0, b.label, [190, 190, 215]);
     }
 }
 
