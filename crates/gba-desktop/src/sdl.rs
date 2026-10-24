@@ -95,7 +95,11 @@ const SDL_EVENT_FINGER_DOWN: u32 = 0x700;
 const SDL_EVENT_FINGER_UP: u32 = 0x701;
 const SDL_EVENT_FINGER_MOTION: u32 = 0x702;
 const SDL_EVENT_FINGER_CANCELED: u32 = 0x703;
-const SDL_TOUCH_DEVICE_DIRECT: c_int = 1;
+// SDL_TouchDeviceType starts at -1 (`SDL_TOUCH_DEVICE_INVALID`), so `DIRECT`
+// is 0 and `INDIRECT_ABSOLUTE` is 1. Comparing against 1 asked whether the
+// device was a trackpad, which is why a phone reported no touch screen until
+// after the first finger event had already been seen.
+const SDL_TOUCH_DEVICE_DIRECT: c_int = 0;
 const SDL_EVENT_GAMEPAD_BUTTON_DOWN: u32 = 0x651;
 const SDL_LOGICAL_PRESENTATION_LETTERBOX: c_int = 2;
 const SDL_SCALEMODE_LINEAR: c_int = 1;
