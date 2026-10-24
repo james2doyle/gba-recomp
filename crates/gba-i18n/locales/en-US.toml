@@ -183,7 +183,9 @@ settings.unsaved = "unsaved changes"
 settings.restore_tab = "Restore defaults for this tab"
 settings.reload = "Reload"
 settings.close = "Close"
-settings.saved = "Settings saved - the game applies them within half a second"
+# The in-window menu footer is 240 px wide and does not wrap: the message has
+# to fit in 236 px with the 12 px PixAntiqua atlas (217 px here).
+settings.saved = "Saved - the game applies them shortly"
 settings.save_failed = "Failed to save: %{error}"
 
 party.title = "Party over network"

@@ -188,7 +188,9 @@ settings.unsaved = "alterações não salvas"
 settings.restore_tab = "Restaurar padrões desta aba"
 settings.reload = "Recarregar"
 settings.close = "Fechar"
-settings.saved = "Configurações salvas - o jogo aplica em até meio segundo"
+# O rodapé do menu na janela tem 240 px e não quebra linha: a mensagem
+# precisa caber em 236 px na PixAntiqua de 12 px (189 px aqui).
+settings.saved = "Salvo - o jogo aplica em instantes"
 settings.save_failed = "Falha ao salvar: %{error}"
 
 party.title = "Party em rede"

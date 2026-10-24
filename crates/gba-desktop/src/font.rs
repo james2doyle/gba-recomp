@@ -237,6 +237,57 @@ mod tests {
         }
     }
 
+    /// Messages the in-window menu draws in a single unclipped line must fit
+    /// the 240 px screen. `draw_menu` blits its footer at x=4 with no wrapping
+    /// or clipping, so a longer string is cut off at the right edge — that is
+    /// how `settings.saved` used to lose "half a second" on device
+    /// (SPEC-069 L10N-69-08).
+    #[test]
+    fn footer_messages_fit_the_menu_width() {
+        // Keys reachable from `draw_menu`'s footer, the in-game status strip
+        // and the paused banner: the fixed-width draw sites in app.rs.
+        const KEYS: [&str; 19] = [
+            "settings.saved",
+            "status.party_opened",
+            "status.party_missing",
+            "status.settings_opened",
+            "status.settings_missing",
+            "status.game_reset",
+            "status.save_written",
+            "status.save_no_file",
+            "status.save_unchanged",
+            "status.save_failed",
+            "status.settings_reloaded",
+            "status.settings_invalid",
+            "menu.hint",
+            "menu.hint_touch",
+            "menu.status.applied",
+            "menu.status.bound",
+            "menu.controls.press_key",
+            "menu.controls.press_pad",
+            "banner.paused",
+        ];
+        // Drawn at x=4 in a 240 px wide screen.
+        const AVAILABLE: f32 = 240.0 - 4.0;
+        let mut wide: Vec<String> = Vec::new();
+        for lang in gba_i18n::Lang::all() {
+            for key in KEYS {
+                let text = gba_i18n::translate_in(*lang, key);
+                let width = width(&text);
+                if width > AVAILABLE {
+                    wide.push(format!(
+                        "{} {key}: {width} px > {AVAILABLE} px \"{text}\"",
+                        lang.tag()
+                    ));
+                }
+            }
+        }
+        assert!(
+            wide.is_empty(),
+            "these footer messages are clipped at the right edge: {wide:#?}"
+        );
+    }
+
     /// Every character the shipped locales use must be drawable by the menu
     /// font. A new locale that needs Cyrillic would fail here instead of
     /// silently rendering `?` in the 240x160 menu.
