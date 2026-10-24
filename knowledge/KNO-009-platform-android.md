@@ -59,6 +59,7 @@ Executado localmente num Linux x86-64 com o APK recompilado a partir deste commi
 | EV-009-12 | `zipalign -c -P 16 -v 4 game.apk` | `Verification successful` (o CI não roda esta checagem) |
 | EV-009-13 | `python3` procurando os bytes da ROM em `libmain.so` | ROM inteira (183.248 bytes) contígua no offset 377.952 |
 | EV-009-14 | `adb logcat -s gba-recomp` após abrir o jogo | `I gba-recomp: gba-desktop: …/settings.toml is invalid (line 3: unknown key \`language\` in [])` |
+| EV-009-15 | No aparelho: `input keyevent KEYCODE_BACK`; `input swipe X Y X Y 900` em área livre; o mesmo sobre o direcional; e um arrasto | Botão voltar abre o menu; pressão longa abre; segurar o direcional por 1 s **não** abre; arrasto **não** abre |
 
 EV-009-14 é a primeira prova de que os diagnósticos do runtime chegam ao logcat: antes desta mudança o `stderr` do pacote não aparecia em lugar nenhum.
 
@@ -70,7 +71,7 @@ Emulador: **não é caminho** neste host. `emulator` 37.2.12 recusa uma imagem a
 
 - Somente `arm64-v8a`; sem armeabi-v7a, x86_64 ou App Bundle (`.aab`).
 - Assinatura com a chave de debug (APK instalável para testes, não publicável em loja); sem empacotamento para loja.
-- Controles touch: `crates/gba-desktop/src/touch.rs` e `draw_touch` em `app.rs` desenham o gamepad virtual (TOUCH-68-01). A pressão longa que abre o menu e o botão voltar do Android vêm do trabalho de i18n e **não** estão nesta árvore; aqui o menu continua só por teclado/botão direito. Sem party nem app de configurações (TGT-68-03).
+- Controles touch: `crates/gba-desktop/src/touch.rs` e `draw_touch` em `app.rs` desenham o gamepad virtual (TOUCH-68-01). O menu na janela é alcançável por pressão longa (500 ms, tolerância de 12 px, ignorada sobre os controles) e pelo botão voltar do Android, que exige `SDL_ANDROID_TRAP_BACK_BUTTON` antes do `SDL_Init` — sem ele a SDL entrega o botão como QUIT e o app fecha. Verificado em aparelho (EV-009-15). Sem party nem app de configurações (TGT-68-03).
 - `bundle` para alvo cruzado **não** exige mais o runtime do host: a checagem de modo usa `--target`/`--runtime-lib` (corrigido em `cabe9f7`, registrado em [KNO-008](KNO-008-platform-ios.md)). O workflow compila `gba-native-rt` para o host apenas porque também roda o bundle nativo.
 - `default_runtime` procurava o runtime cruzado dois níveis acima do binário e nunca o encontrava; `bundle --target …` sem `--runtime-lib` falhava com "runtime library … not found" mesmo com a biblioteca construída. Corrigido em `e69647c`, com teste.
 

@@ -101,6 +101,13 @@ I gba-recomp: gba-desktop: /data/data/dev.gbarecomp.game.g…/files/settings.tom
   is invalid (line 3: unknown key `language` in []); using defaults, the file was kept
 ```
 
+No aparelho o menu na janela abre por **pressão longa** (500 ms) numa área
+livre da tela ou pelo **botão voltar**. Segurar o direcional ou um botão do
+gamepad virtual não abre o menu, e arrastar também não. Se o botão voltar
+fechar o app em vez de abrir o menu, o pacote foi linkado sem
+`SDL_ANDROID_TRAP_BACK_BUTTON` — é um `hint` que precisa estar ativo antes do
+`SDL_Init`.
+
 O arquivo de configurações e o save ficam em `SDL_GetPrefPath`
 (`/data/data/<package>/files/`), que não é legível por `adb shell` num APK de
 release — para inspecionar, use um build `debuggable` ou leia o aviso no logcat.
