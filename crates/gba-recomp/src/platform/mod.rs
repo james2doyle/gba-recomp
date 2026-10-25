@@ -198,32 +198,51 @@ pub fn default_sdl_dir(spec: &TargetSpec) -> PathBuf {
         Platform::Linux => {
             // Probe the layouts in use rather than assuming one. Debian and
             // Ubuntu use a multiarch directory; Arch, Fedora and most others
-            // install straight into /usr/lib. `pkg-config` knows best when the
-            // `.pc` file is present, so try it before guessing paths.
-            let mut candidates: Vec<PathBuf> = Vec::new();
-            if let Some(dir) = pkg_config_libdir("sdl3") {
-                candidates.push(dir);
-            }
-            let multiarch = if spec.triple.starts_with("aarch64") {
-                "aarch64-linux-gnu"
-            } else if spec.triple.starts_with("armv7") {
-                "arm-linux-gnueabihf"
-            } else {
-                "x86_64-linux-gnu"
-            };
-            candidates.push(PathBuf::from("/usr/local/lib"));
-            candidates.push(PathBuf::from(format!("/usr/lib/{multiarch}")));
-            candidates.push(PathBuf::from("/usr/lib64"));
-            candidates.push(PathBuf::from("/usr/lib"));
+            // install straight into /usr/lib. The order and the host-only
+            // `pkg-config` rule live in [`sdl_candidates`].
+            let candidates = sdl_candidates(spec);
             candidates
                 .into_iter()
                 .find(|dir| dir.join("libSDL3.so.0").exists())
                 // Nothing present: keep the previous default so the error
                 // message still names a conventional location.
-                .unwrap_or_else(|| PathBuf::from(format!("/usr/lib/{multiarch}")))
+                .unwrap_or_else(|| PathBuf::from(format!("/usr/lib/{}", linux_multiarch(spec))))
         }
         _ => PathBuf::from("sdl3"),
     }
+}
+
+/// The Debian/Ubuntu multiarch directory for `spec`.
+fn linux_multiarch(spec: &TargetSpec) -> &'static str {
+    if spec.triple.starts_with("aarch64") {
+        "aarch64-linux-gnu"
+    } else if spec.triple.starts_with("armv7") {
+        "arm-linux-gnueabihf"
+    } else {
+        "x86_64-linux-gnu"
+    }
+}
+
+/// Where [`default_sdl_dir`] looks for the Linux library, in order.
+///
+/// `pkg-config` is consulted only when `spec` is the host: it answers with the
+/// host's `libdir` even when `spec` is a cross target, and packaging that
+/// host-architecture `libSDL3.so.0` into a foreign-arch bundle breaks at load
+/// time — worse than the loud "not found" that tells the user to pass
+/// `--sdl-dir`.
+fn sdl_candidates(spec: &TargetSpec) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if *spec == TargetSpec::host()
+        && let Some(dir) = pkg_config_libdir("sdl3")
+    {
+        candidates.push(dir);
+    }
+    let multiarch = linux_multiarch(spec);
+    candidates.push(PathBuf::from("/usr/local/lib"));
+    candidates.push(PathBuf::from(format!("/usr/lib/{multiarch}")));
+    candidates.push(PathBuf::from("/usr/lib64"));
+    candidates.push(PathBuf::from("/usr/lib"));
+    candidates
 }
 
 /// `pkg-config --variable=libdir <package>`, when the tool and `.pc` file
@@ -285,17 +304,35 @@ mod tests {
         if Platform::of(&spec) != Platform::Linux {
             return; // other platforms have their own defaults
         }
-        let installed = pkg_config_libdir("sdl3").is_some()
-            || ["/usr/lib", "/usr/local/lib", "/usr/lib64"]
-                .iter()
-                .any(|d| PathBuf::from(d).join("libSDL3.so.0").exists());
-        if !installed {
+        if !sdl_candidates(&spec)
+            .iter()
+            .any(|d| d.join("libSDL3.so.0").exists())
+        {
             return; // nothing to find; the fallback is all we can offer
         }
         let dir = default_sdl_dir(&spec);
         assert!(
             dir.join("libSDL3.so.0").exists(),
             "SDL3 is installed but default_sdl_dir returned {dir:?}, which has no libSDL3.so.0"
+        );
+    }
+
+    /// `pkg-config` answers with the host's libdir even for a cross target:
+    /// trusting it would package a host-architecture `libSDL3.so.0` into a
+    /// foreign-arch bundle, where it breaks at load time instead of failing
+    /// the lookup loudly. Cross lookups stick to the layout guesses.
+    #[test]
+    fn cross_sdl_candidates_never_use_host_pkgconfig() {
+        let spec = TargetSpec::for_triple("aarch64-unknown-linux-gnu").unwrap();
+        let expected = [
+            "/usr/local/lib",
+            "/usr/lib/aarch64-linux-gnu",
+            "/usr/lib64",
+            "/usr/lib",
+        ];
+        assert_eq!(
+            sdl_candidates(&spec),
+            expected.iter().map(PathBuf::from).collect::<Vec<_>>()
         );
     }
 
