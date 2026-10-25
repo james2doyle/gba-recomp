@@ -9,3 +9,5 @@
 - [KNO-007-interpreted-core](KNO-007-interpreted-core.md)
 - [KNO-008-platform-ios](KNO-008-platform-ios.md)
 - [KNO-010-platform-web](KNO-010-platform-web.md)
+- [KNO-011-widescreen-survey](KNO-011-widescreen-survey.md)
+- [evidence/](evidence/) — relatórios estruturados citados pelas specs
