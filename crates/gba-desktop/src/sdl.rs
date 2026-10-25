@@ -1114,7 +1114,7 @@ impl Painter<'_> {
                     h: f32::from(g.h),
                 };
                 let dst = FRect {
-                    x: pen,
+                    x: pen + f32::from(g.ox),
                     y: y + f32::from(g.oy),
                     w: f32::from(g.w),
                     h: f32::from(g.h),

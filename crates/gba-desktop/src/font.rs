@@ -41,6 +41,9 @@ pub struct Glyph {
     pub advance: u8,
     /// Distance from the top of the line box to the first inked row.
     pub oy: u8,
+    /// Distance from the pen origin to the first inked column. Signed: `j`'s
+    /// hook reaches 2 px left of the pen and must be drawn there.
+    pub ox: i8,
 }
 
 /// Looks up a character's glyph, falling back to [`MISSING`].
@@ -52,6 +55,7 @@ pub fn glyph(ch: char) -> Glyph {
         h: 0,
         advance: atlas::ADVANCE_SPACE as u8,
         oy: 0,
+        ox: 0,
     })
 }
 
@@ -61,7 +65,7 @@ fn lookup(ch: char) -> Option<Glyph> {
         .binary_search_by_key(&code, |&(c, ..)| c)
         .ok()
         .map(|i| {
-            let (_, advance, x, y, w, h, oy) = atlas::GLYPHS[i];
+            let (_, advance, x, y, w, h, oy, ox) = atlas::GLYPHS[i];
             Glyph {
                 x,
                 y,
@@ -69,6 +73,7 @@ fn lookup(ch: char) -> Option<Glyph> {
                 h,
                 advance,
                 oy,
+                ox,
             }
         })
 }
@@ -113,7 +118,7 @@ mod tests {
 
     #[test]
     fn glyphs_fit_inside_the_atlas() {
-        for &(code, _, x, y, w, h, _) in atlas::GLYPHS {
+        for &(code, _, x, y, w, h, _, _) in atlas::GLYPHS {
             assert!(
                 u32::from(x) + u32::from(w) <= ATLAS_WIDTH,
                 "U+{code:04X} overflows width"
@@ -213,6 +218,26 @@ mod tests {
         assert!(
             r.iter().all(|row| row.iter().all(|&on| on)),
             "period must be solid"
+        );
+    }
+
+    /// `j`'s bottom hook reaches 2 px left of the pen origin. Clamping ink
+    /// to x >= 0 (the bug this pins) amputated it, and every menu "j" —
+    /// "Reiniciar jogo" — shipped as a stub.
+    #[test]
+    fn j_keeps_its_bottom_hook() {
+        let g = glyph('j');
+        assert_eq!(g.ox, -2, "the hook lives 2 px left of the pen origin");
+        assert_eq!(g.w, 4, "ink box = hook [-2, 1) over the stem [0, 2)");
+        let r = rows('j');
+        let touches_left: Vec<bool> = r.iter().map(|row| row[0]).collect();
+        let first = touches_left
+            .iter()
+            .position(|&on| on)
+            .expect("the hook must ink the box's left edge");
+        assert!(
+            first >= r.len() / 2,
+            "only the hook (the bottom rows) reaches left of the pen; rows {touches_left:?}"
         );
     }
 

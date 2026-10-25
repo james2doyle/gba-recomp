@@ -55,6 +55,10 @@ struct Glyph {
     /// Rows between the top of the line box and the first inked row, so the
     /// renderer can place the cropped bitmap back on its baseline.
     oy: u32,
+    /// Columns between the pen origin and the first inked column. Signed:
+    /// ink can start left of the pen (`j`'s hook reaches x = -2 px), and
+    /// cropping it away would amputate the glyph.
+    ox: i32,
 }
 
 fn build_atlas(path: &std::path::Path) -> Result<(), String> {
@@ -67,7 +71,8 @@ fn build_atlas(path: &std::path::Path) -> Result<(), String> {
     let mut bitmaps: BTreeMap<u32, Vec<Vec<bool>>> = BTreeMap::new();
     for (&code, &gid) in &cmap {
         let (advance, outline) = face.glyph(gid)?;
-        let (bitmap, oy) = rasterize(&outline, SIZE).map_err(|e| format!("U+{code:04X}: {e}"))?;
+        let (bitmap, oy, ox) =
+            rasterize(&outline, SIZE).map_err(|e| format!("U+{code:04X}: {e}"))?;
         bitmaps.insert(code, bitmap);
         glyphs.push(Glyph {
             code,
@@ -77,6 +82,7 @@ fn build_atlas(path: &std::path::Path) -> Result<(), String> {
             w: 0,
             h: 0,
             oy,
+            ox,
         });
     }
 
@@ -134,7 +140,11 @@ fn build_atlas(path: &std::path::Path) -> Result<(), String> {
     let _ = writeln!(out, "pub const SIZE: f32 = {SIZE:.1};");
     let _ = writeln!(out, "pub const WIDTH: u32 = {ATLAS_W};");
     let _ = writeln!(out, "pub const HEIGHT: u32 = {atlas_h};");
-    let _ = writeln!(out, "pub const ADVANCE_SPACE: u32 = {};", space_advance(&glyphs));
+    let _ = writeln!(
+        out,
+        "pub const ADVANCE_SPACE: u32 = {};",
+        space_advance(&glyphs)
+    );
     out.push_str("\npub static COVERAGE: [u8; ");
     let _ = writeln!(out, "{}] = [", pixels.len());
     for chunk in pixels.chunks(32) {
@@ -145,21 +155,26 @@ fn build_atlas(path: &std::path::Path) -> Result<(), String> {
         out.push('\n');
     }
     out.push_str("];\n\n");
-    out.push_str("/// (code point, advance, atlas x, atlas y, width, height, top offset).\n");
-    out.push_str("pub static GLYPHS: &[(u32, u8, u16, u16, u8, u8, u8)] = &[\n");
+    out.push_str(
+        "/// (code point, advance, atlas x, atlas y, width, height, top offset, left offset).\n",
+    );
+    out.push_str("pub type GlyphRow = (u32, u8, u16, u16, u8, u8, u8, i8);\n");
+    out.push_str("pub static GLYPHS: &[GlyphRow] = &[\n");
     for g in &glyphs {
         let _ = writeln!(
             out,
-            "    (0x{:04X}, {}, {}, {}, {}, {}, {}),",
-            g.code, g.advance, g.x, g.y, g.w, g.h, g.oy
+            "    (0x{:04X}, {}, {}, {}, {}, {}, {}, {}),",
+            g.code, g.advance, g.x, g.y, g.w, g.h, g.oy, g.ox
         );
     }
     out.push_str("];\n");
 
-    let dest = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"))
-        .join("font_atlas.rs");
+    let dest = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR")).join("font_atlas.rs");
     fs::write(&dest, out).map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
-    println!("cargo:warning=glyph atlas: {} glyphs, {ATLAS_W}x{atlas_h}", glyphs.len());
+    println!(
+        "cargo:warning=glyph atlas: {} glyphs, {ATLAS_W}x{atlas_h}",
+        glyphs.len()
+    );
     Ok(())
 }
 
@@ -172,10 +187,12 @@ fn space_advance(glyphs: &[Glyph]) -> u32 {
 
 /// Turns contours into a 1-bit bitmap for the line box at `size` px.
 ///
-/// Returns rows top-down. Empty for glyphs without ink (e.g. space).
-fn rasterize(outline: &Outline, size: f32) -> Result<(Vec<Vec<bool>>, u32), String> {
+/// Returns rows top-down plus the ink box offset: `oy` from the top of the
+/// line box, `ox` from the pen origin (signed — `j`'s hook starts left of
+/// the pen and must survive the crop). Empty for glyphs without ink (space).
+fn rasterize(outline: &Outline, size: f32) -> Result<(Vec<Vec<bool>>, u32, i32), String> {
     if outline.contours.is_empty() {
-        return Ok((Vec::new(), 0));
+        return Ok((Vec::new(), 0, 0));
     }
     let scale = size / f32::from(outline.units_per_em);
     let ascent = outline.ascent as f32;
@@ -202,8 +219,8 @@ fn rasterize(outline: &Outline, size: f32) -> Result<(Vec<Vec<bool>>, u32), Stri
 
     let line_h = ((outline.ascent - outline.descent) as f32 * scale).round() as u32;
     let mut rows = Vec::new();
-    let mut min_x = u32::MAX;
-    let mut max_x = 0u32;
+    let mut min_x = i32::MAX;
+    let mut max_x = i32::MIN;
     for row in 0..line_h {
         let y = row as f32 + 0.5;
         // A downward edge (y increasing, y-down space) enters the fill;
@@ -221,7 +238,7 @@ fn rasterize(outline: &Outline, size: f32) -> Result<(Vec<Vec<bool>>, u32), Stri
             })
             .collect();
         hits.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        let mut spans: Vec<(u32, u32)> = Vec::new();
+        let mut spans: Vec<(i32, i32)> = Vec::new();
         let mut winding = 0;
         let mut start = 0f32;
         for (x, dir) in hits {
@@ -230,8 +247,10 @@ fn rasterize(outline: &Outline, size: f32) -> Result<(Vec<Vec<bool>>, u32), Stri
             }
             winding += dir;
             if winding == 0 {
-                let a = start.max(0.0).round() as u32;
-                let b = x.max(0.0).round() as u32;
+                // Signed: ink left of the pen origin is real ink (`j`'s hook)
+                // and clamping it to x >= 0 amputated the glyph.
+                let a = start.round() as i32;
+                let b = x.round() as i32;
                 if b > a {
                     min_x = min_x.min(a);
                     max_x = max_x.max(b);
@@ -242,8 +261,8 @@ fn rasterize(outline: &Outline, size: f32) -> Result<(Vec<Vec<bool>>, u32), Stri
         rows.push(spans);
     }
 
-    if min_x == u32::MAX {
-        return Ok((Vec::new(), 0));
+    if min_x == i32::MAX {
+        return Ok((Vec::new(), 0, 0));
     }
     // Crop to the ink box on both axes so the atlas stays tight and the
     // glyph origin is the top-left of its ink.
@@ -260,7 +279,7 @@ fn rasterize(outline: &Outline, size: f32) -> Result<(Vec<Vec<bool>>, u32), Stri
     let blank = |row: &Vec<bool>| row.iter().all(|&on| !on);
     let top = full.iter().position(|r| !blank(r)).unwrap_or(0);
     let bottom = full.iter().rposition(|r| !blank(r)).unwrap_or(0) + 1;
-    Ok((full[top..bottom].to_vec(), top as u32))
+    Ok((full[top..bottom].to_vec(), top as u32, left))
 }
 
 // -------------------------------------------------------------- ttf reader
@@ -351,11 +370,7 @@ impl<'a> Face<'a> {
                 } else {
                     let at = range_at + range + (code - start) as usize * 2;
                     let g = self.u16_at(at)?;
-                    if g == 0 {
-                        0
-                    } else {
-                        (g as i32 + delta) as u16
-                    }
+                    if g == 0 { 0 } else { (g as i32 + delta) as u16 }
                 };
                 if gid != 0 {
                     map.insert(u32::from(code), gid);
