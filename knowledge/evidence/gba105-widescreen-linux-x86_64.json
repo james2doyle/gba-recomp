@@ -1,0 +1,195 @@
+{
+  "spec": "SPEC-069",
+  "increment": "GBA-105",
+  "date": "2026-10-24",
+  "host": {
+    "uname": "Linux 7.3.0-2-cachyos",
+    "cpu": "AMD Ryzen 7 PRO 5850U with Radeon Graphics",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "commit": "2f51c2f562c713f2e5fe105ed4893b23f63c2fc3",
+  "working_tree_dirty": [
+    "\u001b[31mM\u001b[m ROADMAP.md",
+    " \u001b[31mM\u001b[m adr/README.md",
+    " \u001b[31mM\u001b[m crates/gba-core/src/gba.rs",
+    " \u001b[31mM\u001b[m crates/gba-core/src/lib.rs",
+    " \u001b[31mM\u001b[m crates/gba-core/src/ppu.rs",
+    " \u001b[31mM\u001b[m crates/gba-core/src/ppu/tests.rs",
+    " \u001b[31mM\u001b[m crates/gba-desktop/src/app.rs",
+    " \u001b[31mM\u001b[m crates/gba-desktop/src/main.rs",
+    " \u001b[31mM\u001b[m crates/gba-desktop/src/menu.rs",
+    " \u001b[31mM\u001b[m crates/gba-desktop/src/sdl.rs",
+    " \u001b[31mM\u001b[m crates/gba-desktop/src/settings.rs",
+    " \u001b[31mM\u001b[m crates/gba-native-rt/src/cli.rs",
+    " \u001b[31mM\u001b[m crates/gba-run/src/main.rs",
+    " \u001b[31mM\u001b[m crates/gba-settings/src/main.rs",
+    " \u001b[31mM\u001b[m knowledge/README.md",
+    " \u001b[31mM\u001b[m plans/README.md",
+    " \u001b[31mM\u001b[m specs/README.md",
+    "\u001b[31m??\u001b[m .devshots/",
+    "\u001b[31m??\u001b[m adr/ADR-042-widescreen-presentation-surface.md",
+    "\u001b[31m??\u001b[m knowledge/KNO-011-widescreen-survey.md",
+    "\u001b[31m??\u001b[m plans/PLAN-002-widescreen.md",
+    "\u001b[31m??\u001b[m specs/SPEC-069-widescreen-presentation.md"
+  ],
+  "rom": {
+    "path": "games/rkanoid-v3.00.gba",
+    "sha256": "99ae825ffb1b7e8b48b33cd2715ceb8ca524858f99fee4b22938489460083d94"
+  },
+  "commands": [
+    "./target/release/gba-run --rom games/rkanoid-v3.00.gba --frames 1200 --hashes",
+    "./target/release/gba-run --rom games/rkanoid-v3.00.gba --frames 1200 --hashes --view-width 320",
+    "./target/release/gba-run --rom games/rkanoid-v3.00.gba --frames 1200 --hashes --view-width 384",
+    "SDL_VIDEODRIVER=dummy ./target/release/gba-desktop --rom games/rkanoid-v3.00.gba --frames 600 --no-splash --view-width {240,320,384}"
+  ],
+  "t20_frame_hash_differential": {
+    "frames_compared": 1200,
+    "distinct_hashes_in_baseline": 45,
+    "identical_at_320": true,
+    "identical_at_384": true,
+    "baseline_final": "7ca201145fd0213f",
+    "wide_320_final": "7ca201145fd0213f",
+    "instructions_identical": true,
+    "cycles_identical": true
+  },
+  "t24_ppm_stays_canonical": {
+    "command": "./target/release/gba-run --rom games/rkanoid-v3.00.gba --frames 120 --ppm /tmp/t24.ppm --view-width 320",
+    "ppm_header": "P6 / 240 160",
+    "payload_bytes": 115200,
+    "expected_bytes": 115200,
+    "result": "canonical 240x160 PPM written even with an active wide view"
+  },
+  "captures": {
+    "canonical": "/home/james/Git/gba-recomp/out/ws105/canonical.ppm (240x160)",
+    "wide320": "/home/james/Git/gba-recomp/out/ws105/wide320.ppm (320x160)"
+  },
+  "margin_measurement_wide320": {
+    "left_margin_equals_native_before_it": "5072/6400 pixels",
+    "right_margin_equals_native_ring": "5488/6400 pixels",
+    "margin_distinct_colours": 119,
+    "margin_backdrop_share": "11716/12800 pixels",
+    "canonical_crop_equals_canonical_ppm": true
+  },
+  "interpretation": "Margin content is hardware wrap of the 256-wide tilemap plus backdrop, not authored world. 45 distinct frames across the run confirm the differential is not comparing a static image.",
+  "not_verified": [
+    "visual inspection of the widened window and physical touch alignment (window opens and presents on Wayland, but the pixel content was not inspected on screen)",
+    "in-window menu and native macOS menu on screen",
+    "physical touch alignment with view_left",
+    "Web/iOS/Android presentation of the wide surface (3:2 pins unchanged)",
+    "widened AOT package (gba-native-rt --view-width parsed, not exercised end-to-end)",
+    "any per-game margin adapter (GBA-110 blocked: no pinned target)"
+  ],
+  "ui_and_menu": {
+    "in_window_menu": "video page row 'Largura' steps 8 px within 240..=384; apply/cancel remain the last two rows (test video_page_keeps_apply_and_back_last)",
+    "native_menu": "submenu 'Largura da imagem': 240 (nativo), 288, 320, 384 (experimental)",
+    "gba_settings": "slider plus an explanation that no game declares a ceiling yet",
+    "clis": "gba-desktop, gba-run, gba-native-rt accept --view-width; 400 is rejected"
+  },
+  "tests": {
+    "superseded": "counts refreshed in gba105-review-fixes-20261024-linux-x86_64.json after the code review fixes (gba-core 164, gba-desktop 32, gba-profile 21)",
+    "gba_core_lib": "153 passed",
+    "gba_desktop": "26 passed",
+    "gba_run": "1 passed",
+    "gba_native_rt": "1 passed",
+    "spec069_cases": [
+      "T-01",
+      "T-02",
+      "T-03",
+      "T-04",
+      "T-05",
+      "T-05b",
+      "T-06",
+      "T-06b",
+      "T-07",
+      "T-07b",
+      "T-08",
+      "T-08b",
+      "T-09",
+      "T-10",
+      "T-11",
+      "T-11b",
+      "T-12",
+      "T-13",
+      "T-14",
+      "T-20",
+      "T-20b",
+      "T-21",
+      "T-22",
+      "T-24",
+      "T-25",
+      "T-26",
+      "T-27",
+      "T-29",
+      "T-30",
+      "T-31"
+    ]
+  },
+  "known_gaps": {
+    "cargo_fmt_all": "`cargo fmt --all --check` already fails at HEAD in crates/gba-recomp/src/platform/{android,web,windows}.rs; only touched files were formatted (rustfmt --edition 2024) and verified clean",
+    "clippy": "only pre-existing warnings (e.g. needless_range_loop at ppu.rs:313, same construct at HEAD)",
+    "stale_user_settings": "the smoke run warns that ~/.config/gba-recomp/settings.toml has an unknown key `language`; no crate in the tree writes it"
+  },
+  "windowed_run_wayland": {
+    "command": "./target/release/gba-desktop --rom games/rkanoid-v3.00.gba --frames 120 --no-splash --view-width 320 --settings /tmp/ws-settings.toml",
+    "session": "Wayland (DISPLAY=:0, WAYLAND_DISPLAY=wayland-0)",
+    "result": "window opened, frames=120 presented=120 audio=on underruns=0 overruns=0",
+    "limits": "opening and presenting verified; visual inspection of the margin and physical touch alignment are manual"
+  },
+  "overlay_centring_fix": {
+    "reported_by": "user: overlay menu is not centered when widescreen is on",
+    "cause": "Video::new hardcoded view_left: 0 and set_view_width was never called, so the painter drew guest columns 0..239 on a 320-wide surface; the menu appeared near the left edge",
+    "also_found": "changing [video] view_width while running had no effect (dead set_view_width, pixel buffer allocated once)",
+    "fix": "view_left threaded from create_video; set_view_width invoked on settings apply with the guest retargeted via apply_view; ensure_pixels resizes the host buffer; Painter::fill_surface covers the margins for the menu backdrop and pause band",
+    "verification": "sdl::spec069_paint tests (shifted by view_left, no-op at native, full-width backdrop) and a simulated 320-wide overlay: panel guest 2..238 renders at output columns 42..277, centre 159.5, equal to the canonical crop centre; the panel stays inside crop 40..279",
+    "limits": "verified by geometry tests and a simulated render, not by inspecting the live window"
+  },
+  "override_ui_sync_fix": {
+    "reported_by": "user: the setting does not seem in sync with the flag passed on the cli",
+    "cause": "the menu showed Settings.video.view_width (persisted, 240) while the surface was forced to 320 by --view-width; Apply persisted the draft, silently discarding the override and snapping the display back",
+    "fix": "Menu::set_view_override(width, persisted) labels the row '320 px (forcado)'; an explicit row edit supersedes the override and persists; a bare Apply restores the persisted value so the override never reaches settings.toml (WS-69-18); native menu marks the forced item; gba-settings receives --session-view-width as advisory text because it is a separate process",
+    "tests": [
+      "menu::tests::cli_override_is_shown_and_not_persisted",
+      "menu::tests::editing_the_width_row_persists_and_drops_the_override",
+      "menu::tests::video_page_keeps_apply_and_back_last"
+    ],
+    "limits": "verified by unit tests over the menu model; the on-screen menu was not visually inspected"
+  },
+  "framework_ceiling": {
+    "affine_1024": "verified: a 1024x1024 affine map holds content at texel 296 that a 240-column window cannot show; the margin shows it",
+    "text_256": "wrap of the ring (measured)",
+    "text_512": "authored content, but only if the game uses a 512-wide map",
+    "bitmap": "240x160 by construction (160x128 in mode 5): no larger map exists",
+    "camera_hud_culling": "decided by guest code; requires a per-game adapter (GBA-110)",
+    "max_map": "128 << 3 = 1024 texels"
+  },
+  "debug_fixture_lessons": [
+    "setting BG2PC instead of BG2PD shears the map diagonally and made an early fixture look like a renderer bug",
+    "screen block 16 with char block 0 aliases the map onto tile data"
+  ],
+  "margin_report": {
+    "superseded": "the left-margin counts below are wrong (ring 40 / authored 0): a classification bug cast negative hw to usize and marked every left column Ring. Corrected numbers are in gba105-review-fixes-20261024-linux-x86_64.json (left ring 24 / authored 16, symmetric with the right side)",
+    "tool": "gba-run --margin-report (SPEC-070 DIAG-70-01..05)",
+    "rom": "rkanoid-v3.00.gba",
+    "sha256": "99ae825ffb1b7e8b48b33cd2715ceb8ca524858f99fee4b22938489460083d94",
+    "frame": 400,
+    "view_width": 320,
+    "bg0": {
+      "kind": "text",
+      "cnt": "0x00C7",
+      "map_width": 256
+    },
+    "left": {
+      "backdrop": 0,
+      "ring": 40,
+      "authored": 0
+    },
+    "right": {
+      "backdrop": 0,
+      "ring": 24,
+      "authored": 16
+    },
+    "verdict": "ring; the 16 authored columns are the map's last 16 columns, not new world",
+    "correction": "the earlier '11716/12800 backdrop' figure was circular (margin compared against its own crop edge) and is superseded",
+    "independent_check": "hw 256..279 equals hw 0..23 on every row (real wrap); hw 240..255 differs from hw 0..15 in 297/2560 samples"
+  }
+}

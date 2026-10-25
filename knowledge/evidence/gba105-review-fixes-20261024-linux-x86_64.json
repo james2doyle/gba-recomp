@@ -1,0 +1,114 @@
+{
+  "spec": ["SPEC-069", "SPEC-070"],
+  "increment": "GBA-105 review fixes",
+  "date": "2026-10-24",
+  "host": {
+    "uname": "Linux 7.3.0-2-cachyos x86_64",
+    "cpu": "AMD Ryzen 7 PRO 5850U with Radeon Graphics",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "commit": "2f51c2f562c713f2e5fe105ed4893b23f63c2fc3",
+  "purpose": "Verification record for the fixes applied after the code review of the uncommitted GBA-105/GBA-110 work. Supersedes the margin classification numbers and test counts in gba105-widescreen-linux-x86_64.json.",
+  "fixes": [
+    {
+      "id": "R1",
+      "finding": "objwin_line written at output column (ppu.rs render_objects) but read at hardware column (window_mask): off by view.left, breaking INV-2 and WS-69-04 for OBJ-window lines",
+      "fix": "window_mask indexes objwin_line via view.hw_to_output(hw)",
+      "regression_test": "ppu::tests::obj_window_keeps_the_canonical_crop_with_a_shifted_view"
+    },
+    {
+      "id": "R2",
+      "finding": "Effect::Reset rebuilt Gba with View::NONE while the texture stayed wide, so present_inner's frame-size assert panicked",
+      "fix": "reset re-applies the presented width via apply_view; apply only retargets the guest when the texture accepted the new width, so texture and guest can never diverge",
+      "regression_test": "none automated; verified by the SDL dummy smokes below plus the invariant in present_inner (see not_verified)"
+    },
+    {
+      "id": "R3",
+      "finding": "startup apply/apply_view re-applied the raw preference unclamped, making --view-width a no-op in the windowed path and dropping the profile ceiling after zero frames",
+      "fix": "all call sites resolve the width through settings::effective_view_width(preference, ceiling, session_override) and apply the resolved value to both texture and guest; an explicit edit of the width row supersedes the session override (Command::Apply carries the flag)",
+      "regression_test": "menu::tests::{cli_override_is_shown_and_not_persisted, editing_the_width_row_persists_and_drops_the_override} plus the precedence matrix below"
+    },
+    {
+      "id": "R4",
+      "finding": "SPEC-070 A-70-02 contradicted the normative precedence formula (min(preference, ceiling)); gba-native-rt passed a profile ceiling as a session override",
+      "fix": "SPEC-070: A-70-02 now states preference >= 288, new A-70-12 pins the default-preference case, and a headless-runner clause defines override || ceiling || 240 for runners without a preference source; gba-native-rt windowed passes only the real override and labels EXPERIMENTAL only actual overrides",
+      "regression_test": "precedence matrix below"
+    },
+    {
+      "id": "R5",
+      "finding": "margin classification: negative hw cast to usize marked every left-margin column Ring; wrapped affine margins could never be Ring; forced blank left stale margin_kinds",
+      "fix": "structural rule per DIAG-70-02 as amended: Ring iff the sampled map position is reachable in the native row (text: wrapped map column < 240 and mosaicked-aligned; affine: sampled texel equals a native-row sample, exact membership); forced blank rebuilds margin_kinds as Backdrop",
+      "regression_test": "ppu::tests::{text_map_256_marks_the_wrapped_margin_as_ring (updated), wrapped_affine_margin_repeating_the_native_row_is_ring, wrapped_affine_margin_splits_ring_from_authored_at_the_map_tail, forced_blank_reports_backdrop_margins_not_stale_kinds}"
+    },
+    {
+      "id": "R6",
+      "finding": "gba-profile: `#` inside quoted strings was stripped as a comment (SPEC-070's own example was unparseable); RomPatch::end could overflow and offset truncated u64 to usize; apply_patches did not re-check equal lengths and could panic",
+      "fix": "quote-aware strip_comment; checked_add end() returning Option with OutOfRange; usize::try_from at parse; PatchError::Length in apply_patches",
+      "regression_test": "gba_profile::tests::{quoted_hash_survives_comment_stripping, apply_patches_rejects_length_mismatch, apply_patches_rejects_overflowing_offset}"
+    },
+    {
+      "id": "R7",
+      "finding": "compile break: crates/gba-settings/src/main.rs called settings::view_ceiling with 1 argument after the 2-argument signature landed; gba-settings did not build",
+      "fix": "the process has no ROM, so the call is gone and the hint text states the real rule (effective = min(preference, per-game ceiling), 240 without a profile)",
+      "regression_test": "cargo check -p gba-settings"
+    }
+  ],
+  "tests": {
+    "gba_core_lib": "164 passed",
+    "gba_desktop": "32 passed",
+    "gba_run": "1 passed",
+    "gba_native_rt": "1 passed",
+    "gba_profile": "21 passed",
+    "gba_settings": "1 passed"
+  },
+  "t20_frame_hash_differential_rerun": {
+    "command": "target/release/gba-run --rom games/rkanoid-v3.00.gba --frames 1200 --hashes [--view-width 320|384]",
+    "frames_compared": 1200,
+    "identical_at_320": true,
+    "identical_at_384": true,
+    "baseline_final": "7ca201145fd0213f",
+    "wide_320_final": "7ca201145fd0213f",
+    "wide_384_final": "7ca201145fd0213f",
+    "instructions_identical": true,
+    "cycles_identical": true,
+    "note": "same baseline hash as the pre-fix run (7ca201145fd0213f), so the fixes moved neither canonical pixels nor guest execution"
+  },
+  "margin_report_corrected": {
+    "command": "target/release/gba-run --rom games/rkanoid-v3.00.gba --frames 400 --view-width 320 --margin-report",
+    "rom_sha256": "99ae825ffb1b7e8b48b33cd2715ceb8ca524858f99fee4b22938489460083d94",
+    "bg0": { "kind": "text", "cnt": "0x00C7", "map_width": 256 },
+    "left": { "backdrop": 0, "ring": 24, "authored": 16 },
+    "right": { "backdrop": 0, "ring": 24, "authored": 16 },
+    "verdict": "ring",
+    "supersedes": "the left margin in gba105-widescreen-linux-x86_64.json (ring=40, authored=0), which the negative-hw classification bug produced; both sides are now symmetric: map columns 216..239 repeat the native row (ring), map columns 240..255 are the map's hidden tail (authored)",
+    "note": "the tail columns are authored by position, not new world: they are the same 256-wide map's last 16 columns"
+  },
+  "precedence_matrix": {
+    "semantics": "preference is a user-side cap: effective = override || min(preference, ceiling) || 240 (SPEC-070 as amended; A-70-12)",
+    "observable": "gba-desktop final report line `view_width=`",
+    "cases": [
+      { "case": "preference 384, no profile, no flag", "expected": 240, "observed": 240, "id": "A-70-01/WS-69-06" },
+      { "case": "preference 384 + --view-width 320", "expected": 320, "observed": 320, "id": "A-70-03/WS-69-18" },
+      { "case": "preference 384 + profile view_ceiling 320", "expected": 320, "observed": 320, "id": "A-70-02" },
+      { "case": "preference 240 + profile view_ceiling 320", "expected": 240, "observed": 240, "id": "A-70-12" },
+      { "case": "preference 384 + ceiling 320 + --view-width 384", "expected": 384, "observed": 384, "id": "A-70-03" }
+    ],
+    "profile_fixture": "GBA_PROFILE_DIR=/tmp/opencode/profiles with a draft profile for the rkanoid SHA declaring view_ceiling = 320; the run logged `profile rkanoid-ceiling-test declares a presentation ceiling of 320 px`"
+  },
+  "smokes": {
+    "desktop_dummy": "SDL_VIDEODRIVER=dummy gba-desktop --rom games/rkanoid-v3.00.gba --frames 60 --no-splash --view-width {240,320,384}: frames=60 presented=60 audio=on underruns=0 overruns=0",
+    "t24_ppm_canonical": "gba-run --frames 120 --ppm --view-width 320 writes `P6 240 160` (115200 payload bytes)"
+  },
+  "hygiene": {
+    "clippy": "6 warnings, all pre-existing constructs (loop-index style in ppu.rs/app.rs, enum size in Effect/Command, collapsible if in the pre-existing apply_view shape); the one warning this work introduced (redundant closure in settings.rs effective_view_width) was fixed",
+    "fmt": "touched files clean; cargo fmt --all --check still fails only in crates/gba-recomp/src/platform/{android,web,windows}.rs, same as HEAD",
+    "diff_check": "clean"
+  },
+  "not_verified": [
+    "the reset path (R2) with a wide surface is exercised by no automated test: driving the in-window menu requires input injection the SDL dummy run cannot do; the fix is code-level plus the texture/guest lockstep invariant",
+    "the supersede-on-edit path inside a live window (menu tests cover the model; the run_app wiring is covered only through the precedence matrix)",
+    "visual inspection of any widened window, margins and touch alignment",
+    "Web/iOS/Android presentation of the wide surface",
+    "the widened AOT package end-to-end (gba-native-rt --view-width parsed and smoke-built, not run with a real AOT package)"
+  ]
+}
