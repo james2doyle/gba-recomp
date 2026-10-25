@@ -26,7 +26,7 @@ Quatro caminhos foram levantados: (a) reusar o gamepad virtual, (b) tocar na lin
 
 ## Consequências
 
-- Nenhum desenho novo: `draw_touch` é reaproveitado, com alfa reduzido sob o menu.
+- Sob o menu o desenho é novo só na apresentação: mesma geometria de `draw_touch`, porém como contorno translúcido (`draw_touch_ghost`) para não pintar sobre as linhas — rótulos esmaecidos, controle pressionado sólido.
 - `touch_controls = off` passa a ter uma limitação explícita: o menu abre (pressão longa e botão voltar continuam valendo) e navega pelo botão voltar, mas as setas e o `A` não têm como ser acionados por toque. Registrado em KNO-009 e em `docs/building-an-apk.md`.
 - O remapeamento (`menu.remap`) não muda: enquanto ele espera uma tecla, os eventos de teclado já são consumidos antes da navegação, e o toque não é uma fonte de binding.
 - O guest continua suspenso: o mapeamento de toque para `KEYINPUT` só roda no ramo normal do loop, então navegar o menu nunca escreve em `KEYINPUT`.
