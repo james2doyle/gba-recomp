@@ -275,8 +275,8 @@ mod tests {
     use super::*;
 
     /// The Linux default used to assume Debian's multiarch directory, which
-    /// broke `bundle` on Arch and Fedora where SDL3 lives in `/usr/lib`
-    /// (EV-011-14). When SDL3 is installed on this host, the resolver MUST
+    /// broke `bundle` on Arch and Fedora where SDL3 lives in `/usr/lib`. When
+    /// SDL3 is installed on this host, the resolver MUST
     /// return the directory that actually contains it — a conventional-looking
     /// path is not good enough, since that is what failed before.
     #[test]

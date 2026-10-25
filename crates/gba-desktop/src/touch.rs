@@ -121,7 +121,7 @@ fn dpad(px: f32, py: f32) -> u16 {
 
 /// Whether `(px, py)` falls on the on-screen gamepad, using the same slop as
 /// [`mask`]. A long press here is a held button, never a menu gesture
-/// (SPEC-069 L10N-69-07).
+/// (SPEC-063 MENU-63-01).
 pub fn on_control(px: f32, py: f32) -> bool {
     let (cx, cy, r) = DPAD;
     let (dx, dy) = (px - cx, py - cy);
@@ -137,7 +137,7 @@ pub const LONG_PRESS: std::time::Duration = std::time::Duration::from_millis(500
 /// Movement that cancels a pending long press, in guest logical pixels.
 pub const LONG_PRESS_SLOP: f32 = 12.0;
 
-/// Long-press detection for the in-window menu (SPEC-069 L10N-69-06).
+/// Long-press detection for the in-window menu (SPEC-063 MENU-63-01).
 ///
 /// Pure model with injected time so it is testable without a clock or a
 /// device. A press on the on-screen gamepad is ignored, so holding a
