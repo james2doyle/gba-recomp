@@ -439,7 +439,7 @@ pub fn run_app(
     let mut settings_invalid_on_disk = loaded.invalid_on_disk;
     let mut current = loaded.settings;
     let mut status: Option<(String, Instant)> = loaded.warning.map(|w| {
-        crate::diag::warn_prefixed(&format!("{w}"));
+        crate::diag::warn_prefixed(&w);
         (
             "Configuracoes invalidas: usando padroes".to_owned(),
             Instant::now(),
@@ -506,7 +506,7 @@ pub fn run_app(
         }
         let (b, warnings) = resolve(&s.input);
         for w in warnings {
-            crate::diag::warn_prefixed(&format!("{w}"));
+            crate::diag::warn_prefixed(&w);
         }
         *bindings = b;
         applied = Some(s.clone());
@@ -543,7 +543,7 @@ pub fn run_app(
                 None
             }
             Err(e) => {
-                crate::diag::warn_prefixed(&format!("{e}"));
+                crate::diag::warn_prefixed(&e);
                 Some("Nao foi possivel salvar as configuracoes".into())
             }
         }
@@ -606,7 +606,7 @@ pub fn run_app(
                     if !pads.iter().any(|p| p.id() == id) {
                         match ctx.open_gamepad(id) {
                             Ok(p) => pads.push(p),
-                            Err(e) => crate::diag::warn_prefixed(&format!("{e}")),
+                            Err(e) => crate::diag::warn_prefixed(&e),
                         }
                     }
                 }
@@ -615,7 +615,7 @@ pub fn run_app(
                     if !ctx.is_gamepad(id) && !joys.iter().any(|j| j.id() == id) {
                         match ctx.open_joystick(id) {
                             Ok(j) => joys.push(j),
-                            Err(e) => crate::diag::warn_prefixed(&format!("{e}")),
+                            Err(e) => crate::diag::warn_prefixed(&e),
                         }
                     }
                 }
@@ -797,7 +797,7 @@ pub fn run_app(
                 let msg = match open_companion("gba-party", &[]) {
                     Ok(()) => "Party aberta".to_owned(),
                     Err(e) => {
-                        crate::diag::warn_prefixed(&format!("{e}"));
+                        crate::diag::warn_prefixed(&e);
                         "gba-party nao encontrado".to_owned()
                     }
                 };
@@ -807,7 +807,7 @@ pub fn run_app(
                 let msg = match open_external_settings(settings_path.as_deref()) {
                     Ok(()) => "Janela de configuracoes aberta".to_owned(),
                     Err(e) => {
-                        crate::diag::warn_prefixed(&format!("{e}"));
+                        crate::diag::warn_prefixed(&e);
                         "gba-settings nao encontrado".to_owned()
                     }
                 };
@@ -829,7 +829,7 @@ pub fn run_app(
                     Ok(false) if o.save.is_none() => "Sem arquivo de save (--save)".to_owned(),
                     Ok(false) => "Nada novo para gravar".to_owned(),
                     Err(e) => {
-                        crate::diag::warn_prefixed(&format!("{e}"));
+                        crate::diag::warn_prefixed(&e);
                         "Falha ao gravar o save".to_owned()
                     }
                 };
@@ -862,7 +862,7 @@ pub fn run_app(
                             }
                             status = Some(("Configuracoes recarregadas".into(), Instant::now()));
                         }
-                        Some(w) => crate::diag::warn_prefixed(&format!("{w}")),
+                        Some(w) => crate::diag::warn_prefixed(&w),
                     }
                 }
             }
@@ -1019,7 +1019,7 @@ pub fn run_app(
             match persist_save(&mut gba, o.save.as_deref()) {
                 Ok(true) => report.saves += 1,
                 Ok(false) => {}
-                Err(e) => crate::diag::warn_prefixed(&format!("{e}")),
+                Err(e) => crate::diag::warn_prefixed(&e),
             }
         }
 
