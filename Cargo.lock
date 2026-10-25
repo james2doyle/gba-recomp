@@ -1164,6 +1164,8 @@ name = "gba-desktop"
 version = "0.1.0"
 dependencies = [
  "gba-core",
+ "gba-profile",
+ "sha2",
 ]
 
 [[package]]
@@ -1187,6 +1189,7 @@ version = "0.1.0"
 dependencies = [
  "gba-core",
  "gba-desktop",
+ "gba-profile",
  "sha2",
 ]
 
@@ -1212,6 +1215,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gba-profile"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "gba-recomp"
 version = "0.1.0"
 dependencies = [
@@ -1227,6 +1237,7 @@ name = "gba-run"
 version = "0.1.0"
 dependencies = [
  "gba-core",
+ "gba-profile",
 ]
 
 [[package]]

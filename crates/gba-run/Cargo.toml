@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+gba-profile.workspace = true
 gba-core = { path = "../gba-core" }
 
 [lints]

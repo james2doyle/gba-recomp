@@ -6,7 +6,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use gba_core::{BackupKind, Gba, GbaConfig, NativeExec, SCREEN_HEIGHT, SCREEN_WIDTH};
+use gba_core::{BackupKind, Gba, GbaConfig, NativeExec, SCREEN_HEIGHT};
 
 use crate::ctxmenu::{self, CtxItem, action, submenu};
 use crate::gpio::GpioInput;
@@ -37,6 +37,9 @@ pub struct AppOptions {
     pub title: String,
     /// Show the logo splash before the game starts (FR-63-03).
     pub splash: bool,
+    /// Experimental session override of the presentation width (SPEC-069
+    /// WS-69-18). Never persisted.
+    pub view_width: Option<u16>,
 }
 
 #[derive(Debug, Default)]
@@ -52,6 +55,8 @@ pub struct AppReport {
     pub native_shells: u64,
     pub guest_cycles: u64,
     pub frame_hash: u64,
+    /// Surface width actually presented at exit (SPEC-069 WS-69-17).
+    pub view_width: u16,
 }
 
 /// Converts a BGR555 guest pixel to host XRGB8888 (presentation only).
@@ -153,6 +158,9 @@ const A_LINEAR: u32 = 21;
 const A_INTEGER: u32 = 22;
 const A_VSYNC: u32 = 23;
 const A_COLOR: u32 = 24;
+// 25..=28 → 240, 288, 320, 384 (SPEC-069).
+const A_VIEW_WIDTH: u32 = 25;
+const VIEW_WIDTHS: [u16; 4] = [240, 288, 320, 384];
 const A_MUTE: u32 = 30;
 const A_VOLUME: u32 = 31; // 31..=35 → 0,25,50,75,100
 const A_LATENCY: u32 = 40; // 40..=43
@@ -170,12 +178,22 @@ const A_EXTERNAL: u32 = 65;
 const A_PARTY: u32 = 66;
 
 /// Launch `gba-settings` (EXT-64-02): next to this executable, then PATH.
-fn open_external_settings(settings_path: Option<&Path>) -> Result<(), String> {
+fn open_external_settings(
+    settings_path: Option<&Path>,
+    view_override: Option<u16>,
+) -> Result<(), String> {
     let path = settings_path.ok_or("no settings file location")?;
-    open_companion(
-        "gba-settings",
-        &[std::ffi::OsStr::new("--settings"), path.as_os_str()],
-    )
+    // The settings window is a separate process with no access to this
+    // invocation's flags, so pass the session override along for display
+    // (SPEC-069 WS-69-15). It is advisory: the file itself is unchanged.
+    let width = view_override.map(|w| w.to_string());
+    let mut args: Vec<&std::ffi::OsStr> =
+        vec![std::ffi::OsStr::new("--settings"), path.as_os_str()];
+    if let Some(w) = width.as_deref() {
+        args.push(std::ffi::OsStr::new("--session-view-width"));
+        args.push(std::ffi::OsStr::new(w));
+    }
+    open_companion("gba-settings", &args)
 }
 
 /// Launch a companion app shipped next to this executable (settings,
@@ -227,7 +245,13 @@ fn menubar_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
 }
 
 fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
+    context_items_with(s, paused, None)
+}
+
+/// `override_width` is the session override, if any (SPEC-069 WS-69-18).
+fn context_items_with(s: &Settings, paused: bool, override_width: Option<u16>) -> Vec<CtxItem> {
     let v = &s.video;
+    let shown_width = override_width.unwrap_or(v.view_width);
     let a = &s.audio;
     vec![
         submenu(
@@ -249,6 +273,23 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
                 action(A_INTEGER, "Escala inteira", v.integer_scale),
                 action(A_VSYNC, "VSync", v.vsync),
                 action(A_COLOR, "Correção de cor do LCD", v.color_correction),
+                submenu(
+                    "Largura da imagem",
+                    VIEW_WIDTHS
+                        .iter()
+                        .enumerate()
+                        .map(|(i, w)| {
+                            let label = if *w == 240 {
+                                "240 px (nativo)".to_owned()
+                            } else if Some(*w) == override_width {
+                                format!("{w} px (experimental, forcado)")
+                            } else {
+                                format!("{w} px (experimental)")
+                            };
+                            action(A_VIEW_WIDTH + i as u32, label, shown_width == *w)
+                        })
+                        .collect(),
+                ),
             ],
         ),
         submenu(
@@ -312,7 +353,9 @@ fn context_items(s: &Settings, paused: bool) -> Vec<CtxItem> {
 
 enum Effect {
     None,
-    Settings(Settings),
+    /// Settings to apply, and whether the presentation width row was edited
+    /// explicitly (which supersedes the session override, WS-69-18).
+    Settings(Settings, bool),
     OpenMenu(Page),
     TogglePause,
     OpenExternal,
@@ -324,6 +367,7 @@ enum Effect {
 
 fn context_effect(id: u32, s: &Settings) -> Effect {
     let mut n = s.clone();
+    let mut width_edited = false;
     match id {
         A_SCALE..=8 => n.video.scale = id as u8,
         A_FULLSCREEN => n.video.fullscreen = !n.video.fullscreen,
@@ -337,6 +381,10 @@ fn context_effect(id: u32, s: &Settings) -> Effect {
         A_INTEGER => n.video.integer_scale = !n.video.integer_scale,
         A_VSYNC => n.video.vsync = !n.video.vsync,
         A_COLOR => n.video.color_correction = !n.video.color_correction,
+        25..=28 => {
+            n.video.view_width = VIEW_WIDTHS[(id - A_VIEW_WIDTH) as usize];
+            width_edited = true;
+        }
         A_MUTE => n.audio.mute = !n.audio.mute,
         31..=35 => n.audio.volume = ((id - A_VOLUME) * 25) as u8,
         40..=43 => n.audio.latency_ms = LATENCIES[(id - A_LATENCY) as usize],
@@ -352,11 +400,66 @@ fn context_effect(id: u32, s: &Settings) -> Effect {
         A_PARTY => return Effect::OpenParty,
         _ => return Effect::None,
     }
-    Effect::Settings(n)
+    Effect::Settings(n, width_edited)
 }
 
 struct Presentation {
     lut: Option<Vec<u32>>,
+}
+
+/// Settings as the UI should present them: the persisted preference with the
+/// session override folded in, so menu rows and the actual surface agree
+/// (SPEC-069 WS-69-15). Never written to disk on its own.
+fn effective_settings(settings: &Settings, override_width: Option<u16>) -> Settings {
+    let mut s = settings.clone();
+    if let Some(w) = override_width {
+        s.video.view_width = w;
+    }
+    s
+}
+
+/// The surface width a settings snapshot produces (SPEC-069 WS-69-06/18).
+fn surface_width(settings: &Settings, ceiling: Option<u16>, session_override: Option<u16>) -> u16 {
+    settings::effective_view_width(settings.video.view_width, ceiling, session_override).0
+}
+
+/// Retarget the guest renderer to `width`, the surface the host presents.
+///
+/// Called after any settings change so a live "Largura" edit takes effect
+/// without a restart (WS-69-13), and after a reset so the rebuilt machine
+/// keeps the active surface. A failure is reported, never fatal.
+fn apply_view(gba: &mut Gba, width: u16) {
+    let extra = width.saturating_sub(240);
+    let view = gba_core::View {
+        left: extra / 2,
+        right: extra - extra / 2,
+    };
+    if gba.view() != view {
+        if let Err(e) = gba.set_view(view) {
+            eprintln!("gba-desktop: view not applied ({e})");
+        }
+    }
+}
+
+/// Keep the host pixel buffer matched to the active surface.
+///
+/// The presentation width can change while the game runs, so this must not be
+/// allocated only once (WS-69-13).
+fn ensure_pixels(pixels: &mut Vec<u32>, gba: &Gba) {
+    let need = surface(gba).len();
+    if pixels.len() != need {
+        pixels.resize(need, 0);
+    }
+}
+
+/// Current presentation surface: the widened buffer when margins are active,
+/// otherwise the canonical framebuffer (SPEC-069 WS-69-01/WS-69-13).
+fn surface(gba: &Gba) -> &[u16] {
+    if gba.view().is_none() {
+        gba.framebuffer()
+    } else {
+        gba.view_framebuffer()
+    }
 }
 
 impl Presentation {
@@ -381,10 +484,13 @@ pub fn run_app(
     o: &AppOptions,
     mut native: Option<&mut dyn NativeExec>,
 ) -> Result<AppReport, String> {
-    let rom = match &o.rom_bytes {
+    let mut rom = match &o.rom_bytes {
         Some(bytes) => bytes.clone(),
         None => fs::read(&o.rom).map_err(|e| format!("cannot read ROM: {e}"))?,
     };
+    // SPEC-070: resolve the profile for this exact image and apply its
+    // verified patches before the machine is built. A mismatch aborts here.
+    let profile_ceiling = settings::prepare_rom(&mut rom)?;
     let bios = match &o.bios {
         Some(p) => Some(fs::read(p).map_err(|e| format!("cannot read BIOS: {e}"))?),
         None => None,
@@ -412,6 +518,35 @@ pub fn run_app(
             warning: None,
             invalid_on_disk: false,
         });
+    // SPEC-069: resolve the presentation width from the persisted preference,
+    // the per-game ceiling and the session override, then apply it to the
+    // guest renderer. Nothing here reaches `frame_hash` (WS-69-04).
+    // WS-69-19/PATCH-70-10: the ceiling comes from the profile matched by the
+    // exact ROM SHA-256; absent profile means native 240.
+    let ceiling = profile_ceiling;
+    let mut session_override = o.view_width;
+    let (view_width, view_source) =
+        settings::effective_view_width(loaded.settings.video.view_width, ceiling, session_override);
+    if session_override.is_none()
+        && let Some(c) = ceiling
+        && c < loaded.settings.video.view_width
+    {
+        eprintln!("gba-desktop: view width capped by game profile: {c}");
+    }
+    let view = |width: u16| gba_core::View {
+        left: (width - 240) / 2,
+        right: width - 240 - (width - 240) / 2,
+    };
+    let requested_view = view(view_width);
+    gba.set_view(requested_view)
+        .map_err(|e| format!("invalid view width: {e}"))?;
+    if view_source == settings::ViewWidthSource::SessionOverride && view_width > 240 {
+        eprintln!(
+            "gba-desktop: EXPERIMENTAL wide surface {} px (session override; margins are \
+             hardware wrap/backdrop, not new game content)",
+            requested_view.width()
+        );
+    }
     let mut settings_invalid_on_disk = loaded.invalid_on_disk;
     let mut current = loaded.settings;
     let mut status: Option<(String, Instant)> = loaded.warning.map(|w| {
@@ -424,8 +559,17 @@ pub fn run_app(
 
     // Declaration order matters: owners drop before `ctx` (SDL_Quit).
     let ctx = sdl::Context::init()?;
-    let (w, h) = (SCREEN_WIDTH as i32, SCREEN_HEIGHT as i32);
-    let mut video = ctx.create_video(&o.title, w, h, i32::from(current.video.scale))?;
+    // The texture is the presentation surface; guest coordinates stay 240x160.
+    let (w, h) = (requested_view.width() as i32, SCREEN_HEIGHT as i32);
+    // The painter draws in guest coordinates, so it needs to know where guest
+    // column 0 sits on the presented surface (WS-69-13).
+    let mut video = ctx.create_video(
+        &o.title,
+        w,
+        h,
+        i32::from(current.video.scale),
+        i32::from(requested_view.left),
+    )?;
     let mut audio = match ctx.open_audio(AUDIO_HZ) {
         Ok(a) => Some(a),
         Err(e) => {
@@ -444,12 +588,15 @@ pub fn run_app(
     let mut bindings = Bindings::default();
     let mut presentation = Presentation { lut: None };
     let mut applied: Option<Settings> = None;
+    let mut applied_surface: Option<u16> = None;
     let mut apply = |s: &Settings,
+                     width: u16,
                      video: &mut sdl::Video<'_>,
                      audio: &mut Option<sdl::Audio<'_>>,
                      bindings: &mut Bindings,
                      presentation: &mut Presentation,
-                     gpio: &mut Option<GpioInput>| {
+                     gpio: &mut Option<GpioInput>|
+     -> bool {
         let prev = applied.clone();
         let v = &s.video;
         video.set_presentation(v.filter == Filter::Linear, v.integer_scale, v.vsync);
@@ -458,6 +605,16 @@ pub fn run_app(
         }
         if prev.as_ref().map(|p| p.video.scale) != Some(v.scale) && !v.fullscreen {
             video.set_scale(i32::from(v.scale));
+        }
+        // Presentation width (SPEC-069): recreate the surface in place so the
+        // change is live; the guest view is retargeted by the caller only when
+        // the texture accepted the new width, so both stay matched.
+        if applied_surface != Some(width) {
+            let extra = width.saturating_sub(240);
+            match video.set_view_width(i32::from(width), i32::from(extra / 2)) {
+                Ok(()) => applied_surface = Some(width),
+                Err(e) => eprintln!("gba-desktop: view width not applied ({e})"),
+            }
         }
         presentation.lut = v.color_correction.then(color_correction_lut);
         if let Some(a) = audio.as_mut() {
@@ -481,6 +638,7 @@ pub fn run_app(
         }
         *bindings = b;
         applied = Some(s.clone());
+        applied_surface == Some(width)
     };
     // Branding (FR-63-03): window/Dock icon and a 2.4 s logo splash.
     match sdl::Surface::from_png(crate::assets::ICON_PNG) {
@@ -489,12 +647,14 @@ pub fn run_app(
     }
     apply(
         &current,
+        view_width,
         &mut video,
         &mut audio,
         &mut bindings,
         &mut presentation,
         &mut gpio,
     );
+    apply_view(&mut gba, view_width);
 
     let mtime = |path: Option<&Path>| {
         path.and_then(|p| fs::metadata(p).ok())
@@ -554,12 +714,13 @@ pub fn run_app(
         audio_on: audio.is_some(),
         ..AppReport::default()
     };
-    let mut pixels = vec![0u32; SCREEN_WIDTH * SCREEN_HEIGHT];
+    let mut pixels = vec![0u32; requested_view.width() * SCREEN_HEIGHT];
     let mut deadline = Instant::now();
     let mut last_present = Instant::now() - frame_time;
     let mut last_save = Instant::now();
     let mut fault = None;
-    let mut menu = Menu::new(current.clone());
+    let mut menu = Menu::new(effective_settings(&current, session_override));
+    menu.set_view_override(session_override, current.video.view_width);
     let mut paused = false;
 
     'main: loop {
@@ -599,14 +760,14 @@ pub fn run_app(
                     if menu.open && menu.remap.is_some_and(|r| !r.pad) && sc != scancode::ESCAPE {
                         // Ignore auto-repeat of the key that started the remap.
                         if !repeat && let Some(s) = menu.bind(sdl::scancode_name(sc), false) {
-                            effect = Effect::Settings(s);
+                            effect = Effect::Settings(s, false);
                         }
                         continue;
                     }
                     if sc == scancode::F11 && !repeat {
                         let mut n = current.clone();
                         n.video.fullscreen = !n.video.fullscreen;
-                        effect = Effect::Settings(n);
+                        effect = Effect::Settings(n, false);
                         continue;
                     }
                     if menu.open {
@@ -629,7 +790,7 @@ pub fn run_app(
                             nav.push(Nav::Back);
                         } else {
                             if let Some(s) = menu.bind(sdl::pad_button_name(b), true) {
-                                effect = Effect::Settings(s);
+                                effect = Effect::Settings(s, false);
                             }
                         }
                         continue;
@@ -652,7 +813,8 @@ pub fn run_app(
                 }
                 Event::MouseDown { button: 3 } => {
                     if ctxmenu::available() {
-                        if let Some(id) = ctxmenu::popup(&context_items(&current, paused)) {
+                        let items = context_items_with(&current, paused, session_override);
+                        if let Some(id) = ctxmenu::popup(&items) {
                             effect = context_effect(id, &current);
                         }
                         // The modal menu consumed host time: do not count it
@@ -696,20 +858,29 @@ pub fn run_app(
                 Command::SaveNow => effect = Effect::SaveNow,
                 Command::Quit => effect = Effect::Quit,
                 Command::OpenExternal => effect = Effect::OpenExternal,
-                Command::Apply(s) => effect = Effect::Settings(s),
+                Command::Apply(s, width_edited) => effect = Effect::Settings(s, width_edited),
             }
         }
         match effect {
             Effect::None => {}
-            Effect::Settings(s) => {
-                apply(
+            Effect::Settings(s, width_edited) => {
+                // An explicit edit of the width row supersedes the session
+                // override for the rest of the session (WS-69-18).
+                if width_edited {
+                    session_override = None;
+                }
+                let width = surface_width(&s, ceiling, session_override);
+                if apply(
                     &s,
+                    width,
                     &mut video,
                     &mut audio,
                     &mut bindings,
                     &mut presentation,
                     &mut gpio,
-                );
+                ) {
+                    apply_view(&mut gba, width);
+                }
                 let failure = persist_settings(&s, &mut settings_invalid_on_disk, &mut known_mtime);
                 status = Some((
                     failure.unwrap_or_else(|| "Configuracoes salvas".into()),
@@ -717,7 +888,10 @@ pub fn run_app(
                 ));
                 current = s;
             }
-            Effect::OpenMenu(page) => menu.open_at(page, &current),
+            Effect::OpenMenu(page) => {
+                menu.open_at(page, &current);
+                menu.set_view_override(session_override, current.video.view_width);
+            }
             Effect::TogglePause => paused = !paused,
             Effect::OpenParty => {
                 let msg = match open_companion("gba-party", &[]) {
@@ -730,7 +904,7 @@ pub fn run_app(
                 status = Some((msg, Instant::now()));
             }
             Effect::OpenExternal => {
-                let msg = match open_external_settings(settings_path.as_deref()) {
+                let msg = match open_external_settings(settings_path.as_deref(), session_override) {
                     Ok(()) => "Janela de configuracoes aberta".to_owned(),
                     Err(e) => {
                         eprintln!("gba-desktop: {e}");
@@ -742,8 +916,12 @@ pub fn run_app(
             Effect::Reset => {
                 let backup = gba.bus.backup.data().to_vec();
                 let dirty = gba.bus.backup.dirty;
+                // The rebuilt machine starts with `View::NONE`; keep it on the
+                // surface that is actually being presented.
+                let width = u16::try_from(gba.view().width()).unwrap_or(240);
                 gba = new_gba(Some(&backup));
                 gba.bus.backup.dirty = dirty;
+                apply_view(&mut gba, width);
                 status = Some(("Jogo reiniciado".into(), Instant::now()));
             }
             Effect::SaveNow => {
@@ -774,17 +952,22 @@ pub fn run_app(
                     let loaded = settings::load(path);
                     match loaded.warning {
                         None => {
-                            apply(
+                            let width = surface_width(&loaded.settings, ceiling, session_override);
+                            if apply(
                                 &loaded.settings,
+                                width,
                                 &mut video,
                                 &mut audio,
                                 &mut bindings,
                                 &mut presentation,
                                 &mut gpio,
-                            );
+                            ) {
+                                apply_view(&mut gba, width);
+                            }
                             current = loaded.settings;
                             if !menu.open {
-                                menu = Menu::new(current.clone());
+                                menu = Menu::new(effective_settings(&current, session_override));
+                                menu.set_view_override(session_override, current.video.view_width);
                             }
                             status = Some(("Configuracoes recarregadas".into(), Instant::now()));
                         }
@@ -802,7 +985,8 @@ pub fn run_app(
         }
         if suspended {
             // Guest paused (UI-06): redraw the last frame with the overlay.
-            presentation.convert(gba.framebuffer(), &mut pixels);
+            ensure_pixels(&mut pixels, &gba);
+            presentation.convert(surface(&gba), &mut pixels);
             let rows = if menu.open { menu.rows() } else { Vec::new() };
             let (title, cursor, open) = (menu.title(), menu.cursor, menu.open);
             let remap_hint = menu.remap.map(|r| {
@@ -817,7 +1001,7 @@ pub fn run_app(
                 if open {
                     draw_menu(p, title, &rows, cursor, remap_hint, msg.as_deref());
                 } else {
-                    p.fill(0.0, 0.0, 240.0, 14.0, [0, 0, 0, 180]);
+                    p.fill_surface(0.0, 14.0, [0, 0, 0, 180]);
                     p.text(4.0, 3.0, "PAUSADO - botao direito: menu", [255, 255, 255]);
                 }
             })?;
@@ -911,7 +1095,8 @@ pub fn run_app(
 
         let now = Instant::now();
         if !fast_forward || now.duration_since(last_present) >= frame_time {
-            presentation.convert(gba.framebuffer(), &mut pixels);
+            ensure_pixels(&mut pixels, &gba);
+            presentation.convert(surface(&gba), &mut pixels);
             let msg = status
                 .as_ref()
                 .filter(|(_, at)| at.elapsed() < Duration::from_secs(3))
@@ -971,6 +1156,7 @@ pub fn run_app(
     report.native_shells = gba.native.shells;
     report.guest_cycles = gba.bus.cycles;
     report.frame_hash = gba.frame_hash();
+    report.view_width = u16::try_from(gba.view().width()).unwrap_or(240);
     drop(pads);
     drop(joys);
     drop(audio);
@@ -995,7 +1181,9 @@ fn draw_menu(
     remap_hint: Option<&str>,
     status: Option<&str>,
 ) {
-    p.fill(0.0, 0.0, 240.0, 160.0, [0, 0, 24, 200]);
+    // Cover the whole presented surface: leaving the margins undimmed makes
+    // the menu look off-centre on a widened surface (WS-69-13).
+    p.fill_surface(0.0, 160.0, [0, 0, 24, 200]);
     p.text(6.0, 4.0, title, [255, 220, 120]);
     const VISIBLE: usize = 15;
     let start = cursor.saturating_sub(VISIBLE - 1);
@@ -1014,7 +1202,7 @@ fn draw_menu(
     let footer = remap_hint
         .or(status)
         .unwrap_or("Setas/Enter/Esc  ou  D-pad/A/B");
-    p.fill(0.0, 150.0, 240.0, 10.0, [0, 0, 0, 220]);
+    p.fill_surface(150.0, 10.0, [0, 0, 0, 220]);
     p.text(4.0, 151.0, footer, [200, 200, 200]);
 }
 

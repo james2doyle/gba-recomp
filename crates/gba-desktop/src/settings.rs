@@ -32,6 +32,10 @@ pub struct Video {
     pub integer_scale: bool,
     pub vsync: bool,
     pub color_correction: bool,
+    /// Requested presentation width (SPEC-069). 240 = native, no margins.
+    /// The effective width is clamped by the per-game ceiling and may be
+    /// overridden for one session; see [`effective_view_width`].
+    pub view_width: u16,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -190,6 +194,7 @@ impl Default for Settings {
                 integer_scale: true,
                 vsync: true,
                 color_correction: false,
+                view_width: VIEW_WIDTH_RANGE.0,
             },
             audio: Audio {
                 volume: 100,
@@ -204,6 +209,70 @@ impl Default for Settings {
 
 pub const SCALE_RANGE: (u8, u8) = (1, 8);
 pub const LATENCY_RANGE: (u16, u16) = (20, 200);
+/// Accepted `[video] view_width` range (SPEC-069 WS-69-05/WS-69-14).
+pub const VIEW_WIDTH_RANGE: (u16, u16) = (240, 384);
+
+/// Profile that applies to this image, if one is installed (PROF-02).
+pub fn find_profile(rom_sha256: &str, rom_len: usize) -> Option<gba_profile::Profile> {
+    gba_profile::find_profile(rom_sha256, rom_len)
+}
+
+/// Per-game presentation ceiling (SPEC-069 WS-69-19). `None` => native 240.
+pub fn view_ceiling(rom_sha256: &str, rom_len: usize) -> Option<u16> {
+    find_profile(rom_sha256, rom_len).and_then(|p| p.view_ceiling())
+}
+
+/// Apply this image's profile patches and return its ceiling (SPEC-070).
+///
+/// Logs every applied patch; a byte mismatch aborts the caller.
+pub fn prepare_rom(rom: &mut [u8]) -> Result<Option<u16>, String> {
+    let prepared = gba_profile::prepare_rom(rom)?;
+    for patch in &prepared.applied {
+        eprintln!(
+            "gba-recomp: {} ({})",
+            patch,
+            prepared.profile_id.as_deref().unwrap_or("?")
+        );
+    }
+    if let (Some(id), Some(ceiling)) = (&prepared.profile_id, prepared.view_ceiling) {
+        eprintln!("gba-recomp: profile {id} declares a presentation ceiling of {ceiling} px");
+    }
+    Ok(prepared.view_ceiling)
+}
+
+/// Which input decided the effective width, for diagnostics and the UI.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewWidthSource {
+    /// No margins: the game has no ceiling and nothing was overridden.
+    Native,
+    /// `min(preference, ceiling)`.
+    Preference,
+    /// An explicit, non-persisted experimental override (WS-69-18).
+    SessionOverride,
+}
+
+/// Effective presentation width and why (SPEC-069 WS-69-06/WS-69-18).
+///
+/// `preference` is the persisted `[video] view_width`; `session_override` is
+/// the explicit per-invocation value; `ceiling` is [`view_ceiling`]'s answer.
+pub fn effective_view_width(
+    preference: u16,
+    ceiling: Option<u16>,
+    session_override: Option<u16>,
+) -> (u16, ViewWidthSource) {
+    let (lo, hi) = VIEW_WIDTH_RANGE;
+    let clamp_range = |w: u16| w.clamp(lo, hi);
+    if let Some(forced) = session_override {
+        return (clamp_range(forced), ViewWidthSource::SessionOverride);
+    }
+    let allowed = ceiling.map_or(lo, clamp_range);
+    let wanted = clamp_range(preference).min(allowed);
+    if wanted == lo {
+        (lo, ViewWidthSource::Native)
+    } else {
+        (wanted, ViewWidthSource::Preference)
+    }
+}
 pub const DEADZONE_MAX: f32 = 0.95;
 
 /// Default location (SET-63-01).
@@ -386,6 +455,10 @@ impl Settings {
             ("video", "integer_scale") => self.video.integer_scale = boolean(&value)?,
             ("video", "vsync") => self.video.vsync = boolean(&value)?,
             ("video", "color_correction") => self.video.color_correction = boolean(&value)?,
+            ("video", "view_width") => {
+                self.video.view_width =
+                    int(&value, VIEW_WIDTH_RANGE.0.into(), VIEW_WIDTH_RANGE.1.into())? as u16
+            }
             ("audio", "volume") => self.audio.volume = int(&value, 0, 100)? as u8,
             ("audio", "mute") => self.audio.mute = boolean(&value)?,
             ("audio", "latency_ms") => {
@@ -503,7 +576,8 @@ impl Settings {
         );
         let _ = writeln!(o, "integer_scale = {}", v.integer_scale);
         let _ = writeln!(o, "vsync = {}", v.vsync);
-        let _ = writeln!(o, "color_correction = {}\n", v.color_correction);
+        let _ = writeln!(o, "color_correction = {}", v.color_correction);
+        let _ = writeln!(o, "view_width = {}\n", v.view_width);
         let _ = writeln!(o, "[audio]");
         let _ = writeln!(o, "volume = {}", a.volume);
         let _ = writeln!(o, "mute = {}", a.mute);
@@ -689,6 +763,133 @@ mod tests {
         assert_eq!(
             Settings::parse(&fs::read_to_string(&path).unwrap()).unwrap(),
             Settings::default()
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod spec069 {
+    use super::*;
+
+    /// T-25: a file written before SPEC-069 loads with the native default.
+    #[test]
+    fn file_without_view_width_defaults_to_native() {
+        let text = "version = 1\n\n[video]\nscale = 3\n";
+        let s = Settings::parse(text).unwrap();
+        assert_eq!(s.video.view_width, 240);
+        assert_eq!(
+            effective_view_width(s.video.view_width, None, None),
+            (240, ViewWidthSource::Native)
+        );
+    }
+
+    /// T-26: out-of-range values are refused, on both sides.
+    #[test]
+    fn out_of_range_view_width_is_refused() {
+        for bad in ["385", "200", "0", "-240"] {
+            let text = format!("version = 1\n\n[video]\nview_width = {bad}\n");
+            assert!(
+                Settings::parse(&text).is_err(),
+                "view_width = {bad} must be refused"
+            );
+        }
+    }
+
+    /// T-27: a wide preference with no declared ceiling stays native.
+    #[test]
+    fn preference_without_ceiling_stays_native() {
+        // No installed profile for this hash => no ceiling => native 240.
+        assert_eq!(view_ceiling("00ff", 16), None, "no profile installed");
+        assert_eq!(
+            effective_view_width(384, view_ceiling("00ff", 16), None),
+            (240, ViewWidthSource::Native)
+        );
+    }
+
+    /// T-30: the ceiling clamps the preference and the reason is reported.
+    #[test]
+    fn ceiling_clamps_preference() {
+        assert_eq!(
+            effective_view_width(320, Some(288), None),
+            (288, ViewWidthSource::Preference)
+        );
+        // A ceiling below the native minimum cannot shrink the screen.
+        assert_eq!(
+            effective_view_width(320, Some(100), None),
+            (240, ViewWidthSource::Native)
+        );
+    }
+
+    /// T-29: a session override wins over the ceiling, and never persists.
+    #[test]
+    fn session_override_bypasses_ceiling() {
+        assert_eq!(
+            effective_view_width(240, Some(240), Some(320)),
+            (320, ViewWidthSource::SessionOverride)
+        );
+        // The override is still bounded by the hard maximum.
+        assert_eq!(
+            effective_view_width(240, None, Some(9999)),
+            (384, ViewWidthSource::SessionOverride)
+        );
+    }
+
+    /// Round-trip: the new key survives save/parse.
+    #[test]
+    fn view_width_round_trips() {
+        let mut s = Settings::default();
+        s.video.view_width = 320;
+        let text = s.serialize();
+        assert!(text.contains("view_width = 320"), "{text}");
+        let back = Settings::parse(&text).unwrap();
+        assert_eq!(back.video.view_width, 320);
+        assert_eq!(back, s);
+    }
+
+    /// SPEC-070: a profile declaring a ceiling is discovered by exact hash and
+    /// exposes that ceiling through the SPEC-069 resolver.
+    #[test]
+    fn profile_ceiling_is_discovered_by_hash() {
+        let dir = std::env::temp_dir().join(format!("gba-profiles-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let sha = "99ae825ffb1b7e8b48b33cd2715ceb8ca524858f99fee4b22938489460083d94";
+        fs::write(
+            dir.join("rk.toml"),
+            format!(
+                "format = \"gba-recomp-profile\"\nversion = 1\nid = \"rk\"\nstatus = \"draft\"\n\n\
+                 [image]\nsha256 = \"{sha}\"\nsize = 183248\n\n[presentation]\nview_ceiling = 288\n"
+            ),
+        )
+        .unwrap();
+        let found = gba_profile::find_profile_in(&dir, sha, 183248);
+        assert_eq!(
+            found.as_ref().and_then(|p| p.view_ceiling()),
+            Some(288),
+            "profile discovered in an explicit directory"
+        );
+        assert_eq!(view_ceiling(sha, 183248), None, "no installed profile");
+        assert_eq!(
+            gba_profile::find_profile_in(&dir, sha, 1),
+            None,
+            "size mismatch is not a match"
+        );
+        assert_eq!(
+            gba_profile::find_profile_in(&dir, &"0".repeat(64), 183248),
+            None,
+            "different hash is not a match"
+        );
+        let ceiling = found.and_then(|p| p.view_ceiling());
+        assert_eq!(
+            effective_view_width(320, ceiling, None),
+            (288, ViewWidthSource::Preference),
+            "the ceiling clamps the preference"
+        );
+        assert_eq!(
+            effective_view_width(320, ceiling, Some(320)),
+            (320, ViewWidthSource::SessionOverride),
+            "--view-width still wins (WS-69-18)"
         );
         fs::remove_dir_all(&dir).unwrap();
     }

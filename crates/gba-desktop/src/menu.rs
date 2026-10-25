@@ -1,7 +1,9 @@
 //! In-window settings menu (SPEC-063 MENU-63-01/02). Pure model: the app
 //! feeds navigation and draws `rows()`. Labels are ASCII (SDL debug font).
 
-use crate::settings::{BUTTON_LABELS, DEADZONE_MAX, Filter, LATENCY_RANGE, SCALE_RANGE, Settings};
+use crate::settings::{
+    BUTTON_LABELS, DEADZONE_MAX, Filter, LATENCY_RANGE, SCALE_RANGE, Settings, VIEW_WIDTH_RANGE,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -31,8 +33,9 @@ pub enum Command {
     Quit,
     /// Open the external settings window (EXT-64-02).
     OpenExternal,
-    /// Make the draft effective and persist it (UI-02).
-    Apply(Settings),
+    /// Make the draft effective and persist it (UI-02). The flag marks an
+    /// explicit edit of the presentation width row (WS-69-18).
+    Apply(Settings, bool),
 }
 
 /// Pending remap: GBA button index and whether it is a gamepad binding.
@@ -48,6 +51,14 @@ pub struct Row {
 }
 
 pub struct Menu {
+    /// Session override of the presentation width (SPEC-069 WS-69-18).
+    /// Not part of `Settings`: it is never persisted.
+    view_override: Option<u16>,
+    /// Persisted width from before the override, restored on Apply unless the
+    /// user actually edited the row (WS-69-18: never persist the override).
+    view_persisted: Option<u16>,
+    /// Whether the width row was edited in this menu session.
+    view_edited: bool,
     pub open: bool,
     pub page: Page,
     pub cursor: usize,
@@ -82,7 +93,17 @@ impl Menu {
             effective,
             remap: None,
             status: None,
+            view_override: None,
+            view_persisted: None,
+            view_edited: false,
         }
+    }
+
+    /// Record the per-invocation override so the video page can show it
+    /// (WS-69-15: the UI reports the effective value, not the persisted one).
+    pub fn set_view_override(&mut self, width: Option<u16>, persisted: u16) {
+        self.view_override = width;
+        self.view_persisted = width.map(|_| persisted);
     }
 
     pub fn open_at(&mut self, page: Page, effective: &Settings) {
@@ -92,12 +113,14 @@ impl Menu {
         self.effective = effective.clone();
         self.draft = effective.clone();
         self.remap = None;
+        self.view_edited = false;
     }
 
     pub fn close(&mut self) {
         self.open = false;
         self.remap = None;
         self.draft = self.effective.clone();
+        self.view_edited = false;
     }
 
     pub fn title(&self) -> &'static str {
@@ -131,6 +154,16 @@ impl Menu {
                 row("Escala inteira", yes(d.video.integer_scale)),
                 row("VSync", yes(d.video.vsync)),
                 row("Correcao de cor", yes(d.video.color_correction)),
+                // SPEC-069: the persisted preference. The effective width is
+                // reported by the host because the profile ceiling is not
+                // available inside the menu model.
+                row(
+                    "Largura",
+                    match self.view_override {
+                        Some(w) => format!("{w} px (forcado)"),
+                        None => format!("{} px", d.video.view_width),
+                    },
+                ),
             ],
             Page::Audio => vec![
                 row("Volume", format!("{}%", d.audio.volume)),
@@ -233,10 +266,18 @@ impl Menu {
                 return Command::None;
             }
             if self.cursor == count - 2 {
+                // The override is presentation-only state; only an explicit
+                // edit of the row may reach settings.toml (WS-69-18).
+                if !self.view_edited
+                    && let Some(persisted) = self.view_persisted
+                    && self.view_override.is_some()
+                {
+                    self.draft.video.view_width = persisted;
+                }
                 self.effective = self.draft.clone();
                 self.status = Some("Configuracoes aplicadas".into());
                 self.go(Page::Main);
-                return Command::Apply(self.draft.clone());
+                return Command::Apply(self.draft.clone(), self.view_edited);
             }
             self.draft = self.effective.clone();
             self.go(Page::Main);
@@ -296,7 +337,23 @@ impl Menu {
                     }
                     3 => v.integer_scale = !v.integer_scale,
                     4 => v.vsync = !v.vsync,
-                    _ => v.color_correction = !v.color_correction,
+                    5 => v.color_correction = !v.color_correction,
+                    _ => {
+                        // An explicit edit supersedes the CLI override for the
+                        // rest of the session (WS-69-18), so step from what is
+                        // actually on screen rather than from the stale file.
+                        self.view_edited = true;
+                        if let Some(w) = self.view_override.take() {
+                            v.view_width = w;
+                        }
+                        v.view_width = step(
+                            i32::from(v.view_width),
+                            delta * 8,
+                            i32::from(VIEW_WIDTH_RANGE.0),
+                            i32::from(VIEW_WIDTH_RANGE.1),
+                            confirm,
+                        ) as u16
+                    }
                 }
                 Command::None
             }
@@ -414,9 +471,10 @@ mod tests {
         let n = m.rows().len();
         m.cursor = n - 2;
         match m.handle(Nav::Confirm) {
-            Command::Apply(s) => {
+            Command::Apply(s, edited) => {
                 assert_eq!(s.audio.volume, 90);
                 assert!(s.audio.mute);
+                assert!(!edited, "no width row was touched");
             }
             other => panic!("{other:?}"),
         }
@@ -486,5 +544,94 @@ mod tests {
         m.open_at(Page::Main, &Settings::default());
         m.cursor = 7;
         assert_eq!(m.handle(Nav::Confirm), Command::Quit);
+    }
+
+    /// SPEC-069: the added width row must not shift apply/back, which are the
+    /// last two rows of the page.
+    #[test]
+    fn video_page_keeps_apply_and_back_last() {
+        let mut m = Menu::new(Settings::default());
+        m.open_at(Page::Video, &Settings::default());
+        let rows = m.rows();
+        assert_eq!(rows[rows.len() - 2].label, "Aplicar");
+        assert_eq!(rows[rows.len() - 1].label, "Cancelar");
+        // The width row exists and steers within the accepted range.
+        let idx = rows
+            .iter()
+            .position(|r| r.label == "Largura")
+            .expect("width row present");
+        assert!(idx < rows.len() - 2, "width row is not the last rows");
+        m.cursor = idx;
+        m.handle(Nav::Right);
+        assert_eq!(m.draft.video.view_width, 248, "Right steps by 8 px");
+        assert_eq!(
+            m.effective.video.view_width, 240,
+            "stepping does not apply by itself"
+        );
+        // Apply is the second-to-last row; it commits the draft.
+        m.cursor = rows.len() - 2;
+        m.handle(Nav::Confirm);
+        assert_eq!(m.effective.video.view_width, 248, "Apply commits");
+        // And the step cannot leave the accepted range.
+        m.open_at(Page::Video, &m.effective.clone());
+        m.cursor = idx;
+        for _ in 0..40 {
+            m.handle(Nav::Left);
+        }
+        assert_eq!(m.draft.video.view_width, 240, "left bound is native");
+    }
+
+    /// SPEC-069 WS-69-15/WS-69-18: the row shows what is on screen, and a
+    /// bare Apply never persists the CLI override.
+    #[test]
+    fn cli_override_is_shown_and_not_persisted() {
+        let persisted = Settings::default();
+        assert_eq!(persisted.video.view_width, 240);
+
+        // The override is what the row reports.
+        let mut m = Menu::new(persisted.clone());
+        m.set_view_override(Some(320), 240);
+        m.open_at(Page::Video, &persisted);
+        m.view_override = Some(320);
+        let rows = m.rows();
+        let row = rows.iter().find(|r| r.label == "Largura").unwrap();
+        assert_eq!(row.value, "320 px (forcado)");
+
+        // Applying without editing keeps 240 on disk.
+        m.cursor = rows.len() - 2;
+        match m.handle(Nav::Confirm) {
+            Command::Apply(s, edited) => {
+                assert_eq!(
+                    s.video.view_width, 240,
+                    "the session override must not be persisted"
+                );
+                assert!(!edited, "a bare Apply is not a width edit");
+            }
+            other => panic!("expected Apply, got {other:?}"),
+        }
+    }
+
+    /// Editing the row supersedes the override and does persist.
+    #[test]
+    fn editing_the_width_row_persists_and_drops_the_override() {
+        let persisted = Settings::default();
+        let mut m = Menu::new(persisted.clone());
+        m.set_view_override(Some(320), 240);
+        m.open_at(Page::Video, &persisted);
+        m.view_override = Some(320);
+        let rows = m.rows();
+        let idx = rows.iter().position(|r| r.label == "Largura").unwrap();
+        m.cursor = idx;
+        // Steps from what is on screen (320), not from the stale 240.
+        m.handle(Nav::Right);
+        assert_eq!(m.draft.video.view_width, 328);
+        m.cursor = rows.len() - 2;
+        match m.handle(Nav::Confirm) {
+            Command::Apply(s, edited) => {
+                assert_eq!(s.video.view_width, 328, "an edit persists");
+                assert!(edited, "an explicit edit supersedes the override");
+            }
+            other => panic!("expected Apply, got {other:?}"),
+        }
     }
 }

@@ -531,8 +531,9 @@ impl Context {
         w: i32,
         h: i32,
         scale: i32,
+        view_left: i32,
     ) -> Result<Video<'_>, String> {
-        Video::new(title, w, h, scale)
+        Video::new(title, w, h, scale, view_left)
     }
 
     pub fn poll_event(&self) -> Option<Event> {
@@ -629,13 +630,17 @@ pub struct Video<'a> {
     window: NonNull<SdlWindow>,
     renderer: NonNull<SdlRenderer>,
     texture: NonNull<SdlTexture>,
+    /// Texture width: `SCREEN_WIDTH + left + right` while the widened
+    /// presentation surface is active (SPEC-069).
     width: i32,
     height: i32,
+    /// Guest column 0 sits at texture column `view_left`.
+    view_left: i32,
     _ctx: PhantomData<&'a Context>,
 }
 
 impl Video<'_> {
-    fn new(title: &str, w: i32, h: i32, scale: i32) -> Result<Self, String> {
+    fn new(title: &str, w: i32, h: i32, scale: i32, view_left: i32) -> Result<Self, String> {
         let title = CString::new(title).map_err(|_| "window title contains NUL".to_owned())?;
         // SAFETY: `title` is a valid C string for the duration of the call.
         let raw =
@@ -674,6 +679,7 @@ impl Video<'_> {
             texture,
             width: w,
             height: h,
+            view_left,
             _ctx: PhantomData,
         };
         // SAFETY: handles are live (owned by `video`).
@@ -681,7 +687,9 @@ impl Video<'_> {
             if !SDL_SetTextureScaleMode(texture.as_ptr(), SDL_SCALEMODE_NEAREST) {
                 return Err(last_error("SDL_SetTextureScaleMode"));
             }
-            // Integer scaling, letterboxed to the guest 3:2 aspect.
+            // Integer scaling over the presented surface, letterboxed. The
+            // logical space is the texture, so a widened surface keeps its own
+            // aspect instead of being stretched to 3:2.
             if !SDL_SetRenderLogicalPresentation(
                 renderer.as_ptr(),
                 w,
@@ -697,6 +705,55 @@ impl Video<'_> {
     pub fn set_fullscreen(&mut self, on: bool) {
         // SAFETY: window is live.
         unsafe { SDL_SetWindowFullscreen(self.window.as_ptr(), on) };
+    }
+
+    /// Resize the presented surface and offset guest column 0.
+    ///
+    /// `width` is `240 + left + right`; `left` is the offset of guest column 0.
+    /// Recreates the streaming texture and re-applies logical presentation, so
+    /// the widened image keeps its own aspect. The window is not resized
+    /// (WS-69-13).
+    pub fn set_view_width(&mut self, width: i32, left: i32) -> Result<(), String> {
+        if width == self.width && left == self.view_left {
+            return Ok(());
+        }
+        // SAFETY: renderer is live.
+        let raw = unsafe {
+            SDL_CreateTexture(
+                self.renderer.as_ptr(),
+                SDL_PIXELFORMAT_XRGB8888,
+                SDL_TEXTUREACCESS_STREAMING,
+                width,
+                self.height,
+            )
+        };
+        let Some(texture) = NonNull::new(raw) else {
+            return Err(last_error("SDL_CreateTexture"));
+        };
+        // SAFETY: old and new textures are owned here; the renderer is live.
+        unsafe {
+            if !SDL_SetTextureScaleMode(texture.as_ptr(), SDL_SCALEMODE_NEAREST) {
+                SDL_DestroyTexture(texture.as_ptr());
+                return Err(last_error("SDL_SetTextureScaleMode"));
+            }
+            SDL_DestroyTexture(self.texture.as_ptr());
+            self.texture = texture;
+            self.width = width;
+            self.view_left = left;
+            if !SDL_SetRenderLogicalPresentation(
+                self.renderer.as_ptr(),
+                width,
+                self.height,
+                SDL_LOGICAL_PRESENTATION_INTEGER_SCALE,
+            ) {
+                return Err(last_error("SDL_SetRenderLogicalPresentation"));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn view_width(&self) -> i32 {
+        self.width
     }
 
     pub fn set_scale(&mut self, scale: i32) {
@@ -731,8 +788,10 @@ impl Video<'_> {
         let (px, py) = (nx * ow as f32, ny * oh as f32);
         let lx = (px - rect.x) * self.width as f32 / rect.w;
         let ly = (py - rect.y) * self.height as f32 / rect.h;
-        ((0.0..self.width as f32).contains(&lx) && (0.0..self.height as f32).contains(&ly))
-            .then_some((lx, ly))
+        // Logical space is the texture; callers expect guest coordinates, and
+        // only the native 240 columns are interactive (WS-69-13).
+        let gx = lx - self.view_left as f32;
+        ((0.0..240.0).contains(&gx) && (0.0..self.height as f32).contains(&ly)).then_some((gx, ly))
     }
 
     pub fn set_icon(&mut self, icon: &Surface) {
@@ -893,6 +952,8 @@ impl Video<'_> {
         }
         let mut painter = Painter {
             renderer: self.renderer,
+            view_left: self.view_left,
+            surface_width: self.width,
             _video: PhantomData,
         };
         overlay(&mut painter);
@@ -904,21 +965,86 @@ impl Video<'_> {
     }
 }
 
+/// Where an overlay rectangle in guest coordinates lands on the surface.
+///
+/// Guest columns are shifted by `view_left`, and `full` selects a rectangle
+/// covering the whole presented surface instead (used for a menu backdrop).
+/// Pure maths so it can be tested without a renderer.
+pub(crate) fn overlay_rect(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    view_left: i32,
+    full_width: f32,
+    full: bool,
+) -> FRect {
+    if full {
+        FRect {
+            x: 0.0,
+            y,
+            w: full_width,
+            h,
+        }
+    } else {
+        FRect {
+            x: x + view_left as f32,
+            y,
+            w,
+            h,
+        }
+    }
+}
+
 /// Draws overlays in guest logical coordinates (240x160).
+///
+/// Coordinates stay guest-relative; the painter shifts them right by
+/// `view_left` so overlays, menus and the touch hint stay aligned with the
+/// canonical crop when the widened surface is active (SPEC-069 WS-69-13).
 pub struct Painter<'v> {
     renderer: NonNull<SdlRenderer>,
+    view_left: i32,
+    /// Width of the presented surface, so a backdrop can cover the margins.
+    surface_width: i32,
     _video: PhantomData<&'v mut ()>,
 }
 
 impl Painter<'_> {
     pub fn fill(&mut self, x: f32, y: f32, w: f32, h: f32, rgba: [u8; 4]) {
-        let rect = FRect { x, y, w, h };
+        let rect = overlay_rect(x, y, w, h, self.view_left, self.surface_width as f32, false);
         // SAFETY: renderer is live; `rect` outlives the call.
         unsafe {
             SDL_SetRenderDrawBlendMode(self.renderer.as_ptr(), SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgba[0], rgba[1], rgba[2], rgba[3]);
             SDL_RenderFillRect(self.renderer.as_ptr(), &rect);
         }
+    }
+
+    /// Fill the whole presented surface, margins included.
+    ///
+    /// Used for a menu backdrop so the overlay is not confined to the
+    /// canonical crop when the wide surface is active (SPEC-069 WS-69-13).
+    pub fn fill_surface(&mut self, y: f32, h: f32, rgba: [u8; 4]) {
+        let rect = overlay_rect(
+            0.0,
+            y,
+            0.0,
+            h,
+            self.view_left,
+            self.surface_width as f32,
+            true,
+        );
+        // SAFETY: renderer is live; `rect` outlives the call.
+        unsafe {
+            SDL_SetRenderDrawBlendMode(self.renderer.as_ptr(), SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgba[0], rgba[1], rgba[2], rgba[3]);
+            SDL_RenderFillRect(self.renderer.as_ptr(), &rect);
+        }
+    }
+
+    /// Visible surface width in pixels (`240 + left + right`).
+    pub fn surface_width(&self) -> f32 {
+        self.surface_width as f32
     }
 
     /// 8x8 SDL debug font; ASCII only.
@@ -931,7 +1057,12 @@ impl Painter<'_> {
             // SAFETY: renderer is live; C string valid for the call.
             unsafe {
                 SDL_SetRenderDrawColor(self.renderer.as_ptr(), rgb[0], rgb[1], rgb[2], 255);
-                SDL_RenderDebugText(self.renderer.as_ptr(), x, y, c.as_ptr());
+                SDL_RenderDebugText(
+                    self.renderer.as_ptr(),
+                    overlay_rect(x, y, 0.0, 0.0, self.view_left, 0.0, false).x,
+                    y,
+                    c.as_ptr(),
+                );
             }
         }
     }
@@ -1121,5 +1252,33 @@ impl Drop for Joystick<'_> {
     fn drop(&mut self) {
         // SAFETY: closing the owned joystick.
         unsafe { SDL_CloseJoystick(self.joy.as_ptr()) };
+    }
+}
+
+#[cfg(test)]
+mod spec069_paint {
+    use super::overlay_rect;
+
+    /// The overlay must land over the canonical crop, not at the left edge.
+    #[test]
+    fn overlay_is_shifted_by_view_left() {
+        let r = overlay_rect(0.0, 0.0, 240.0, 160.0, 40, 320.0, false);
+        assert_eq!((r.x, r.w), (40.0, 240.0), "menu sits on the canonical crop");
+        let centre = overlay_rect(8.0, 16.0, 0.0, 0.0, 40, 320.0, false);
+        assert_eq!(centre.x, 48.0, "text is shifted too");
+    }
+
+    /// With no margins the offset is a no-op, so native output is unchanged.
+    #[test]
+    fn overlay_is_untouched_at_native_width() {
+        let r = overlay_rect(0.0, 0.0, 240.0, 160.0, 0, 240.0, false);
+        assert_eq!((r.x, r.w), (0.0, 240.0));
+    }
+
+    /// A backdrop must cover the margins so the overlay is not lopsided.
+    #[test]
+    fn full_width_fill_covers_the_margins() {
+        let r = overlay_rect(0.0, 0.0, 240.0, 160.0, 40, 320.0, true);
+        assert_eq!((r.x, r.w), (0.0, 320.0));
     }
 }

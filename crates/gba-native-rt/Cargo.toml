@@ -9,6 +9,7 @@ license.workspace = true
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
+gba-profile.workspace = true
 gba-core = { path = "../gba-core" }
 gba-desktop = { path = "../gba-desktop" }
 sha2.workspace = true

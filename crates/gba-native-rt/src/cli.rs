@@ -26,12 +26,14 @@ struct Options {
     no_splash: bool,
     settings: Option<PathBuf>,
     frames_given: bool,
+    /// SPEC-069 WS-69-18: experimental session override, never persisted.
+    view_width: Option<u16>,
 }
 
 const USAGE: &str = "usage: <package>/game --rom <rom.gba> [--save F] [--settings S] [--backup KIND] [--bios B]\n\
   window (default): Esc/F1 or right click = menu, F11 = fullscreen, Tab = fast-forward\n\
   --headless [--frames N] [--input FRAME:LEN:KEYS]... [--ppm P] [--ppm-every N] [--hashes] \
-[--interpret-only] [--verify-interpreter]";
+[--interpret-only] [--verify-interpreter] [--view-width 240..=384]";
 
 fn parse_keys(text: &str) -> Result<u16, String> {
     let mut mask = 0;
@@ -72,6 +74,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         no_splash: false,
         settings: None,
         frames_given: false,
+        view_width: None,
     };
     let mut rom = None;
     while let Some(flag) = it.next() {
@@ -91,6 +94,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--headless" => o.headless = true,
             "--no-splash" => o.no_splash = true,
             "--settings" => o.settings = Some(PathBuf::from(value()?)),
+            "--view-width" => {
+                let w: u16 = value()?.parse().map_err(|_| "bad --view-width")?;
+                if !(240..=384).contains(&w) {
+                    return Err(format!("--view-width {w} outside 240..=384"));
+                }
+                o.view_width = Some(w);
+            }
             "--input" => {
                 let v = value()?;
                 let parts: Vec<&str> = v.splitn(3, ':').collect();
@@ -137,7 +147,7 @@ pub fn run(
 ) -> Result<(), String> {
     let o = parse(args)?;
     // SPEC-066: a bundled package carries its ROM; `--rom` still overrides.
-    let rom = match (&o.rom, embedded) {
+    let mut rom = match (&o.rom, embedded) {
         (Some(path), _) => fs::read(path).map_err(|e| format!("cannot read ROM: {e}"))?,
         (None, Some(bytes)) => bytes.to_vec(),
         (None, None) => {
@@ -165,6 +175,15 @@ pub fn run(
         Some(p) if p.exists() => Some(fs::read(p).map_err(|e| format!("cannot read save: {e}"))?),
         _ => None,
     };
+    // SPEC-070: patches are applied to the image before either machine is
+    // built, so the guest and the --verify-interpreter reference agree.
+    let prepared = gba_profile::prepare_rom(&mut rom)?;
+    for patch in &prepared.applied {
+        eprintln!(
+            "gba-recomp: {patch} ({})",
+            prepared.profile_id.as_deref().unwrap_or("?")
+        );
+    }
     let make = || {
         Gba::new(GbaConfig {
             rom: &rom,
@@ -174,6 +193,22 @@ pub fn run(
         })
     };
     let mut gba = make();
+    // SPEC-069: presentation only; applied to guest and reference alike so
+    // --verify-interpreter exercises the widened path. Headless runs have no
+    // user preference source, so the profile ceiling is the width to exercise.
+    if let Some(width) = o.view_width.or(prepared.view_ceiling) {
+        let extra = width - SCREEN_WIDTH as u16;
+        let view = gba_core::View {
+            left: extra / 2,
+            right: extra - extra / 2,
+        };
+        gba.set_view(view)?;
+        if o.view_width.is_some() {
+            eprintln!("EXPERIMENTAL wide surface {width} px (session override)");
+        } else {
+            eprintln!("wide surface {width} px from the game profile ceiling");
+        }
+    }
     let mut reference = if o.verify { Some(make()) } else { None };
     let mut program = NativeProgram::new(entries, guards);
     if o.find_divergence {
@@ -312,6 +347,9 @@ fn run_window(
     sha256: [u8; 32],
 ) -> Result<(), String> {
     let mut program = NativeProgram::new(entries, guards);
+    // The windowed path reaches here without the headless preparation above.
+    // The per-game ceiling is resolved inside `run_app` from the profile that
+    // matches this exact image; only the session override is passed along.
     let header_title: String = Some(&rom)
         .and_then(|r| {
             r.get(0xA0..0xAC).map(|t| {
@@ -342,6 +380,7 @@ fn run_window(
         settings_path: o.settings.clone(),
         title: format!("{header_title} — gba-recomp aot-compatible (nativo)"),
         splash: !o.no_splash,
+        view_width: o.view_width,
     };
     let r = gba_desktop::run_app(&options, Some(&mut program))?;
     let c = &program.counters;

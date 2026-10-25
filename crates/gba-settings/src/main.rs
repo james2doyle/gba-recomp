@@ -40,6 +40,8 @@ struct App {
     tab: Tab,
     status: Option<(String, Instant)>,
     sdl: Option<&'static sdl::Context>,
+    /// Advisory session override from the running game (SPEC-069 WS-69-18).
+    session_view_width: Option<u16>,
     pads: Vec<sdl::Gamepad<'static>>,
     joys: Vec<sdl::Joystick<'static>>,
     capture: Option<Capture>,
@@ -101,7 +103,12 @@ fn sdl_key_name(key: egui::Key) -> Option<String> {
 }
 
 impl App {
-    fn new(path: PathBuf, page: Option<Tab>, sdl: Option<&'static sdl::Context>) -> Self {
+    fn new(
+        path: PathBuf,
+        page: Option<Tab>,
+        sdl: Option<&'static sdl::Context>,
+        session_view_width: Option<u16>,
+    ) -> Self {
         let loaded = settings::load(&path);
         let status = loaded.warning.map(|w| (w, Instant::now()));
         Self {
@@ -112,6 +119,7 @@ impl App {
             tab: page.unwrap_or(Tab::Video),
             status,
             sdl,
+            session_view_width,
             pads: Vec::new(),
             joys: Vec::new(),
             capture: None,
@@ -281,8 +289,36 @@ impl App {
                 ui.label("Correção de cor do LCD");
                 ui.checkbox(&mut v.color_correction, "simula a tela do GBA");
                 ui.end_row();
+                ui.label("Largura da imagem");
+                ui.add(
+                    egui::Slider::new(
+                        &mut v.view_width,
+                        settings::VIEW_WIDTH_RANGE.0..=settings::VIEW_WIDTH_RANGE.1,
+                    )
+                    .suffix(" px"),
+                );
+                ui.end_row();
             });
         ui.add_space(8.0);
+        // SPEC-069: the persisted value is a preference; the effective width is
+        // min(preference, per-game ceiling). This process has no ROM, so no
+        // ceiling can be resolved here (WS-69-19).
+        if let Some(w) = self.session_view_width {
+            ui.weak(format!(
+                "O jogo em execucao esta usando {w} px (forcado por --view-width). \
+                 O valor salvo aqui continua {} px e passa a valer no proximo inicio.",
+                self.draft.video.view_width
+            ));
+            ui.add_space(4.0);
+        }
+        if self.draft.video.view_width != 240 {
+            ui.weak(
+                "A largura efetiva em execução é o menor entre esta preferência e o teto \
+                 declarado no perfil do jogo; sem perfil declarado, o jogo fica em 240 px \
+                 (nativo). Margens não são conteúdo novo: são enrolamento de mapa e backdrop.",
+            );
+            ui.add_space(4.0);
+        }
         ui.weak("Estas opções só mudam a apresentação; o jogo roda igual (SET-63-02).");
     }
 
@@ -606,9 +642,15 @@ fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let mut path = None;
     let mut page = None;
+    let mut session_view_width: Option<u16> = None;
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--settings" => path = args.next().map(PathBuf::from),
+            // SPEC-069 WS-69-18: advisory session override forwarded by the
+            // game window so both views report the same effective width.
+            "--session-view-width" => {
+                session_view_width = args.next().and_then(|v| v.parse::<u16>().ok())
+            }
             "--page" => {
                 page = match args.next().as_deref() {
                     Some("video") => Some(Tab::Video),
@@ -620,7 +662,8 @@ fn main() -> Result<(), String> {
             }
             "-h" | "--help" => {
                 println!(
-                    "usage: gba-settings [--settings settings.toml] [--page video|audio|controls|gpio]"
+                    "usage: gba-settings [--settings settings.toml] [--page video|audio|controls|gpio] \
+[--session-view-width N]"
                 );
                 return Ok(());
             }
@@ -666,7 +709,7 @@ fn main() -> Result<(), String> {
     eframe::run_native(
         "gba-settings",
         options,
-        Box::new(move |_cc| Ok(Box::new(App::new(path, page, sdl)))),
+        Box::new(move |_cc| Ok(Box::new(App::new(path, page, sdl, session_view_width)))),
     )
     .map_err(|e| e.to_string())
 }

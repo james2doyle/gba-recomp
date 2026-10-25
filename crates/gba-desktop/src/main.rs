@@ -9,7 +9,7 @@ use gba_desktop::{AppOptions, run_app};
 
 fn usage() -> String {
     "usage: gba-desktop --rom <rom.gba> [--save <file.sav>] [--bios <bios.bin>] [--backup KIND] \
-     [--settings <settings.toml>] [--frames N]\n\
+     [--settings <settings.toml>] [--frames N] [--view-width 240..=384]\n\
      Esc/F1 or right click: menu  F11: fullscreen  Tab (hold): fast-forward"
         .to_owned()
 }
@@ -27,6 +27,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
         settings_path: None,
         title: "gba-recomp — interpreted".to_owned(),
         splash: true,
+        view_width: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or_else(usage);
@@ -36,6 +37,18 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
             "--save" => o.save = Some(PathBuf::from(value()?)),
             "--settings" => o.settings_path = Some(PathBuf::from(value()?)),
             "--no-splash" => o.splash = false,
+            // SPEC-069 WS-69-18: experimental, per-invocation, never persisted.
+            "--view-width" => {
+                let w: u16 = value()?
+                    .parse()
+                    .map_err(|_| "--view-width must be an integer")?;
+                if !(240..=384).contains(&w) {
+                    return Err(format!(
+                        "--view-width {w} outside 240..=384 (experimental wide surface)"
+                    ));
+                }
+                o.view_width = Some(w);
+            }
             "--backup" => {
                 let v = value()?;
                 o.backup = Some(BackupKind::parse(&v).ok_or(format!("unknown backup `{v}`"))?);
@@ -60,13 +73,14 @@ fn main() -> ExitCode {
     match result {
         Ok(r) => {
             eprintln!(
-                "gba-desktop: frames={} presented={} audio={} underruns={} overruns={} saves={}",
+                "gba-desktop: frames={} presented={} audio={} underruns={} overruns={} saves={} view_width={}",
                 r.frames,
                 r.presented,
                 if r.audio_on { "on" } else { "off" },
                 r.audio_underruns,
                 r.audio_overruns,
-                r.saves
+                r.saves,
+                r.view_width
             );
             ExitCode::SUCCESS
         }
