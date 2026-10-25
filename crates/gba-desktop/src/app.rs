@@ -207,21 +207,34 @@ fn open_companion(name: &str, args: &[&std::ffi::OsStr]) -> Result<(), String> {
         .map_err(|e| format!("cannot start {} ({e})", program.display()))
 }
 
-/// Adopts the language from a settings file that another process wrote, and
-/// reports whether it changed (SPEC-069 L10N-69-03).
+/// What adopting a foreign settings file did to the language.
+struct Adopted {
+    /// The settings to use, with the language resolved.
+    settings: Settings,
+    /// The file records an explicit `language` choice (L10N-69-04).
+    explicit: bool,
+}
+
+/// Adopts the language of a settings file another process wrote, under the
+/// same rule as startup (SPEC-069 L10N-69-03/04): an explicit `language` line
+/// is a choice and wins over the system; without one — including when the key
+/// was deleted — the system language decides, never the pt-BR default.
 ///
-/// The menu's draft and effective settings move with it, or the next `Apply`
-/// would silently revert a language the user did not touch.
-fn adopt_language(loaded: &Settings, menu: &mut Menu) -> bool {
-    if loaded.language == gba_i18n::lang() {
-        return false;
+/// The menu follows always; its draft only keeps unapplied edits, or the next
+/// `Apply` would revert a language the user did not type here. A language
+/// that actually moved is reported on stderr, like the audio/GPIO diagnostics.
+fn adopt_language(path: &Path, loaded: &Settings, menu: &mut Menu) -> Adopted {
+    let (lang, explicit) =
+        settings::initial_language(Some(path), loaded, &sdl::preferred_locales());
+    if lang != gba_i18n::lang() {
+        gba_i18n::set_lang(lang);
+        // Rare host event, and otherwise invisible when no menu is open.
+        eprintln!("gba-desktop: language changed to {}", lang.tag());
     }
-    gba_i18n::set_lang(loaded.language);
-    menu.set_language(loaded.language);
-    // Rare host event, and otherwise invisible when no menu is open: say so,
-    // like the audio/GPIO diagnostics next to it.
-    eprintln!("gba-desktop: language changed to {}", loaded.language.tag());
-    true
+    let mut settings = loaded.clone();
+    settings.language = lang;
+    menu.adopt_settings(settings.clone());
+    Adopted { settings, explicit }
 }
 
 /// macOS menu bar (CTX-63-02): app menu entries and top-level menus. Built
@@ -596,11 +609,12 @@ pub fn run_app(
     let mut known_mtime = mtime(settings_path.as_deref());
     let mut last_settings_check = Instant::now();
     let persist_settings = |s: &Settings,
+                            explicit_language: bool,
                             invalid: &mut bool,
                             known: &mut Option<std::time::SystemTime>|
      -> Option<String> {
         let path = settings_path.as_deref()?;
-        match settings::save(path, s, *invalid) {
+        match settings::save(path, s, *invalid, explicit_language) {
             Ok(()) => {
                 *invalid = false;
                 *known = mtime(Some(path));
@@ -830,13 +844,26 @@ pub fn run_app(
                     &mut presentation,
                     &mut gpio,
                 );
-                // Saving settings records an explicit language preference.
-                language_chosen = true;
-                let failure = persist_settings(&s, &mut settings_invalid_on_disk, &mut known_mtime);
+                // A language change through any UI (menu row, native menu) is
+                // an explicit choice; an unrelated save must not record one
+                // (L10N-69-04) or it would pin the detected language forever
+                // and resurrect a `language` key the user deleted.
+                if s.language != current.language {
+                    language_chosen = true;
+                }
+                let failure = persist_settings(
+                    &s,
+                    language_chosen,
+                    &mut settings_invalid_on_disk,
+                    &mut known_mtime,
+                );
                 status = Some((
                     failure.unwrap_or_else(|| tr!("settings.saved")),
                     Instant::now(),
                 ));
+                // An open menu follows the applied settings, or its next
+                // Apply would revert whatever changed outside it.
+                menu.adopt_settings(s.clone());
                 current = s;
             }
             Effect::OpenMenu(page) => {
@@ -894,7 +921,9 @@ pub fn run_app(
         if last_settings_check.elapsed() >= Duration::from_millis(500) {
             last_settings_check = Instant::now();
             let now_mtime = mtime(settings_path.as_deref());
-            if now_mtime.is_some() && now_mtime != known_mtime {
+            // A deleted file is a change too: the explicit language choice is
+            // gone and the system language decides again (L10N-69-04).
+            if now_mtime != known_mtime {
                 known_mtime = now_mtime;
                 if let Some(path) = settings_path.as_deref() {
                     let loaded = settings::load(path);
@@ -903,21 +932,18 @@ pub fn run_app(
                             // A language chosen in the settings window must
                             // take effect here too, not only on the next
                             // launch (SPEC-069 L10N-69-03).
-                            if adopt_language(&loaded.settings, &mut menu) {
-                                language_chosen = true;
-                            }
+                            let adopted = adopt_language(path, &loaded.settings, &mut menu);
+                            language_chosen = adopted.explicit;
+                            let s = adopted.settings;
                             apply(
-                                &loaded.settings,
+                                &s,
                                 &mut video,
                                 &mut audio,
                                 &mut bindings,
                                 &mut presentation,
                                 &mut gpio,
                             );
-                            current = loaded.settings;
-                            if !menu.open {
-                                menu = Menu::new(current.clone());
-                            }
+                            current = s;
                             status = Some((tr!("status.settings_reloaded"), Instant::now()));
                         }
                         Some(w) => eprintln!("gba-desktop: {w}"),
@@ -1346,29 +1372,96 @@ mod tests {
         assert_eq!(gba_i18n::lang(), gba_i18n::Lang::EnUs, "applied at once");
     }
 
+    /// A settings file written by another process, for the adopt tests.
+    fn temp_settings(text: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "gba-adopt-{}-{}.toml",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
     /// The settings window writes `language = "en-US"`; the running game must
     /// switch without a restart, and keep the change when the menu is applied
     /// (SPEC-069 L10N-69-03).
     #[test]
     fn a_language_written_by_the_settings_window_is_adopted() {
         let _locale = crate::locale_guard::lock();
+        let path = temp_settings("version = 1\nlanguage = \"en-US\"\n");
         let mut m = crate::menu::Menu::new(Settings::default());
         m.open_at(Page::Main, &Settings::default());
-        let mut loaded = Settings::default();
         assert_eq!(
             gba_i18n::lang(),
             gba_i18n::Lang::PtBr,
             "starts in the default"
         );
 
-        loaded.language = gba_i18n::Lang::EnUs;
-        assert!(adopt_language(&loaded, &mut m), "the change is reported");
+        let loaded = settings::load(&path);
+        let a = adopt_language(&path, &loaded.settings, &mut m);
+        assert!(a.explicit, "a written key is an explicit choice");
         assert_eq!(gba_i18n::lang(), gba_i18n::Lang::EnUs);
+        assert_eq!(a.settings.language, gba_i18n::Lang::EnUs);
         assert_eq!(m.draft.language, gba_i18n::Lang::EnUs, "draft follows");
         assert_eq!(m.effective_language(), gba_i18n::Lang::EnUs);
 
-        // The same file again must be a no-op, not a repeated "changed".
-        assert!(!adopt_language(&loaded, &mut m));
+        // The same file again must be a no-op: the language does not move.
+        let before = m.draft.clone();
+        let loaded = settings::load(&path);
+        let _ = adopt_language(&path, &loaded.settings, &mut m);
+        assert_eq!(gba_i18n::lang(), gba_i18n::Lang::EnUs);
+        assert_eq!(m.draft, before, "nothing moved");
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// Deleting the `language` line means "no explicit choice", not "pt-BR":
+    /// the game returns to following the system language (L10N-69-04).
+    #[test]
+    fn deleting_the_language_key_returns_to_system_following() {
+        let _locale = crate::locale_guard::lock();
+        let path = temp_settings("version = 1\nlanguage = \"en-US\"\n");
+        let mut m = crate::menu::Menu::new(Settings::default());
+        m.open_at(Page::Main, &Settings::default());
+        let loaded = settings::load(&path);
+        let a = adopt_language(&path, &loaded.settings, &mut m);
+        assert!(a.explicit);
+        assert_eq!(gba_i18n::lang(), gba_i18n::Lang::EnUs);
+
+        std::fs::write(&path, "version = 1\n").unwrap();
+        let loaded = settings::load(&path);
+        let a = adopt_language(&path, &loaded.settings, &mut m);
+        assert!(!a.explicit, "the key is gone: back to system-following");
+        let detected = gba_i18n::detect_from(&sdl::preferred_locales()).unwrap_or_default();
+        assert_eq!(a.settings.language, detected);
+        assert_eq!(gba_i18n::lang(), detected, "not forced to pt-BR");
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// An external write must not be undone by the next Apply: the open menu
+    /// keeps its unapplied edits but follows the file (SPEC-069 L10N-69-03).
+    #[test]
+    fn external_change_keeps_unsaved_edits() {
+        let _locale = crate::locale_guard::lock();
+        let path = temp_settings("version = 1\n[audio]\nvolume = 50\n");
+        let mut m = crate::menu::Menu::new(Settings::default());
+        m.open_at(Page::Main, &Settings::default());
+        m.draft.audio.volume = 42; // an edit the user has not applied
+
+        std::fs::write(
+            &path,
+            "version = 1\nlanguage = \"en-US\"\n[audio]\nvolume = 30\n",
+        )
+        .unwrap();
+        let loaded = settings::load(&path);
+        let a = adopt_language(&path, &loaded.settings, &mut m);
+
+        assert_eq!(m.draft.audio.volume, 42, "unsaved edit kept");
+        assert_eq!(m.draft.language, gba_i18n::Lang::EnUs, "language follows");
+        assert_eq!(a.settings.audio.volume, 30, "disk state is tracked");
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]

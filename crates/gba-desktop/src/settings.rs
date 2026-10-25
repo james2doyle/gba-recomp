@@ -509,7 +509,12 @@ impl Settings {
         Ok(())
     }
 
-    pub fn serialize(&self) -> String {
+    /// The file text for this snapshot. `explicit_language` writes the
+    /// top-level `language` key; without it the key is omitted, because its
+    /// absence means "follow the system language" (L10N-69-04) and an
+    /// unrelated save must not pin the detected language — or resurrect a
+    /// key the user deleted.
+    pub fn serialize(&self, explicit_language: bool) -> String {
         let mut o = String::new();
         let list = |l: &[String]| {
             let items: Vec<String> = l
@@ -525,7 +530,9 @@ impl Settings {
             "# gba-recomp host settings (SPEC-063). Presentation only: never changes the game."
         );
         let _ = writeln!(o, "version = {VERSION}");
-        let _ = writeln!(o, "language = \"{}\"\n", self.language.tag());
+        if explicit_language {
+            let _ = writeln!(o, "language = \"{}\"\n", self.language.tag());
+        }
         let _ = writeln!(o, "[video]");
         let _ = writeln!(o, "scale = {}", v.scale);
         let _ = writeln!(o, "fullscreen = {}", v.fullscreen);
@@ -649,7 +656,12 @@ pub fn load(path: &Path) -> Loaded {
 
 /// Persist atomically. An invalid file is first preserved as
 /// `settings.toml.invalid` (UI-07).
-pub fn save(path: &Path, settings: &Settings, invalid_on_disk: bool) -> Result<(), String> {
+pub fn save(
+    path: &Path,
+    settings: &Settings,
+    invalid_on_disk: bool,
+    explicit_language: bool,
+) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     }
@@ -662,10 +674,57 @@ pub fn save(path: &Path, settings: &Settings, invalid_on_disk: bool) -> Result<(
             )
         })?;
     }
+    write_atomic(path, &settings.serialize(explicit_language))
+}
+
+/// Writes just the top-level `language` key, atomically and leaving the rest
+/// of the file untouched (SPEC-069 L10N-69-03): a language pick must not also
+/// persist whatever else a draft happens to hold — nor rewrite a file the
+/// user hand-edited.
+pub fn save_language(path: &Path, lang: Lang) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    }
+    let text = fs::read_to_string(path).unwrap_or_default();
+    let is_language_key = |line: &str| {
+        line.strip_prefix("language")
+            .is_some_and(|r| r.trim_start().starts_with('='))
+    };
+    let mut out = String::new();
+    let mut replaced = false;
+    let mut in_section = false;
+    let mut version_at: Option<usize> = None;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') {
+            in_section = true;
+        }
+        if !in_section && is_language_key(trimmed) {
+            if !replaced {
+                out.push_str(&format!("language = \"{}\"\n", lang.tag()));
+                replaced = true;
+            }
+            continue;
+        }
+        if !in_section && trimmed.starts_with("version") {
+            version_at = Some(out.len());
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !replaced {
+        // Where `Settings::serialize` puts it: right after `version`.
+        let at = version_at.map_or(0, |at| out[at..].find('\n').map_or(at, |end| at + end + 1));
+        out.insert_str(at, &format!("language = \"{}\"\n", lang.tag()));
+    }
+    write_atomic(path, &out)
+}
+
+fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
     let tmp = path.with_extension("toml.tmp");
     let mut f =
         fs::File::create(&tmp).map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
-    f.write_all(settings.serialize().as_bytes())
+    f.write_all(text.as_bytes())
         .and_then(|()| f.sync_all())
         .map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
     drop(f);
@@ -679,7 +738,7 @@ mod tests {
     #[test]
     fn defaults_round_trip() {
         let s = Settings::default();
-        assert_eq!(Settings::parse(&s.serialize()).unwrap(), s);
+        assert_eq!(Settings::parse(&s.serialize(true)).unwrap(), s);
     }
 
     #[test]
@@ -700,7 +759,7 @@ mod tests {
         s.gpio.debounce_ms = 25;
         s.gpio.lines[0] = Some(17);
         s.gpio.lines[9] = Some(26);
-        assert_eq!(Settings::parse(&s.serialize()).unwrap(), s);
+        assert_eq!(Settings::parse(&s.serialize(true)).unwrap(), s);
     }
 
     #[test]
@@ -741,7 +800,7 @@ mod tests {
     fn language_round_trips() {
         let s = Settings::default();
         assert_eq!(s.language, Lang::PtBr);
-        let text = s.serialize();
+        let text = s.serialize(true);
         assert!(text.contains("language = \"pt-BR\""), "{text}");
         assert_eq!(Settings::parse(&text).unwrap().language, Lang::PtBr);
     }
@@ -768,9 +827,61 @@ mod tests {
     fn english_round_trips_through_the_file() {
         let s = Settings::parse("version = 1\nlanguage = \"en-US\"\n").unwrap();
         assert_eq!(s.language, Lang::EnUs);
-        let text = s.serialize();
+        let text = s.serialize(true);
         assert!(text.contains("language = \"en-US\""), "{text}");
         assert_eq!(Settings::parse(&text).unwrap().language, Lang::EnUs);
+    }
+
+    /// A save that is not a language action must not write the key
+    /// (L10N-69-04): its absence is what makes the file follow the system
+    /// language, and writing it once would pin the detected language forever.
+    #[test]
+    fn the_language_key_is_written_only_for_an_explicit_choice() {
+        let s = Settings::default();
+        let implicit = s.serialize(false);
+        assert!(
+            !implicit.contains("language"),
+            "no explicit choice, no key: {implicit}"
+        );
+        assert_eq!(Settings::parse(&implicit).unwrap(), s);
+        assert!(s.serialize(true).contains("language = \"pt-BR\""));
+    }
+
+    /// The language picker writes only the `language` key: no other pending
+    /// edit is persisted behind the user's back (L10N-69-03).
+    #[test]
+    fn save_language_rewrites_only_the_top_level_key() {
+        let dir = std::env::temp_dir().join(format!("gba-savelang-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        fs::write(
+            &path,
+            "version = 1\nlanguage = \"pt-BR\"\n[audio]\nvolume = 50\nlanguage = 7\n",
+        )
+        .unwrap();
+        save_language(&path, Lang::EnUs).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("language = \"en-US\""), "{text}");
+        assert!(!text.contains("pt-BR"), "the old key is gone");
+        assert!(text.contains("volume = 50"), "the rest is untouched");
+        assert!(
+            text.contains("language = 7"),
+            "keys inside sections are not ours"
+        );
+        assert_eq!(text.matches("language").count(), 2, "no duplicate key");
+        // No parse check: the fixture is a hand-edited file on purpose, and a
+        // surgical write must work even when the file is not parseable.
+
+        // Without any key, it lands after `version`, where serialize puts it.
+        fs::write(&path, "version = 1\n[audio]\nvolume = 50\n").unwrap();
+        save_language(&path, Lang::EnUs).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(
+            text.starts_with("version = 1\nlanguage = \"en-US\"\n"),
+            "{text}"
+        );
+        assert_eq!(Settings::parse(&text).unwrap().language, Lang::EnUs);
+        fs::remove_dir_all(&dir).ok();
     }
 
     /// The rule all three frontends share (SPEC-069 L10N-69-04): a `language`
@@ -818,7 +929,7 @@ mod tests {
         let loaded = load(&path);
         assert!(loaded.warning.is_some() && loaded.invalid_on_disk);
         assert_eq!(fs::read_to_string(&path).unwrap(), "garbage");
-        save(&path, &loaded.settings, true).unwrap();
+        save(&path, &loaded.settings, true, true).unwrap();
         assert_eq!(
             fs::read_to_string(path.with_extension("toml.invalid")).unwrap(),
             "garbage"

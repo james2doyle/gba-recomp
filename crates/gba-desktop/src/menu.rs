@@ -127,6 +127,21 @@ impl Menu {
         self.effective.language = lang;
     }
 
+    /// Adopts settings written outside this menu (SPEC-069 L10N-69-03).
+    ///
+    /// Unapplied edits here are never discarded, but the language always
+    /// follows: it is host state, not an edit made in this window. Without
+    /// the effective refresh, the next `Apply` would write stale values back
+    /// and silently revert the external change.
+    pub fn adopt_settings(&mut self, s: Settings) {
+        if self.draft == self.effective {
+            self.draft = s.clone();
+        } else {
+            self.draft.language = s.language;
+        }
+        self.effective = s;
+    }
+
     /// The language the menu will fall back to when reopened, for tests that
     /// check it followed an external change.
     #[cfg(test)]
@@ -691,5 +706,30 @@ mod tests {
         m.open_at(Page::Main, &Settings::default());
         m.cursor = 7;
         assert_eq!(m.handle(Nav::Confirm), Command::Quit);
+    }
+
+    /// An external write is tracked but never overwrites unapplied edits,
+    /// and the language follows regardless (SPEC-069 L10N-69-03).
+    #[test]
+    fn adopt_settings_keeps_edits_and_follows_the_file() {
+        let mut m = Menu::new(Settings::default());
+        m.open_at(Page::Main, &Settings::default());
+        // No pending edits: the draft follows the external write whole.
+        let mut s = Settings::default();
+        s.audio.volume = 50;
+        s.language = gba_i18n::Lang::EnUs;
+        m.adopt_settings(s.clone());
+        assert_eq!(m.draft, s, "a clean draft tracks the file");
+        assert_eq!(m.effective, s);
+
+        // With a pending edit, only the language follows.
+        m.draft.audio.volume = 42;
+        let mut t = s;
+        t.audio.volume = 30;
+        t.language = gba_i18n::Lang::PtBr;
+        m.adopt_settings(t.clone());
+        assert_eq!(m.draft.audio.volume, 42, "unsaved edit kept");
+        assert_eq!(m.draft.language, gba_i18n::Lang::PtBr, "language follows");
+        assert_eq!(m.effective, t, "the file state is tracked, not clobbered");
     }
 }

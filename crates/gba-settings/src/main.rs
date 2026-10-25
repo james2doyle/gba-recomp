@@ -38,6 +38,10 @@ struct App {
     effective: Settings,
     draft: Settings,
     invalid_on_disk: bool,
+    /// Whether the file records an explicit `language` choice. While it does
+    /// not, saves must not write the key (SPEC-069 L10N-69-04): its absence
+    /// is what makes both windows follow the system language.
+    language_explicit: bool,
     tab: Tab,
     status: Option<(String, Instant)>,
     sdl: Option<&'static sdl::Context>,
@@ -111,7 +115,7 @@ impl App {
         // This window is often the first frontend a user opens, so it must
         // pick the same language `gba-desktop` would: the saved choice if
         // there is one, otherwise the OS language (SPEC-069 L10N-69-04).
-        let (lang, _) =
+        let (lang, explicit) =
             settings::initial_language(Some(&path), &loaded.settings, &sdl::preferred_locales());
         gba_i18n::set_lang(lang);
         let status = loaded.warning.map(|w| (w, Instant::now()));
@@ -123,6 +127,7 @@ impl App {
             effective: draft.clone(),
             draft,
             invalid_on_disk: loaded.invalid_on_disk,
+            language_explicit: explicit,
             tab: page.unwrap_or(Tab::Video),
             status,
             sdl,
@@ -163,16 +168,28 @@ impl App {
             // over a file that is momentarily incomplete.
             return;
         }
+        // The same rule as startup (SPEC-069 L10N-69-04): an explicit
+        // `language` line is a choice; without one — including a deleted
+        // file — the system language decides, so this window never flips to
+        // the pt-BR default by accident.
+        let (lang, explicit) = settings::initial_language(
+            Some(&self.path),
+            &loaded.settings,
+            &sdl::preferred_locales(),
+        );
+        self.language_explicit = explicit;
+        let mut s = loaded.settings;
+        s.language = lang;
         let dirty = self.draft != self.effective;
         if !dirty {
-            self.draft = loaded.settings.clone();
+            self.draft = s.clone();
         } else {
             // Keep the edits, but the language is not an edit to protect.
-            self.draft.language = loaded.settings.language;
+            self.draft.language = s.language;
         }
-        self.effective = loaded.settings.clone();
+        self.effective = s;
         self.invalid_on_disk = loaded.invalid_on_disk;
-        adopt_language(loaded.settings.language);
+        adopt_language(lang);
     }
 
     fn say(&mut self, msg: impl Into<String>) {
@@ -180,12 +197,34 @@ impl App {
     }
 
     fn apply(&mut self) {
-        match settings::save(&self.path, &self.draft, self.invalid_on_disk) {
+        match settings::save(
+            &self.path,
+            &self.draft,
+            self.invalid_on_disk,
+            self.language_explicit,
+        ) {
             Ok(()) => {
                 self.invalid_on_disk = false;
                 self.effective = self.draft.clone();
                 // Record our own write, so the poll below does not mistake it
                 // for a change made by the game.
+                self.known_mtime = settings::modified(Some(&self.path));
+                self.say(tr!("settings.saved"));
+            }
+            Err(e) => self.say(tr!("settings.save_failed", error = e)),
+        }
+    }
+
+    /// Applies a language pick (SPEC-069 L10N-69-03): only the `language` key
+    /// is written. Saving the whole draft here would persist edits the user
+    /// never confirmed — and a half-typed GPIO field would make the file
+    /// invalid, losing the very switch this exists for.
+    fn apply_language(&mut self) {
+        match settings::save_language(&self.path, self.draft.language) {
+            Ok(()) => {
+                self.language_explicit = true;
+                self.effective.language = self.draft.language;
+                // Record our own write, like `apply` does.
                 self.known_mtime = settings::modified(Some(&self.path));
                 self.say(tr!("settings.saved"));
             }
@@ -324,7 +363,7 @@ impl App {
                 self.draft.language = chosen;
                 // Live: the game reloads settings.toml and picks this up.
                 gba_i18n::set_lang(chosen);
-                self.apply();
+                self.apply_language();
             }
         });
         ui.weak(tr!("settings.language_hint"));
@@ -920,5 +959,55 @@ mod tests {
         assert_eq!(sdl_key_name(egui::Key::F12).as_deref(), Some("F12"));
         assert_eq!(sdl_key_name(egui::Key::Num7).as_deref(), Some("7"));
         assert_eq!(sdl_key_name(egui::Key::Escape), None);
+    }
+
+    /// The language picker writes only the `language` key: pending edits the
+    /// user never confirmed stay out of the file (SPEC-069 L10N-69-03).
+    #[test]
+    fn the_language_combo_writes_only_the_language_key() {
+        let _locale = locale();
+        let dir = std::env::temp_dir().join(format!("gba-set-combo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        std::fs::write(&path, "version = 1\n[audio]\nvolume = 50\n").unwrap();
+
+        let mut app = App::new(path.clone(), Some(Tab::Video), None);
+        app.draft.audio.volume = 30; // an edit the user has not applied
+        app.draft.language = Lang::EnUs;
+        app.apply_language();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("language = \"en-US\""), "{text}");
+        assert!(text.contains("volume = 50"), "no unapplied edit is written");
+        assert_eq!(app.draft.audio.volume, 30, "the edit is still pending");
+        assert_eq!(app.effective.language, Lang::EnUs);
+        assert!(app.language_explicit, "a pick is an explicit choice");
+
+        gba_i18n::set_lang(Lang::PtBr);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A deleted file is "no explicit choice": the window follows the system
+    /// language rather than flipping to the pt-BR default (L10N-69-04).
+    #[test]
+    fn a_deleted_file_returns_to_system_following() {
+        let _locale = locale();
+        let dir = std::env::temp_dir().join(format!("gba-set-del-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        std::fs::write(&path, "version = 1\nlanguage = \"en-US\"\n").unwrap();
+
+        let mut app = App::new(path.clone(), Some(Tab::Video), None);
+        assert_eq!(gba_i18n::lang(), Lang::EnUs);
+        assert!(app.language_explicit);
+
+        std::fs::remove_file(&path).unwrap();
+        app.adopt(settings::load(&path));
+        let detected = gba_i18n::detect_from(&sdl::preferred_locales()).unwrap_or_default();
+        assert!(!app.language_explicit, "the key is gone");
+        assert_eq!(gba_i18n::lang(), detected, "the system decides again");
+
+        gba_i18n::set_lang(Lang::PtBr);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
