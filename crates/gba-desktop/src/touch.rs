@@ -309,7 +309,9 @@ impl NavPad {
         Self::default()
     }
 
-    /// A finger went down at (x, y). Returns the navigation it selects, if any.
+    /// A finger went down at (x, y). Returns the navigation it selects, if
+    /// any. A new press takes over the highlight from any finger still held;
+    /// `press` is the only source of navigation, so a held control emits once.
     pub fn press(&mut self, finger: u64, x: f32, y: f32) -> Option<Nav> {
         self.held = None;
         let nav = menu_key(x, y)?;
@@ -550,15 +552,18 @@ mod tests {
         assert_eq!(menu_key(cx + 15.0, cy - 15.0), Some(Nav::Up));
     }
 
-    /// One step per touch: holding a direction must not walk the list.
+    /// One step per touch: holding a direction must not walk the list. `press`
+    /// is the only source of navigation (the app calls it once per finger-down,
+    /// and the model has no repeat path), so what is testable here is the
+    /// highlight: lit while the finger rests, dark once it lifts.
     #[test]
-    fn holding_a_control_navigates_once() {
+    fn a_held_control_stays_lit_until_it_lifts() {
         let (cx, cy, _) = DPAD;
         let mut pad = NavPad::new();
         assert_eq!(pad.press(1, cx, cy + 20.0), Some(Nav::Down));
         assert_eq!(pad.pressed(), keys::DOWN, "drawn as pressed");
-        // Still down, still no further navigation: `press` is the only source.
-        assert_eq!(pad.pressed(), keys::DOWN);
+        pad.release(1);
+        assert_eq!(pad.pressed(), 0);
     }
 
     #[test]
@@ -588,14 +593,18 @@ mod tests {
         assert_eq!(pad.pressed(), 0);
     }
 
+    /// A second finger takes over the highlight, and the first finger's
+    /// release must not clear the control the second one is holding.
     #[test]
-    fn a_second_finger_does_not_steal_the_press() {
+    fn a_stale_release_does_not_clear_the_new_control() {
         let (cx, cy, _) = DPAD;
         let mut pad = NavPad::new();
         pad.press(1, cx, cy + 20.0);
         assert_eq!(pad.press(2, 218.0, 108.0), Some(Nav::Confirm));
-        // Releasing the first finger leaves the second one's control lit.
+        assert_eq!(pad.pressed(), keys::A, "the new press owns the highlight");
         pad.release(1);
         assert_eq!(pad.pressed(), keys::A);
+        pad.release(2);
+        assert_eq!(pad.pressed(), 0);
     }
 }
