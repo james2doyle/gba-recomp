@@ -335,6 +335,17 @@ fn opens_menu(sc: usize) -> bool {
     matches!(sc, scancode::ESCAPE | scancode::F1 | scancode::AC_BACK)
 }
 
+/// Whether the virtual touch pad is active: drawn over the game and, with the
+/// menu open, the navigation device (SPEC-068 TOUCH-68-02). `off` takes the
+/// pad away and with it all touch navigation; `auto` follows the hardware.
+fn touch_controls_visible(mode: TouchMode, has_touchscreen: bool, touch_seen: bool) -> bool {
+    match mode {
+        TouchMode::On => true,
+        TouchMode::Off => false,
+        TouchMode::Auto => has_touchscreen || touch_seen,
+    }
+}
+
 fn context_effect(id: u32, s: &Settings) -> Effect {
     let mut n = s.clone();
     match id {
@@ -691,8 +702,17 @@ pub fn run_app(
                             if menu.open {
                                 // The open menu is driven by the same pad the
                                 // game uses (TOUCH-68-02): no on-screen pad,
-                                // no way past the first row on a phone.
-                                nav.extend(nav_pad.press(finger, p.0, p.1));
+                                // no way past the first row on a phone. With
+                                // `touch_controls = off` the pad is gone and
+                                // so is touch navigation; the back button and
+                                // physical input keep working (SPEC-068).
+                                if touch_controls_visible(
+                                    current.input.touch_controls,
+                                    has_touchscreen,
+                                    touch_seen,
+                                ) {
+                                    nav.extend(nav_pad.press(finger, p.0, p.1));
+                                }
                             } else {
                                 long_press.press(finger, p.0, p.1, Instant::now());
                             }
@@ -846,11 +866,8 @@ pub fn run_app(
             }
         }
 
-        let show_touch = match current.input.touch_controls {
-            TouchMode::On => true,
-            TouchMode::Off => false,
-            TouchMode::Auto => has_touchscreen || touch_seen,
-        };
+        let show_touch =
+            touch_controls_visible(current.input.touch_controls, has_touchscreen, touch_seen);
         let suspended = menu.open || paused;
         if suspended != was_suspended
             && let Some(a) = audio.as_mut()
@@ -930,11 +947,8 @@ pub fn run_app(
             .collect();
         let fast_forward = ctx.key_down(scancode::TAB);
         let gpio_mask = gpio.as_ref().map_or(0, GpioInput::mask);
-        let show_touch = match current.input.touch_controls {
-            TouchMode::On => true,
-            TouchMode::Off => false,
-            TouchMode::Auto => has_touchscreen || touch_seen,
-        };
+        let show_touch =
+            touch_controls_visible(current.input.touch_controls, has_touchscreen, touch_seen);
         let touch_mask = if show_touch {
             touch::mask(fingers.values().copied())
         } else {
@@ -1196,5 +1210,20 @@ mod tests {
         assert!(!captures_key(scancode::ESCAPE));
         assert!(captures_key(scancode::Z), "ordinary keys are capturable");
         assert!(captures_key(scancode::RETURN));
+    }
+
+    /// `off` removes the pad and with it all touch navigation (TOUCH-68-02):
+    /// the menu stays reachable by long press and the back button, but there
+    /// is no touch target left for the arrows or `A`.
+    #[test]
+    fn touch_controls_off_disables_touch_navigation() {
+        assert!(
+            !touch_controls_visible(TouchMode::Off, true, true),
+            "off wins even with a touch screen"
+        );
+        assert!(touch_controls_visible(TouchMode::On, false, false));
+        assert!(touch_controls_visible(TouchMode::Auto, true, false));
+        assert!(touch_controls_visible(TouchMode::Auto, false, true));
+        assert!(!touch_controls_visible(TouchMode::Auto, false, false));
     }
 }

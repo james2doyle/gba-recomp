@@ -116,7 +116,10 @@ toque**: segurar o direcional não percorre a lista, o que evita atravessar
 "Reiniciar jogo" ou "Sair" sem querer.
 
 Isso vale enquanto `input.touch_controls` não for `off`: desligar o gamepad
-também desliga a navegação por toque do menu, e sobra só o botão voltar.
+tira o alvo e com ele a navegação por toque do menu. Com `off` ele continua
+abrindo por pressão longa e pelo botão voltar, e o botão voltar continua
+voltando, mas setas e `A` ficam sem alvo — sobram o botão voltar e
+dispositivos de entrada físicos.
 
 O arquivo de configurações e o save ficam em `SDL_GetPrefPath`
 (`/data/data/<package>/files/`), que não é legível por `adb shell` num APK de
