@@ -170,6 +170,58 @@ impl Gba {
         &self.bus.ppu.framebuffer
     }
 
+    /// Set presentation margins (SPEC-069).
+    ///
+    /// Host-only: never fed back into guest state, cycles or [`Self::frame_hash`].
+    pub fn set_view(&mut self, view: crate::ppu::View) -> Result<(), String> {
+        self.bus.ppu.set_view(view)
+    }
+
+    pub fn view(&self) -> crate::ppu::View {
+        self.bus.ppu.view()
+    }
+
+    /// Widened presentation surface, stride `view().width()`.
+    ///
+    /// Empty while the view is `NONE`. Never hashed, never verified (WS-69-01).
+    pub fn view_framebuffer(&self) -> &[u16] {
+        self.bus.ppu.view_framebuffer()
+    }
+
+    /// How each output column of the last line got its colour (SPEC-070).
+    pub fn margin_kinds(&self) -> &[crate::ppu::MarginKind] {
+        self.bus.ppu.margin_kinds()
+    }
+
+    /// Text-map width of BG `bg` as last rendered.
+    pub fn bg_map_width(&self, bg: usize) -> Option<usize> {
+        self.bus.ppu.bg_map_width(bg)
+    }
+
+    /// Count margin columns by kind for the last rendered line (DIAG-70-01).
+    pub fn margin_counts(&self) -> (crate::ppu::MarginCounts, crate::ppu::MarginCounts) {
+        use crate::ppu::MarginKind;
+        let left = usize::from(self.bus.ppu.view().left);
+        let mut l = crate::ppu::MarginCounts::default();
+        let mut r = crate::ppu::MarginCounts::default();
+        for (sx, kind) in self.bus.ppu.margin_kinds().iter().enumerate() {
+            let bucket = if sx < left {
+                &mut l
+            } else if sx >= left + crate::ppu::SCREEN_WIDTH {
+                &mut r
+            } else {
+                continue;
+            };
+            match kind {
+                MarginKind::Backdrop => bucket.backdrop += 1,
+                MarginKind::Ring => bucket.ring += 1,
+                MarginKind::Authored => bucket.authored += 1,
+                MarginKind::Native => {}
+            }
+        }
+        (l, r)
+    }
+
     pub fn take_audio(&mut self) -> Vec<i16> {
         std::mem::take(&mut self.bus.apu.samples)
     }

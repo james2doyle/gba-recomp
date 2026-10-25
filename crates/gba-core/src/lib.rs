@@ -15,7 +15,7 @@ pub mod ppu;
 pub use backup::BackupKind;
 pub use bus::SystemFault;
 pub use gba::{Gba, GbaConfig, NativeExec, NativeOutcome, NativeStats, keys};
-pub use ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
+pub use ppu::{MAX_VIEW_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH, View};
 
 /// Version of the interpreted core contract (recorded in manifests, IAC-09).
 pub const CORE_VERSION: u32 = 1;
