@@ -9,51 +9,113 @@ rust_i18n::i18n!("locales", fallback = "pt-BR");
 
 use std::borrow::Cow;
 
-/// Idiomas com tradução embutida.
-///
-/// A enumeração é o registro único: adicionar um idioma é acrescentar uma
-/// variante e um arquivo `locales/<tag>.toml` com as mesmas chaves.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum Lang {
+/// Declara os idiomas embarcados: **uma linha por idioma** é o único ponto de
+/// mudança (L10N-69-01). Cada linha gera a variante de [`Lang`], os dados do
+/// idioma e a ligação com `locales/<tag>.toml`, carregada por `include_str!`:
+/// um idioma declarado sem arquivo falha no build, e um arquivo sem linha não
+/// entra no registro.
+macro_rules! languages {
+    (
+        default = $default:ident;
+        $(
+            $(#[$attr:meta])*
+            $variant:ident: {
+                tag: $tag:literal,
+                display: $display:literal,
+                language: $language:literal,
+                region: $region:expr,
+            }
+        )+
+    ) => {
+        /// Idiomas com tradução embutida.
+        ///
+        /// A enumeração é o registro único: adicionar um idioma é uma linha no
+        /// macro [`languages!`] e um arquivo `locales/<tag>.toml` com as mesmas
+        /// chaves.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+        #[non_exhaustive]
+        pub enum Lang {
+            $(
+                $(#[$attr])*
+                $variant,
+            )+
+        }
+
+        impl Default for Lang {
+            fn default() -> Self {
+                Lang::$default
+            }
+        }
+
+        impl Lang {
+            /// Tag BCP-47 usada em `settings.toml` e nos nomes de arquivo.
+            pub const fn tag(self) -> &'static str {
+                match self {
+                    $(Lang::$variant => $tag,)+
+                }
+            }
+
+            /// Nome do idioma no próprio idioma, para o seletor do menu.
+            pub const fn display_name(self) -> &'static str {
+                match self {
+                    $(Lang::$variant => $display,)+
+                }
+            }
+
+            /// Código primário ISO-639 (`pt`), usado no casamento por prefixo.
+            pub const fn language(self) -> &'static str {
+                match self {
+                    $(Lang::$variant => $language,)+
+                }
+            }
+
+            /// Região que distingue variantes do mesmo idioma (`BR` em `pt-BR`).
+            const fn region(self) -> Option<&'static str> {
+                match self {
+                    $(Lang::$variant => $region,)+
+                }
+            }
+
+            /// Todo idioma com tradução embutida, na ordem exibida no seletor.
+            pub const fn all() -> &'static [Lang] {
+                &[$(Lang::$variant,)+]
+            }
+        }
+
+        /// Texto bruto do catálogo embutido de uma tag; `None` para tag sem
+        /// tradução. Gerado da mesma lista que [`Lang`], então todo idioma do
+        /// registro tem catálogo por construção.
+        fn catalog_of(tag: &str) -> Option<&'static str> {
+            match tag {
+                $($tag => Some(include_str!(concat!("../locales/", $tag, ".toml"))),)+
+                _ => None,
+            }
+        }
+    };
+}
+
+languages! {
+    default = PtBr;
+
     /// Português do Brasil: o padrão e o fallback de qualquer chave ausente
     /// (SPEC-069 L10N-69-02).
-    #[default]
-    PtBr,
+    PtBr: {
+        tag: "pt-BR",
+        display: "Português (Brasil)",
+        language: "pt",
+        region: Some("BR"),
+    }
+
     /// Inglês dos Estados Unidos.
-    EnUs,
+    EnUs: {
+        tag: "en-US",
+        display: "English (US)",
+        language: "en",
+        region: Some("US"),
+    }
 }
 
 impl Lang {
-    /// Tag BCP-47 usada em `settings.toml` e nos nomes de arquivo.
-    pub const fn tag(self) -> &'static str {
-        match self {
-            Lang::PtBr => "pt-BR",
-            Lang::EnUs => "en-US",
-        }
-    }
-
-    /// Nome do idioma no próprio idioma, para o seletor do menu.
-    pub const fn display_name(self) -> &'static str {
-        match self {
-            Lang::PtBr => "Português (Brasil)",
-            Lang::EnUs => "English (US)",
-        }
-    }
-
-    /// Código primário ISO-639 (`pt`), usado no casamento por prefixo.
-    pub const fn language(self) -> &'static str {
-        match self {
-            Lang::PtBr => "pt",
-            Lang::EnUs => "en",
-        }
-    }
-
-    /// Todo idioma com tradução embutida, na ordem exibida no seletor.
-    pub const fn all() -> &'static [Lang] {
-        &[Lang::PtBr, Lang::EnUs]
-    }
-
     /// Resolve uma tag de locale (`pt-BR`, `pt_BR.UTF-8`, `pt`) no idioma
     /// correspondente. Devolve `None` quando não há tradução.
     pub fn from_tag(tag: &str) -> Option<Self> {
@@ -76,14 +138,6 @@ impl Lang {
             // `en-GB` or `pt-PT` reads that language far better than the
             // unrelated default.
             .or_else(|| Lang::all().iter().copied().find(same_language))
-    }
-
-    /// Região que distingue variantes do mesmo idioma (`BR` em `pt-BR`).
-    const fn region(self) -> Option<&'static str> {
-        match self {
-            Lang::PtBr => Some("BR"),
-            Lang::EnUs => Some("US"),
-        }
     }
 }
 
@@ -128,10 +182,14 @@ pub fn set_lang(lang: Lang) {
 
 /// Idioma corrente; `pt-BR` enquanto [`set_lang`] não for chamado.
 pub fn lang() -> Lang {
-    match CURRENT.load(std::sync::atomic::Ordering::Relaxed) {
-        1 => Lang::EnUs,
-        _ => Lang::PtBr,
-    }
+    let current = CURRENT.load(std::sync::atomic::Ordering::Relaxed);
+    // Resolvido sobre `Lang::all()`, não sobre um discriminante mágico: uma
+    // variante nova precisa responder aqui sem tocar em mais código.
+    Lang::all()
+        .iter()
+        .copied()
+        .find(|l| *l as u8 == current)
+        .unwrap_or_default()
 }
 
 /// Escolhe o primeiro idioma da lista de preferência que tenha tradução.
@@ -193,12 +251,17 @@ macro_rules! tr {
 /// Every translated message in every locale, for checks that need the whole
 /// corpus (for example, verifying the menu font can draw it).
 ///
+/// Includes each language's [`Lang::display_name`]: those strings are drawn
+/// in the selector but live in code, so a corpus check that read only the
+/// locale files would not see them.
+///
 /// Does not touch the global locale: it translates each language explicitly,
 /// so calling it while another thread is using another language is safe (the
 /// locale is process-global, and `set_lang` around a loop would leak).
 pub fn all_messages() -> Vec<String> {
     let mut out = Vec::new();
     for lang in Lang::all() {
+        out.push(lang.display_name().to_owned());
         for key in keys_of(lang.tag()) {
             out.push(translate_in(*lang, &key));
         }
@@ -208,10 +271,8 @@ pub fn all_messages() -> Vec<String> {
 
 /// Keys declared in a locale file embedded at build time.
 fn keys_of(tag: &str) -> Vec<String> {
-    let text = match tag {
-        "pt-BR" => include_str!("../locales/pt-BR.toml"),
-        "en-US" => include_str!("../locales/en-US.toml"),
-        _ => return Vec::new(),
+    let Some(text) = catalog_of(tag) else {
+        return Vec::new();
     };
     text.lines()
         .filter(|l| !l.trim_start().starts_with('#'))
@@ -346,6 +407,21 @@ mod tests {
         });
     }
 
+    /// `set_lang` must round-trip through `lang()` for every variant, and the
+    /// lookups must follow: a variant whose discriminant nothing resolves (the
+    /// bug this pins) would render Portuguese while reporting another language.
+    #[test]
+    fn set_lang_round_trips_for_every_lang() {
+        with_locale(|| {
+            for &each in Lang::all() {
+                set_lang(each);
+                assert_eq!(lang(), each, "set_lang({each:?}) must be reported back");
+                let key = "menu.resume";
+                assert_eq!(translate(key), translate_in(each, key), "{each:?} lookups");
+            }
+        });
+    }
+
     /// `rust_i18n::locale()` starts at `"en"`, so it cannot decide the
     /// language: a process that never chose one must render pt-BR and say so.
     #[test]
@@ -381,7 +457,10 @@ mod tests {
                 for lang in Lang::all() {
                     set_lang(*lang);
                     let value = translate(&key);
-                    assert!(!value.is_empty(), "{key} ausente em {}", lang.tag());
+                    // `translate` returns the raw key when the message is
+                    // missing everywhere, so "not empty" proves nothing: the
+                    // lookup must actually resolve.
+                    assert_ne!(value, key, "{key} ausente em {}", lang.tag());
                 }
             }
         });
@@ -389,19 +468,55 @@ mod tests {
 
     #[test]
     fn locales_are_actually_translated() {
-        // Guards against a copy-pasted `en-US.toml` shipped untranslated.
+        // Guards against a copy-pasted `en-US.toml` shipped untranslated:
+        // every value must differ between languages, except words that are
+        // the same by nature. A new identical value fails here until a human
+        // either translates it or lists it in `SAME_IN_EVERY_LANGUAGE`.
+        const SAME_IN_EVERY_LANGUAGE: &[&str] = &[
+            "button.a",
+            "button.b",
+            "button.l",
+            "button.r",
+            "button.select",
+            "button.start",
+            "ctx.volume",
+            "menu.audio.volume",
+            "menu.title",
+            "menu.video.vsync",
+            "settings.audio.volume",
+            "settings.controls.col_gamepad",
+            "settings.gpio.chip",
+            "settings.gpio.debounce",
+            "settings.gpio.pull_down",
+            "settings.gpio.pull_up",
+            "settings.tab.gpio",
+            "settings.video.vsync",
+        ];
         with_locale(|| {
-            for (key, pt, en) in [
-                ("menu.resume", "Continuar", "Resume"),
-                ("menu.quit", "Sair", "Quit"),
-                ("yes", "Sim", "Yes"),
-                ("no", "Não", "No"),
-            ] {
-                set_lang(Lang::PtBr);
-                assert_eq!(translate(key), pt, "{key} em pt-BR");
-                set_lang(Lang::EnUs);
-                assert_eq!(translate(key), en, "{key} em en-US");
+            let reference = translate_in(Lang::PtBr, "menu.resume");
+            let mut checked = 0;
+            for key in keys() {
+                let pt = translate_in(Lang::PtBr, &key);
+                for lang in Lang::all() {
+                    let mine = translate_in(*lang, &key);
+                    assert!(!mine.is_empty(), "{key} vazio em {}", lang.tag());
+                    if *lang != Lang::PtBr {
+                        assert!(
+                            pt != mine || SAME_IN_EVERY_LANGUAGE.contains(&key.as_str()),
+                            "{key} não foi traduzido em {} (valor idêntico)",
+                            lang.tag()
+                        );
+                        checked += 1;
+                    }
+                }
             }
+            assert!(checked > 0, "the corpus comparison must not be vacuous");
+            // Spot checks pin meaning, not just inequality.
+            assert_eq!(reference, "Continuar");
+            assert_eq!(translate_in(Lang::EnUs, "menu.resume"), "Resume");
+            assert_eq!(translate_in(Lang::EnUs, "menu.quit"), "Quit");
+            assert_eq!(translate_in(Lang::EnUs, "yes"), "Yes");
+            assert_eq!(translate_in(Lang::EnUs, "no"), "No");
         });
     }
 

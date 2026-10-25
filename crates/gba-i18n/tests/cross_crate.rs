@@ -20,5 +20,7 @@ fn interpolation_works_outside_the_defining_crate() {
 
 #[test]
 fn missing_keys_degrade_to_the_key() {
-    assert!(!tr!("no.such.key").is_empty());
+    // The raw key, not empty and not "pt-BR.no.such.key": what the user sees
+    // must name the missing key exactly (SPEC-069 "Erros, limites").
+    assert_eq!(tr!("no.such.key"), "no.such.key");
 }

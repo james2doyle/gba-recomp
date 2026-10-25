@@ -7,11 +7,14 @@ Aqui ficam apenas os passos e as armadilhas que já custaram tempo.
 
 ## O que muda e o que não muda
 
-Um idioma novo são **dois arquivos**: uma variante em `Lang`
-(`crates/gba-i18n/src/lib.rs`) e `crates/gba-i18n/locales/<tag>.toml`. Nada mais
-precisa ser tocado — nem o seletor do menu, nem `gba-settings`, nem `gba-party`,
-nem a persistência. Se um desses pontos precisar de código para o idioma
-aparecer, isso é um defeito de L10N-69-01, não parte do trabalho.
+Um idioma novo são **dois arquivos**: uma linha no registro `languages!` de
+`Lang` (`crates/gba-i18n/src/lib.rs`) e `crates/gba-i18n/locales/<tag>.toml`.
+Nada mais precisa ser tocado — nem o seletor do menu, nem `gba-settings`, nem
+`gba-party`, nem a persistência. Se um desses pontos precisar de código para o
+idioma aparecer, isso é um defeito de L10N-69-01, não parte do trabalho. A
+linha é o único ponto: é ela que gera a variante, os dados do idioma e a
+ligação com o arquivo (via `include_str!`), então um idioma sem `.toml` falha
+no build em vez de aparecer vazio.
 
 A tradução é embutida em tempo de compilação (`rust_i18n::i18n!` lê os `.toml` no
 build), então **recompile** depois de editar um locale: o binário não lê o
@@ -19,57 +22,29 @@ arquivo em disco.
 
 ## 1. Registrar o idioma
 
-Em `crates/gba-i18n/src/lib.rs`:
+Em `crates/gba-i18n/src/lib.rs`, acrescente **uma linha** no macro `languages!`:
 
 ```rust
-pub enum Lang {
-    #[default]
-    PtBr,
-    EnUs,
-    Fr,          // 1. a variante
-}
+languages! {
+    default = PtBr;
+    // ...idiomas existentes...
 
-impl Lang {
-    pub const fn tag(self) -> &'static str {
-        match self {
-            Lang::PtBr => "pt-BR",
-            Lang::EnUs => "en-US",
-            Lang::Fr => "fr-FR",                  // 2. tag BCP-47 = nome do arquivo
-        }
-    }
-
-    pub const fn display_name(self) -> &'static str {
-        match self {
-            // ...
-            Lang::Fr => "Français",               // 3. no próprio idioma
-        }
-    }
-
-    pub const fn language(self) -> &'static str {
-        match self {
-            // ...
-            Lang::Fr => "fr",                     // 4. ISO-639, casamento por prefixo
-        }
-    }
-
-    pub const fn all() -> &'static [Lang] {
-        &[Lang::PtBr, Lang::EnUs, Lang::Fr]       // 5. ordem do seletor
-    }
-
-    const fn region(self) -> Option<&'static str> {
-        match self {
-            // ...
-            Lang::Fr => Some("FR"),               // 6. distingue variantes
-        }
+    /// Inglês do Reino Unido.          // doc da variante, se quiser
+    EnGb: {                              // 1. nome da variante (ordem = seletor)
+        tag: "en-GB",                    // 2. tag BCP-47 = nome do arquivo
+        display: "English (UK)",         // 3. nome no próprio idioma
+        language: "en",                  // 4. ISO-639, casamento por prefixo
+        region: Some("GB"),              // 5. distingue variantes; None sem região
     }
 }
 ```
 
-- **`display_name` no próprio idioma** (`Deutsch`, não `Alemão`): quem está com a
+- **`display` no próprio idioma** (`Deutsch`, não `Alemão`): quem está com a
   interface num idioma que não lê precisa reconhecer a própria língua na lista.
 - **`tag` é o nome do arquivo** e o valor gravado em `settings.toml`.
-- `#[default]` continua em `PtBr`: o padrão e o fallback de chave ausente são
-  `pt-BR` (L10N-69-02), e um idioma novo não muda isso.
+- **A ordem das linhas** é a ordem do seletor no menu.
+- `default = PtBr` não muda: o padrão e o fallback de chave ausente são
+  `pt-BR` (L10N-69-02), e um idioma novo não altera isso.
 - Idiomas sem variante de região traduzida (`pt-PT`, `en-GB`, `fr-CA`) já caem no
   idioma da mesma família por `from_tag`; só crie uma variante quando houver
   tradução distinta de fato.
@@ -132,9 +107,10 @@ cargo test -p gba-i18n -p gba-desktop -p gba-settings -p gba-party
 | Teste | O que ele guarda |
 |---|---|
 | `every_locale_declares_the_same_keys` | você não esqueceu nem inventou chave |
-| `every_key_exists_in_every_locale` | nenhuma chave resolve vazia |
+| `every_key_exists_in_every_locale` | toda chave resolve para tradução (não devolve a chave crua) |
+| `set_lang_round_trips_for_every_lang` | o idioma escolhido é o idioma relatado e usado |
 | `every_locale_uses_the_same_placeholders` | nenhum `%{...}` foi trocado por engano |
-| `locales_are_actually_translated` | o arquivo não foi copiado sem traduzir |
+| `locales_are_actually_translated` | o arquivo não foi copiado sem traduzir (valores idênticos são erro, exceto os cognatos declarados) |
 | `tags_round_trip`, `accepts_posix_codesets_and_underscores` | `from_tag` reconhece a tag, inclusive `pt_BR.UTF-8` |
 | `every_shipped_locale_renders_in_the_menu_font` | todo caractere embarcado tem glifo |
 
