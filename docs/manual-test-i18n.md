@@ -6,7 +6,9 @@ comportamento do sistema operacional. Esses itens só valem como verificados dep
 executados numa máquina/aparelho real, com o resultado registrado.
 
 Nada abaixo foi executado neste ambiente: não há dispositivo, emulador, `emcc`, nem servidor
-de sessão gráfica.
+de sessão gráfica. **Exceção**: o rodapé do aviso "Salvo" foi verificado num aparelho Android
+real (Xiaomi M2102K1AC, Android 14) pelo commit `883c02e`, que conserta o corte da mensagem
+na borda direita; os demais itens seguem não executados.
 
 ## Pré-requisitos
 
@@ -20,7 +22,7 @@ de sessão gráfica.
 1. `target/debug/gba-desktop --rom games/rkanoid-v3.00.gba`
 2. Abra o menu com `Esc` e com `F1`.
 3. **Conferir**: título "Menu"; linhas "Continuar", "Vídeo", "Áudio", "Controles",
-   "Janela de configurações...", "Reiniciar jogo", "Salvar agora", "Sair", "Idioma".
+   "Janela de configurações...", "Reiniciar jogo", "Salvar agora", "Idioma", "Sair".
 4. **Conferir os acentos**, que antes eram impossíveis: "Vídeo", "Áudio",
    "Configurações", "Latência", "Correção de cor", "Nítido", "Não".
 5. **Conferir o alinhamento**: os valores à direita (`3x`, `Não`, `Nítido`, `100%`,
