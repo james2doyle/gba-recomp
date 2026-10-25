@@ -219,6 +219,45 @@ pub fn mask(points: impl IntoIterator<Item = (f32, f32)>) -> u16 {
     m
 }
 
+/// Active fingers for gameplay input (logical coordinates), with the menu
+/// partition (SPEC-068 TOUCH-68-02): while the menu is open a press belongs
+/// to the menu, never to gameplay. Without that partition the tap that
+/// dismisses the menu would inject its button into the guest for as long as
+/// the finger rests — the menu closes on the press and the guest resumes
+/// before the release arrives.
+#[derive(Default)]
+pub struct Fingers {
+    map: std::collections::HashMap<u64, (f32, f32)>,
+}
+
+impl Fingers {
+    /// A finger went down. `menu_open` consumes the press for the menu, so it
+    /// never becomes gameplay input.
+    pub fn down(&mut self, menu_open: bool, finger: u64, x: f32, y: f32) {
+        if !menu_open {
+            self.map.insert(finger, (x, y));
+        }
+    }
+
+    /// A tracked finger moved; a finger the model never saw is ignored, so a
+    /// motion cannot resurrect a consumed menu press.
+    pub fn move_to(&mut self, finger: u64, x: f32, y: f32) {
+        if let Some(p) = self.map.get_mut(&finger) {
+            *p = (x, y);
+        }
+    }
+
+    /// A finger lifted or left the window.
+    pub fn up(&mut self, finger: u64) {
+        self.map.remove(&finger);
+    }
+
+    /// KEYINPUT bits of the tracked fingers.
+    pub fn mask(&self) -> u16 {
+        mask(self.map.values().copied())
+    }
+}
+
 /// Navigation a touch on the virtual gamepad means while the menu is open
 /// (SPEC-068 TOUCH-68-02). `None` means the touch is not a menu control.
 ///
@@ -443,6 +482,45 @@ mod tests {
             mask([(cx + 20.0, cy), (218.0, 108.0)]),
             keys::RIGHT | keys::A
         );
+    }
+
+    /// The tap that dismisses the menu must never reach the guest: the menu
+    /// closes on the press and the release arrives after the guest resumed.
+    #[test]
+    fn menu_presses_never_become_gameplay_input() {
+        let mut f = Fingers::default();
+        f.down(true, 1, 218.0, 108.0);
+        assert_eq!(f.mask(), 0, "a menu tap is not gameplay input");
+        f.move_to(1, 218.0, 110.0);
+        assert_eq!(f.mask(), 0, "motion cannot resurrect a consumed press");
+        f.up(1);
+        assert_eq!(f.mask(), 0);
+        f.down(false, 2, 218.0, 108.0);
+        assert_eq!(f.mask(), keys::A, "gameplay presses still work");
+    }
+
+    /// A finger held while playing is untouched by a menu visit alongside it.
+    #[test]
+    fn held_gameplay_fingers_survive_a_menu_visit() {
+        let (cx, cy, _) = DPAD;
+        let mut f = Fingers::default();
+        f.down(false, 1, cx + 20.0, cy);
+        assert_eq!(f.mask(), keys::RIGHT);
+        f.down(true, 2, 218.0, 108.0);
+        assert_eq!(f.mask(), keys::RIGHT, "the hold keeps its key");
+        f.up(2);
+        f.up(1);
+        assert_eq!(f.mask(), 0);
+    }
+
+    #[test]
+    fn only_tracked_fingers_move() {
+        let mut f = Fingers::default();
+        f.move_to(9, 218.0, 108.0);
+        assert_eq!(f.mask(), 0, "an unknown finger is ignored");
+        f.down(false, 1, OPEN.0, OPEN.1);
+        f.move_to(1, 218.0, 108.0);
+        assert_eq!(f.mask(), keys::A);
     }
 
     #[test]

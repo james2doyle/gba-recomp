@@ -461,7 +461,7 @@ pub fn run_app(
     let mut joys: Vec<sdl::Joystick<'_>> = Vec::new();
     let mut gpio: Option<GpioInput> = None;
     // Touch screens (SPEC-068 TOUCH-68-01): active fingers in logical coords.
-    let mut fingers: std::collections::HashMap<u64, (f32, f32)> = Default::default();
+    let mut fingers = touch::Fingers::default();
     // A long press on free screen area opens the menu: on a phone there is
     // no Esc, no right click and no menu bar.
     let mut long_press = touch::LongPress::new();
@@ -698,7 +698,6 @@ pub fn run_app(
                     touch_seen = true;
                     match video.window_to_logical(x, y) {
                         Some(p) => {
-                            fingers.insert(finger, p);
                             if menu.open {
                                 // The open menu is driven by the same pad the
                                 // game uses (TOUCH-68-02): no on-screen pad,
@@ -716,9 +715,14 @@ pub fn run_app(
                             } else {
                                 long_press.press(finger, p.0, p.1, Instant::now());
                             }
+                            // A press consumed by the menu never becomes
+                            // gameplay input: the tap that dismisses the menu
+                            // would otherwise inject its button into the guest
+                            // before the release arrives (TOUCH-68-02).
+                            fingers.down(menu.open, finger, p.0, p.1);
                         }
                         None => {
-                            fingers.remove(&finger);
+                            fingers.up(finger);
                             long_press.release(finger);
                             nav_pad.release(finger);
                         }
@@ -727,14 +731,12 @@ pub fn run_app(
                 // Motion only updates the position; it never starts a press.
                 Event::FingerMotion { finger, x, y } => {
                     if let Some(p) = video.window_to_logical(x, y) {
-                        if let Some(slot) = fingers.get_mut(&finger) {
-                            *slot = p;
-                        }
+                        fingers.move_to(finger, p.0, p.1);
                         long_press.moved(finger, p.0, p.1);
                     }
                 }
                 Event::FingerUp { finger } => {
-                    fingers.remove(&finger);
+                    fingers.up(finger);
                     long_press.release(finger);
                     nav_pad.release(finger);
                 }
@@ -949,11 +951,7 @@ pub fn run_app(
         let gpio_mask = gpio.as_ref().map_or(0, GpioInput::mask);
         let show_touch =
             touch_controls_visible(current.input.touch_controls, has_touchscreen, touch_seen);
-        let touch_mask = if show_touch {
-            touch::mask(fingers.values().copied())
-        } else {
-            0
-        };
+        let touch_mask = if show_touch { fingers.mask() } else { 0 };
         gba.set_keys(bindings.mask_all(
             |sc| ctx.key_down(sc),
             &states,
