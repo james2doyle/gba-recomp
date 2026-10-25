@@ -73,8 +73,8 @@ mod main_row {
     pub const EXTERNAL: usize = 4;
     pub const RESET: usize = 5;
     pub const SAVE: usize = 6;
-    pub const QUIT: usize = 7;
-    pub const LANGUAGE: usize = 8;
+    pub const LANGUAGE: usize = 7;
+    pub const QUIT: usize = 8;
 }
 
 fn yes(b: bool) -> String {
@@ -176,10 +176,11 @@ impl Menu {
                 row(tr!("menu.external"), String::new()),
                 row(tr!("menu.reset"), String::new()),
                 row(tr!("menu.save_now"), String::new()),
-                row(tr!("menu.quit"), String::new()),
-                // Last, and available on every platform: the settings window
-                // does not exist on Android or the Web (SPEC-069 L10N-69-03).
+                // Above Quit, and available on every platform: the settings
+                // window does not exist on Android or the Web (SPEC-069
+                // L10N-69-03).
                 row(tr!("menu.language"), language_name(d.language)),
+                row(tr!("menu.quit"), String::new()),
             ],
             Page::Video => vec![
                 row(tr!("menu.video.scale"), format!("{}x", d.video.scale)),
@@ -704,7 +705,7 @@ mod tests {
         m.cursor = 5;
         assert_eq!(m.handle(Nav::Confirm), Command::Reset);
         m.open_at(Page::Main, &Settings::default());
-        m.cursor = 7;
+        m.cursor = 8;
         assert_eq!(m.handle(Nav::Confirm), Command::Quit);
     }
 
