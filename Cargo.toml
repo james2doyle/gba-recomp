@@ -8,6 +8,7 @@ members = [
     "crates/gba-net",
     "crates/gba-party",
     "crates/gba-ir",
+    "crates/gba-profile",
     "crates/gba-runtime-abi",
     "crates/gba-llvm",
     "crates/gba-recomp",
@@ -22,6 +23,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 gba-ir = { path = "crates/gba-ir" }
+gba-profile = { path = "crates/gba-profile" }
 gba-runtime-abi = { path = "crates/gba-runtime-abi" }
 gba-llvm = { path = "crates/gba-llvm" }
 sha2 = "=0.10.9"
