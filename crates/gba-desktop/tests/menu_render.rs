@@ -1,8 +1,8 @@
 //! Renders the real localized menu and saves a PNG for visual inspection.
 
 use gba_desktop::menu::{Menu, Page};
-use gba_desktop::settings::Settings;
 use gba_desktop::sdl;
+use gba_desktop::settings::Settings;
 
 #[test]
 #[ignore = "writes a PNG; run with --ignored under SDL_VIDEODRIVER=offscreen"]
@@ -42,7 +42,11 @@ fn crc32(d: &[u8]) -> u32 {
     for (i, s) in t.iter_mut().enumerate() {
         let mut c = i as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            c = if c & 1 != 0 {
+                0xEDB8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
         }
         *s = c;
     }

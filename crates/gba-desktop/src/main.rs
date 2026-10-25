@@ -44,13 +44,16 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AppOptions, Stri
             "--no-splash" => o.splash = false,
             "--backup" => {
                 let v = value()?;
-                o.backup = Some(BackupKind::parse(&v).ok_or(gba_i18n::tr!(
-                    "cli.unknown_backup",
-                    name = v
-                ))?);
+                o.backup = Some(
+                    BackupKind::parse(&v).ok_or(gba_i18n::tr!("cli.unknown_backup", name = v))?,
+                );
             }
             "--frames" => {
-                o.frames = Some(value()?.parse().map_err(|_| gba_i18n::tr!("cli.frames_integer"))?)
+                o.frames = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| gba_i18n::tr!("cli.frames_integer"))?,
+                )
             }
             "-h" | "--help" => return Err(usage()),
             _ => {
